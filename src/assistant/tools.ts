@@ -92,7 +92,11 @@ const READ_DEFS: Def[] = [
   { spec: { name: "today", level: "read", description: "Vista «Hoy»: siguiente paso sugerido, proyectos a reanudar, Bandeja, vencidas.", inputSchema: obj({}) }, async run(c) { return c.j.today(); } },
   {
     spec: { name: "inbox", level: "read", description: "Capturas pendientes de la Bandeja (ruta, título, texto).", inputSchema: obj({}) },
-    async run(c) { return c.j.inbox().map((n) => ({ path: n.path, title: n.title, text: n.body.trim().slice(0, 600) })); },
+    async run(c) {
+      const caps = c.j.inbox().filter((n) => !isExcluded(n.path, c.exclude));
+      for (const n of caps) c.s.reads.add(n.path); // su texto viaja al modelo: queda anotado
+      return caps.map((n) => ({ path: n.path, title: n.title, text: n.body.trim().slice(0, 600) }));
+    },
   },
   {
     spec: { name: "list_tasks", level: "read", description: "Tareas con estado, proyecto, fecha y prioridad. Filtros: status (todo,doing,done,dropped separados por coma), project (ruta).", inputSchema: obj({ status: S, project: S }) },

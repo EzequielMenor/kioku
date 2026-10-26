@@ -5,6 +5,8 @@ import { Jarvis, type ResumeCard, type TodayView } from "../core/jarvis.ts";
 import { isLocalUrl, parseLlmConfig, type LlmPayload } from "../core/llm.ts";
 import { exportVault, importObsidian, restoreVault } from "../core/portability.ts";
 import { startServer } from "../server/server.ts";
+import { HermesEngine } from "../assistant/engine.ts";
+import type { UndoRecord } from "../assistant/undo.ts";
 import { installService, serviceStatus, uninstallService } from "./service.ts";
 import { daemonAlive, ensureDaemon, hideQuick, jarvisHome, openWorkspace, readRuntime, toggleQuick, webDir } from "./desktop.ts";
 
@@ -23,6 +25,8 @@ Uso: jarvis <comando> [args]
   proposals [apply|reject <id>]   Propuestas pendientes de aprobación
   triage                   Genera propuestas para la Bandeja (reglas, sin red)
   ai status|preview|config <url> <modelo> [VAR_CLAVE]|off|triage --yes   IA opcional: tu modelo local o API; ves el payload antes de enviar
+  ask <mensaje>            Habla con el asistente (Hermes en una jaula; lee, organiza y propone)
+  assistant status|actions|undo <id>   Estado del asistente · lo que hizo por su cuenta · deshacer una acción
   reindex                  Reconstruye el índice desde los archivos
   export <archivo.tar.gz>  Copia de seguridad          restore <archivo.tar.gz> <carpeta>
   import-obsidian <ruta> [--yes]   Copia (solo lectura del origen) un vault de Obsidian
@@ -95,7 +99,7 @@ async function main(): Promise<void> {
       }
       const j = await Jarvis.open({ root: home });
       j.watch();
-      const srv = await startServer(j, { port: Number(process.env.JARVIS_PORT) || undefined, webDir, onQuickHide: hideQuick, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const srv = await startServer(j, { port: Number(process.env.JARVIS_PORT) || undefined, webDir, onQuickHide: hideQuick, assistant: { engine: new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
       const rtFile = path.join(home, ".jarvis", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`JARVIS escuchando en ${srv.url}  (datos: ${home})`);
@@ -113,6 +117,34 @@ async function main(): Promise<void> {
       else if (sub === "uninstall") uninstallService().forEach((l) => console.log(l));
       else if (sub === "status" || !sub) console.log(serviceStatus());
       else die("uso: jarvis service install|uninstall|status");
+      return;
+    }
+    case "ask": {
+      guardHome(home);
+      const message = args.join(" ").trim();
+      if (!message) die("uso: jarvis ask <mensaje>");
+      const base = await ensureDaemon(home);
+      const r = await api<{ answer: string; reads: string[]; actions: UndoRecord[] }>(base, "POST", "/api/assistant/ask", { message, conversation: "cli" });
+      console.log(r.answer);
+      if (r.reads.length) console.log(`\n  Notas que ha leído: ${r.reads.join(", ")}`);
+      for (const a of r.actions) console.log(`  ✓ ${a.summary}   (deshacer: jarvis assistant undo ${a.id})`);
+      return;
+    }
+    case "assistant": {
+      guardHome(home);
+      const [sub, id] = args;
+      if (sub === "status" || !sub) {
+        const av = await new HermesEngine({ homeDir: home }).available();
+        console.log(av.ok ? "Asistente: listo (Hermes en jaula bwrap)" : `Asistente: no disponible — ${av.reason}`);
+      } else if (sub === "actions") {
+        const list = await api<UndoRecord[]>(await ensureDaemon(home), "GET", "/api/assistant/actions");
+        if (!list.length) console.log("El asistente aún no ha hecho cambios por su cuenta.");
+        for (const a of list) console.log(`${a.id}  ${a.ts.slice(0, 16).replace("T", " ")}  ${a.summary}${a.undone ? "  (deshecho)" : ""}`);
+      } else if (sub === "undo") {
+        if (!id) die("uso: jarvis assistant undo <id>");
+        const r = await api<UndoRecord>(await ensureDaemon(home), "POST", "/api/assistant/undo", { id });
+        console.log(`✓ Deshecho: ${r.summary}`);
+      } else die("uso: jarvis assistant status|actions|undo <id>");
       return;
     }
     case "status": {

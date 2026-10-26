@@ -242,3 +242,12 @@ test("escritura: queda registrada como ai.action con su undoId", async () => {
     j.close();
   } finally { cleanup(); }
 });
+
+test("herramientas: inbox anota las capturas cuyo texto se entrega en session.reads", async () => {
+  const { j, call, s, cap, cleanup } = await setup();
+  try {
+    await call("inbox");
+    assert.ok(s.reads.has(cap.path));
+    j.close();
+  } finally { cleanup(); }
+});
