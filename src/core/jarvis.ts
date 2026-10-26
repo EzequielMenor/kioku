@@ -249,6 +249,21 @@ export class Jarvis {
     return moved;
   }
 
+  /** Restaura ficheros a un estado anterior (Deshacer del asistente). `text: null` = el fichero no debe existir. */
+  async restoreSnapshot(files: { path: string; text: string | null }[]): Promise<void> {
+    for (const f of files) {
+      if (f.text === null) {
+        if (this.vault.exists(f.path)) await this.vault.trash(f.path);
+        this.index.tx(() => { this.index.removeNote(f.path); });
+      } else {
+        await this.vault.write(f.path, f.text);
+        await this.reindexPath(f.path);
+      }
+    }
+    this.index.tx(() => { this.index.resolveAll(); });
+    for (const f of files) this.changed(f.text === null ? "delete" : "note", f.path);
+  }
+
   async deleteNote(rel: string): Promise<string> {
     const dest = await this.vault.trash(rel);
     this.index.tx(() => { this.index.removeNote(rel); this.index.resolveAll(); });
