@@ -1,3 +1,4 @@
+import { askConfirm } from "./dialogs.tsx";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, ApiError } from "./api.ts";
 import { createEditor, splitNote, type EditorHandle } from "./editor.ts";
@@ -77,7 +78,7 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
           onFollow: async (target) => {
             const r = await api<{ path: string | null }>("GET", `/api/resolve?q=${encodeURIComponent(target)}`);
             if (r.path) go(`/nota/${r.path}`);
-            else if (confirm(`No existe «${target}». ¿Crearla?`)) {
+            else if (await askConfirm({ title: `«${target}» no existe`, body: "¿Quieres crear esa nota?", confirm: "Crear" })) {
               const n = await api<{ path: string }>("POST", "/api/note/create", { title: target, type: "note" });
               go(`/nota/${n.path}`);
             }
@@ -128,7 +129,7 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
   };
 
   const trash = async () => {
-    if (!confirm("¿Mover esta nota a la papelera de JARVIS (.jarvis/trash)? Se puede recuperar desde ahí.")) return;
+    if (!(await askConfirm({ title: "¿Mover esta nota a la papelera?", body: "Va a la papelera de JARVIS (.jarvis/trash); se puede recuperar desde ahí.", confirm: "Mover a la papelera", danger: true }))) return;
     s.current.dirty = false;
     await api("POST", "/api/note/delete", { path });
     go("/hoy");

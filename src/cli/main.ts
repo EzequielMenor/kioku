@@ -6,6 +6,7 @@ import { isLocalUrl, parseLlmConfig, type LlmPayload } from "../core/llm.ts";
 import { exportVault, importObsidian, restoreVault } from "../core/portability.ts";
 import { startServer } from "../server/server.ts";
 import { HermesEngine } from "../assistant/engine.ts";
+import { FakeEngine } from "../assistant/fake-engine.ts";
 import type { UndoRecord } from "../assistant/undo.ts";
 import { installService, serviceStatus, uninstallService } from "./service.ts";
 import { daemonAlive, ensureDaemon, hideQuick, jarvisHome, openWorkspace, readRuntime, toggleQuick, webDir } from "./desktop.ts";
@@ -99,7 +100,7 @@ async function main(): Promise<void> {
       }
       const j = await Jarvis.open({ root: home });
       j.watch();
-      const srv = await startServer(j, { port: Number(process.env.JARVIS_PORT) || undefined, webDir, onQuickHide: hideQuick, assistant: { engine: new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const srv = await startServer(j, { port: Number(process.env.JARVIS_PORT) || undefined, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.JARVIS_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
       const rtFile = path.join(home, ".jarvis", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`JARVIS escuchando en ${srv.url}  (datos: ${home})`);

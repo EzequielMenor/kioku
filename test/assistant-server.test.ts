@@ -164,3 +164,17 @@ test("asistente API: assistant.json excluye carpetas sin reiniciar el daemon", a
     assert.equal(JSON.parse((await find()).json.text).length, 0);
   } finally { await s.done(); }
 });
+
+test("asistente API: status informa de la disponibilidad del motor", async () => {
+  const s = await setup();
+  try {
+    const r = await s.call("GET", "/api/assistant/status");
+    assert.equal(r.status, 200);
+    assert.equal(r.json.ok, false);
+    assert.match(r.json.reason, /configurado/);
+  } finally { await s.done(); }
+  const s2 = await setup(async () => "x");
+  try {
+    assert.deepEqual((await s2.call("GET", "/api/assistant/status")).json, { ok: true });
+  } finally { await s2.done(); }
+});

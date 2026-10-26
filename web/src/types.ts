@@ -13,3 +13,4 @@ export interface NoteInfo {
   outgoing: { target: string; path: string | null; title: string | null }[];
   unlinked: { path: string; title: string; type: string; context: string }[];
 }
+export type { UndoRecord } from "../../src/assistant/undo.ts";

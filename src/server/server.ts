@@ -126,6 +126,7 @@ export async function startServer(
           return send(res, 200, cfg ? { configured: true, model: cfg.model, baseUrl: cfg.baseUrl, local: isLocalUrl(cfg.baseUrl), apiKeyEnv: cfg.apiKeyEnv ?? null } : { configured: false });
         }
         case "/api/ai/preview": return send(res, 200, await j.aiPreview());
+        case "/api/assistant/status": return send(res, 200, opts.assistant ? await opts.assistant.engine.available() : { ok: false, reason: "El asistente no está configurado en este daemon" });
         case "/api/assistant/actions": return send(res, 200, (await undo.list(50)));
         case "/api/assistant/tools/list": {
           bearer(req);

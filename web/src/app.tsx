@@ -2,6 +2,8 @@ import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import "./app.css";
 import { api, lsGet, lsSet } from "./api.ts";
+import { AssistantActivity, AssistantView } from "./assistant.tsx";
+import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
 import { NoteView } from "./note-view.tsx";
@@ -21,6 +23,7 @@ const ICONS: Record<string, string> = {
   notas: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M8 13h8M8 17h8M8 9h2"/>',
   propuestas: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
   grafo: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2l7.6.4M7.4 8.2l3.6 7.9M16.6 10.1l-3.4 5.9"/>',
+  asistente: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 11h6M9 14h3"/>',
   diario: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
 };
 const Icon = ({ name }: { name: string }) => <svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: ICONS[name] }} />;
@@ -32,6 +35,7 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/tareas", label: "Tareas", key: "t", icon: "tareas" },
   { route: "/notas", label: "Notas", key: "n", icon: "notas" },
   { route: "/grafo", label: "Grafo", key: "g", icon: "grafo" },
+  { route: "/asistente", label: "Asistente", key: "a", icon: "asistente" },
   { route: "/propuestas", label: "Propuestas", key: "r", icon: "propuestas" },
 ];
 
@@ -114,6 +118,7 @@ function App() {
       }
       if (e.key === "g") { g = Date.now(); return; }
       if (e.key === "c") { e.preventDefault(); setOverlay("capture"); }
+      else if (e.key === "a") { e.preventDefault(); setRoute("/asistente"); }
       else if (e.key === "f") { e.preventDefault(); void toggleFocus(); }
       else if (e.key === "?") setOverlay("help");
       else if (e.key === "/") { e.preventDefault(); setOverlay("palette"); }
@@ -133,8 +138,10 @@ function App() {
   const openContext = (path: string) => { setCtxPath(path); setOverlay("context"); };
 
   const newNote = async (type: "note" | "project") => {
-    const title = prompt(type === "project" ? "Nombre del proyecto" : "Título de la nota");
-    if (!title?.trim()) return;
+    const title = await askText(type === "project"
+      ? { title: "Nuevo proyecto", placeholder: "Nombre del proyecto", confirm: "Crear" }
+      : { title: "Nueva nota", placeholder: "Título de la nota", confirm: "Crear" });
+    if (!title) return;
     await guard(async () => {
       if (type === "project") {
         const r = await api<{ path: string }>("POST", "/api/project/create", { title });
@@ -161,6 +168,7 @@ function App() {
     case "tareas": view = <TasksView rev={rev} go={setRoute} guard={guard} today={counts?.date} />; break;
     case "notas": view = <NotesView rev={rev} go={setRoute} onNew={() => newNote("note")} />; break;
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
+    case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
     default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} onCapture={() => setOverlay("capture")} />;
@@ -357,7 +365,7 @@ function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; gua
     say(kind === "task" ? "Convertida en tarea." : "Guardada como nota.");
   });
   const discard = (path: string, title: string) => guard(async () => {
-    if (!confirm(`¿Descartar «${title}»? Va a la papelera de JARVIS (.jarvis/trash) y se puede recuperar.`)) return;
+    if (!(await askConfirm({ title: `¿Descartar «${title}»?`, body: "Va a la papelera de JARVIS (.jarvis/trash) y se puede recuperar.", confirm: "Descartar", danger: true }))) return;
     await api("POST", "/api/note/delete", { path });
     say("Descartada.");
   });
@@ -739,8 +747,8 @@ function snippetHtml(s: string): string {
 
 function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
-    ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["f", "Iniciar / terminar foco"],
-    ["g h · b · p · t · n · g · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Notas · Grafo · Propuestas"],
+    ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
+    ["g h · b · p · t · n · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Notas · Grafo · Asistente · Propuestas"],
     ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (

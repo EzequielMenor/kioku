@@ -19,7 +19,7 @@ export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?
   return data as T;
 }
 
-export interface ChangeEvent { kind: string; path?: string | null; route?: string }
+export interface ChangeEvent { kind: string; path?: string | null; route?: string; tool?: string; level?: string }
 
 /** Suscripción a cambios del vault (SSE) con reconexión. */
 export function onChange(cb: (e: ChangeEvent) => void): () => void {
