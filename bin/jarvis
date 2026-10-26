@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Lanzador: resuelve el enlace simbólico y ejecuta la CLI con el Node del sistema.
+dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+exec node --no-warnings "$dir/../src/cli/main.ts" "$@"

@@ -1,0 +1,5 @@
+node_modules
+.jarvis-dev
+dist
+*.log
+.superpowers
