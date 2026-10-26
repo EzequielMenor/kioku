@@ -290,3 +290,6 @@ button:disabled { opacity: .5; cursor: default; }
 .notice.bad { border-color: rgba(255,123,114,.45); color: var(--bad); background: transparent; }
 .notice-card { margin: 14px 0; }
 .card.activity { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+
+.memory { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.memory .memtext { margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; font: 13px/1.5 ui-monospace, "JetBrains Mono", monospace; color: var(--muted); max-height: 260px; overflow: auto; }

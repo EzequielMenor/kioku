@@ -251,3 +251,46 @@ test("herramientas: inbox anota las capturas cuyo texto se entrega en session.re
     j.close();
   } finally { cleanup(); }
 });
+
+test("mantenimiento: find_broken_links lista el enlace roto con su origen", async () => {
+  const { j, call, cleanup } = await setup();
+  try {
+    await j.createNote({ title: "Con rotos", body: "ver [[No existe nada]] y [[Jarvis]]" });
+    const r = await call("find_broken_links");
+    assert.ok(!r.isError, r.text);
+    assert.deepEqual(r.json.map((b: { from: string; target: string }) => [b.from, b.target]), [["Notas/Con rotos.md", "No existe nada"]]);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("mantenimiento: find_broken_links respeta las carpetas excluidas", async () => {
+  const { j, call, cleanup } = await setup(["Privado/"]);
+  try {
+    await j.createNote({ title: "Roto privado", folder: "Privado", body: "[[Fantasma]]" });
+    assert.deepEqual((await call("find_broken_links")).json, []);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("mantenimiento: find_duplicates agrupa títulos iguales sin importar mayúsculas ni tildes", async () => {
+  const { j, call, cleanup } = await setup();
+  try {
+    await j.createNote({ title: "Reunión", body: "a" });
+    await j.createNote({ title: "reunion", folder: "Otra", body: "b" });
+    const r = await call("find_duplicates");
+    assert.equal(r.json.length, 1);
+    assert.deepEqual(r.json[0].paths.sort(), ["Notas/Reunión.md", "Otra/reunion.md"]);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("mantenimiento: stale_projects respeta days y excluye proyectos al día", async () => {
+  const { j, call, proj, cleanup } = await setup();
+  try {
+    assert.deepEqual((await call("stale_projects")).json, [], "recién creado no está parado con el umbral por defecto");
+    const r = await call("stale_projects", { days: 0 });
+    assert.deepEqual(r.json.map((p: { path: string }) => p.path), [proj.path]);
+    assert.equal(typeof r.json[0].idleDays, "number");
+    j.close();
+  } finally { cleanup(); }
+});

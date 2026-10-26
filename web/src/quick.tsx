@@ -5,7 +5,7 @@ import { api } from "./api.ts";
 import type { CaptureResult, SearchHit } from "./types.ts";
 
 const HINTS: [string, string][] = [
-  ["t", "tarea  !mañana  @proyecto  p1"], ["d", "decisión  @proyecto"], ["n", "nota"], ["/", "buscar"],
+  ["t", "tarea  !mañana  @proyecto  p1"], ["d", "decisión  @proyecto"], ["n", "nota"], ["/", "buscar"], ["a", "preguntar al asistente"],
 ];
 
 function Quick() {
@@ -13,6 +13,7 @@ function Quick() {
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [sel, setSel] = useState(0);
+  const [asking, setAsking] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   const reset = () => { setText(""); setMsg(null); setHits([]); setSel(0); };
@@ -51,7 +52,26 @@ function Quick() {
     void hide();
   };
 
+  /** `a <pregunta>`: respuesta corta del asistente sin salir de la ventana rápida. */
+  const ask = async (message: string) => {
+    setAsking(true);
+    setMsg({ t: "Pensando…" });
+    try {
+      const r = await api<{ answer: string }>("POST", "/api/assistant/ask", { message, conversation: "quick" });
+      const a = r.answer.trim();
+      setMsg({ t: a.length > 320 ? `${a.slice(0, 320)}… (sigue en el Asistente)` : a });
+      setText("");
+    } catch (e) {
+      setMsg({ t: (e as Error).message, err: true });
+    } finally {
+      setAsking(false);
+    }
+  };
+
   const submit = async () => {
+    if (asking) return;
+    const q = /^a\s+(.+)$/s.exec(text.trim());
+    if (q) { await ask(q[1]); return; }
     if (searching) { if (hits[sel]) await openHit(hits[sel]); return; }
     if (!text.trim()) return;
     try {

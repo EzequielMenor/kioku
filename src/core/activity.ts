@@ -5,7 +5,7 @@ import type { EventRow, Index } from "./index.ts";
 
 export type EventKind =
   | "note.open" | "note.edit" | "capture" | "task.status" | "focus.start" | "focus.end"
-  | "checkpoint" | "decision" | "proposal.created" | "proposal.applied" | "proposal.rejected" | "import" | "capture.convert" | "ai.request" | "ai.action" | "ai.undo";
+  | "checkpoint" | "decision" | "proposal.created" | "proposal.applied" | "proposal.rejected" | "import" | "capture.convert" | "ai.request" | "ai.action" | "ai.undo" | "ai.memory.delete";
 
 export class ActivityLog {
   private vault: Vault;

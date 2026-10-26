@@ -386,6 +386,13 @@ export class Index {
     return rows;
   }
 
+  /** Enlaces que no apuntan a ninguna nota (sin incrustaciones). */
+  brokenLinks(): { from: string; target: string }[] {
+    return this.db
+      .prepare(`SELECT DISTINCT src AS "from", dst_raw AS target FROM links WHERE dst_path IS NULL AND embed=0 AND dst_key<>'' ORDER BY src, dst_raw`)
+      .all() as { from: string; target: string }[];
+  }
+
   /** Menciones del título en texto plano, sin enlace, en otras notas. */
   unlinkedMentions(rel: string, limit = 10): Backlink[] {
     const n = this.getNote(rel);

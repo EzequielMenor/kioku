@@ -2,7 +2,7 @@ import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import "./app.css";
 import { api, lsGet, lsSet } from "./api.ts";
-import { AssistantActivity, AssistantView } from "./assistant.tsx";
+import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
@@ -168,7 +168,7 @@ function App() {
     case "tareas": view = <TasksView rev={rev} go={setRoute} guard={guard} today={counts?.date} />; break;
     case "notas": view = <NotesView rev={rev} go={setRoute} onNew={() => newNote("note")} />; break;
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
-    case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
+    case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : arg === "memoria" ? <AssistantMemory rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
     default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} onCapture={() => setOverlay("capture")} />;

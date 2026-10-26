@@ -34,6 +34,26 @@ function userPath(p: unknown): string {
   return p;
 }
 
+const MEMORY_DIR = "hermes/memories";
+
+/** Ruta relativa a memories/ validada: sin `..`, sin absolutas, sin ocultos. */
+function memoryRel(v: unknown): string {
+  if (typeof v !== "string" || !v || v.startsWith("/") || v.includes("\\") || v.includes("\0")) throw new HttpError(400, "Ruta de memoria no válida");
+  if (v.split("/").some((seg) => !seg || seg === "." || seg === ".." || seg.startsWith("."))) throw new HttpError(400, "Ruta de memoria no válida");
+  return v;
+}
+
+/** Lo que Hermes guardó en su memoria (ficheros de texto de `.jarvis/hermes/memories/`). */
+async function listMemory(j: Jarvis): Promise<{ path: string; text: string }[]> {
+  const out: { path: string; text: string }[] = [];
+  for (const f of (await j.vault.listInternal(MEMORY_DIR)).sort()) {
+    if (f.startsWith(".")) continue;
+    const text = await j.vault.readInternal(`${MEMORY_DIR}/${f}`).catch(() => null); // subcarpeta o ilegible: se omite
+    if (text !== null) out.push({ path: f, text });
+  }
+  return out;
+}
+
 function str(v: unknown, name: string): string {
   if (typeof v !== "string") throw new HttpError(400, `Falta «${name}»`);
   return v;
@@ -128,6 +148,7 @@ export async function startServer(
         case "/api/ai/preview": return send(res, 200, await j.aiPreview());
         case "/api/assistant/status": return send(res, 200, opts.assistant ? await opts.assistant.engine.available() : { ok: false, reason: "El asistente no está configurado en este daemon" });
         case "/api/assistant/actions": return send(res, 200, (await undo.list(50)));
+        case "/api/assistant/memory": return send(res, 200, await listMemory(j));
         case "/api/assistant/tools/list": {
           bearer(req);
           return send(res, 200, assistantTools.specs());
@@ -244,6 +265,12 @@ export async function startServer(
           const sess = bearer(req);
           await loadExclude();
           return send(res, 200, await assistantTools.call(sess, str(body.name, "name"), body.args));
+        }
+        case "/api/assistant/memory/delete": {
+          const rel = memoryRel(body.path);
+          await j.vault.removeInternal(`${MEMORY_DIR}/${rel}`);
+          await j.log.record("ai.memory.delete", null, { path: rel });
+          return send(res, 200, { ok: true });
         }
         case "/api/assistant/undo": return send(res, 200, await undo.undo(str(body.id, "id")));
         case "/api/assistant/ask": {

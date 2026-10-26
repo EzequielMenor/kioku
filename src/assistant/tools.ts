@@ -2,7 +2,7 @@
 //   read = libres · auto = reversibles con Deshacer · approval = solo como propuesta.
 import { FOLDERS, type Jarvis } from "../core/jarvis.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
-import { setFrontmatter } from "../core/markdown.ts";
+import { normKey, setFrontmatter } from "../core/markdown.ts";
 import type { Op } from "../core/proposals.ts";
 import { VaultError } from "../core/vault.ts";
 import { AssistantError, MAX_NOTES_PER_QUERY, checkAssistantPath, filterProps, isProtectedPath } from "./policy.ts";
@@ -121,6 +121,43 @@ const READ_DEFS: Def[] = [
     async run(c, a) {
       const since = new Date(Date.now() - argInt(a, "days", 7, 90) * 86_400_000).toISOString();
       return c.j.index.events({ since, limit: 200 }).filter((e) => !e.path || !isExcluded(e.path, c.exclude));
+    },
+  },
+  {
+    spec: { name: "find_broken_links", level: "read", description: "Enlaces [[...]] que no apuntan a ninguna nota: {from, target}.", inputSchema: obj({}) },
+    async run(c) {
+      return c.j.index.brokenLinks().filter((b) => !isExcluded(b.from, c.exclude)).slice(0, 200);
+    },
+  },
+  {
+    spec: { name: "find_duplicates", level: "read", description: "Grupos de notas con el mismo título (sin distinguir mayúsculas ni tildes): {title, paths}.", inputSchema: obj({}) },
+    async run(c) {
+      const groups = new Map<string, { title: string; paths: string[] }>();
+      for (const n of c.j.index.listNotes({ limit: 5000 })) {
+        if (isExcluded(n.path, c.exclude)) continue;
+        const key = normKey(n.title);
+        if (!key) continue;
+        const g = groups.get(key) ?? { title: n.title, paths: [] };
+        g.paths.push(n.path);
+        groups.set(key, g);
+      }
+      return [...groups.values()].filter((g) => g.paths.length > 1).slice(0, 100);
+    },
+  },
+  {
+    spec: { name: "stale_projects", level: "read", description: "Proyectos activos sin tocar desde hace `days` días o más (por defecto 14): {path, title, idleDays}.", inputSchema: obj({ days: { type: "number" } }) },
+    async run(c, a) {
+      const n = Number(a.days);
+      const days = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 14;
+      const out: { path: string; title: string; idleDays: number | null }[] = [];
+      for (const p of c.j.index.listNotes({ type: "project", limit: 500 })) {
+        if (isExcluded(p.path, c.exclude)) continue;
+        const status = c.j.index.getNote(p.path)?.fm.status;
+        if (status && status !== "active") continue;
+        const idle = c.j.resume(p.path)?.idleDays ?? null;
+        if (idle === null || idle >= days) out.push({ path: p.path, title: p.title, idleDays: idle });
+      }
+      return out.sort((x, y) => (y.idleDays ?? 1e9) - (x.idleDays ?? 1e9));
     },
   },
 ];

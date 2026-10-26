@@ -138,6 +138,11 @@ export class Vault {
     }
   }
 
+  /** Borra un fichero del área interna (no toca las notas del usuario). */
+  async removeInternal(rel: string): Promise<void> {
+    await fs.rm(this.abs(`${INTERNAL_DIR}/${rel}`), { force: true });
+  }
+
   /** Mueve a .jarvis/trash/ (nunca borra de verdad). Devuelve la ruta en la papelera. */
   async trash(rel: string): Promise<string> {
     this.assertUserPath(rel);

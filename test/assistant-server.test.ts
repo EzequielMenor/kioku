@@ -178,3 +178,21 @@ test("asistente API: status informa de la disponibilidad del motor", async () =>
     assert.deepEqual((await s2.call("GET", "/api/assistant/status")).json, { ok: true });
   } finally { await s2.done(); }
 });
+
+test("asistente API: memoria lista lo que Hermes guardó y solo borra dentro de memories/", async () => {
+  const s = await setup();
+  try {
+    await s.j.vault.writeInternal("hermes/memories/MEMORY.md", "Prefiere respuestas cortas\n");
+    await s.j.vault.writeInternal("hermes/config.yaml", "secreto: 1\n");
+    const l = await s.call("GET", "/api/assistant/memory");
+    assert.equal(l.status, 200);
+    assert.deepEqual(l.json.map((m: { path: string }) => m.path), ["MEMORY.md"]);
+    assert.match(l.json[0].text, /respuestas cortas/);
+    for (const bad of ["../config.yaml", "../../notes.md", "/etc/passwd", "sub/../../config.yaml", ""]) {
+      assert.equal((await s.call("POST", "/api/assistant/memory/delete", { path: bad })).status, 400, bad);
+    }
+    assert.equal(await s.j.vault.readInternal("hermes/config.yaml"), "secreto: 1\n");
+    assert.equal((await s.call("POST", "/api/assistant/memory/delete", { path: "MEMORY.md" })).status, 200);
+    assert.deepEqual((await s.call("GET", "/api/assistant/memory")).json, []);
+  } finally { await s.done(); }
+});

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, lsGet, lsSet, onChange } from "./api.ts";
 import { useApi } from "./hooks.ts";
+import { askConfirm } from "./dialogs.tsx";
 import type { Proposal, UndoRecord } from "./types.ts";
 
 type Say = (text: string, error?: boolean) => void;
@@ -78,6 +79,7 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
         <h1>Asistente</h1>
         <div class="row">
           <a class="pill" href="#/asistente/actividad">Actividad</a>
+          <a class="pill" href="#/asistente/memoria">Memoria</a>
           {msgs.length > 0 && <button class="mini" onClick={reset} disabled={busy}>Nueva conversación</button>}
         </div>
       </header>
@@ -185,5 +187,33 @@ function ActivityUndo({ a, say, onDone }: { a: UndoRecord; say: Say; onDone(): v
       catch (e) { say((e as Error).message, true); }
       finally { setBusy(false); }
     }}>Deshacer</button>
+  );
+}
+
+/** Lo que el asistente recuerda entre conversaciones: texto plano, visible y borrable. */
+export function AssistantMemory({ rev, say }: { rev: number; say: Say }) {
+  const { data, reload } = useApi<{ path: string; text: string }[]>("/api/assistant/memory", rev);
+  const forget = async (path: string) => {
+    if (!(await askConfirm({ title: "Borrar este recuerdo", body: `El asistente dejará de recordar lo de «${path}». No se puede deshacer.`, confirm: "Borrar", danger: true }))) return;
+    try { await api("POST", "/api/assistant/memory/delete", { path }); say("Recuerdo borrado."); reload(); }
+    catch (e) { say((e as Error).message, true); }
+  };
+  return (
+    <div class="page narrow">
+      <header class="page-head"><h1>Qué recuerda el asistente</h1><a class="pill" href="#/asistente">Volver</a></header>
+      <p class="muted">Son ficheros de texto en <code>.jarvis/hermes/memories/</code>: nada opaco. Puedes borrar lo que no quieras que recuerde.</p>
+      {data && data.length === 0 && <div class="empty">Todavía no recuerda nada.</div>}
+      <ul class="cards">
+        {(data ?? []).map((m) => (
+          <li key={m.path} class="card memory">
+            <div>
+              <div class="ctitle">{m.path}</div>
+              <pre class="memtext">{m.text}</pre>
+            </div>
+            <button class="mini" onClick={() => void forget(m.path)}>Borrar</button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
