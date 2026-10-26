@@ -5,7 +5,7 @@ import type { NoteType, TaskStatus } from "../core/index.ts";
 import { normKey, setFrontmatter } from "../core/markdown.ts";
 import type { Op } from "../core/proposals.ts";
 import { VaultError } from "../core/vault.ts";
-import { AssistantError, MAX_NOTES_PER_QUERY, checkAssistantPath, filterProps, isProtectedPath } from "./policy.ts";
+import { AssistantError, MAX_NOTES_PER_QUERY, checkAssistantPath, filterProps, isExcludedPath, isProtectedPath } from "./policy.ts";
 import type { AssistantSession } from "./session.ts";
 import type { UndoStore } from "./undo.ts";
 
@@ -53,7 +53,15 @@ const argInt = (args: Record<string, unknown>, k: string, d: number, max: number
   return Number.isFinite(v) && v > 0 ? Math.min(Math.floor(v), max) : d;
 };
 
-const isExcluded = (p: string, exclude: string[]): boolean => exclude.some((x) => x && p.startsWith(x));
+const isExcluded = isExcludedPath;
+
+/** Quita de un resultado todo objeto cuya `path`/`projectPath` esté excluida (y lo anula si era una propiedad suelta). */
+function hideExcluded(v: unknown, exclude: string[]): unknown {
+  if (!exclude.length || v === null || typeof v !== "object") return v;
+  const bad = (o: object): boolean => ["path", "projectPath"].some((k) => { const x = (o as Record<string, unknown>)[k]; return typeof x === "string" && isExcluded(x, exclude); });
+  if (Array.isArray(v)) return v.filter((x) => !(x && typeof x === "object" && bad(x))).map((x) => hideExcluded(x, exclude));
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x && typeof x === "object" && !Array.isArray(x) && bad(x) ? null : hideExcluded(x, exclude)]));
+}
 
 const READ_DEFS: Def[] = [
   {
@@ -86,10 +94,10 @@ const READ_DEFS: Def[] = [
       const card = c.j.resume(path);
       if (!card) throw new AssistantError("invalid", "Proyecto no encontrado");
       c.path = path;
-      return card;
+      return hideExcluded(card, c.exclude);
     },
   },
-  { spec: { name: "today", level: "read", description: "Vista «Hoy»: siguiente paso sugerido, proyectos a reanudar, Bandeja, vencidas.", inputSchema: obj({}) }, async run(c) { return c.j.today(); } },
+  { spec: { name: "today", level: "read", description: "Vista «Hoy»: siguiente paso sugerido, proyectos a reanudar, Bandeja, vencidas.", inputSchema: obj({}) }, async run(c) { return hideExcluded(await c.j.today(), c.exclude); } },
   {
     spec: { name: "inbox", level: "read", description: "Capturas pendientes de la Bandeja (ruta, título, texto).", inputSchema: obj({}) },
     async run(c) {
@@ -102,7 +110,7 @@ const READ_DEFS: Def[] = [
     spec: { name: "list_tasks", level: "read", description: "Tareas con estado, proyecto, fecha y prioridad. Filtros: status (todo,doing,done,dropped separados por coma), project (ruta).", inputSchema: obj({ status: S, project: S }) },
     async run(c, a) {
       const st = argOpt(a, "status");
-      return c.j.index.tasks({ status: st ? (st.split(",") as TaskStatus[]) : undefined, projectPath: argOpt(a, "project") }).slice(0, 200);
+      return (hideExcluded(c.j.index.tasks({ status: st ? (st.split(",") as TaskStatus[]) : undefined, projectPath: argOpt(a, "project") }), c.exclude) as unknown[]).slice(0, 200);
     },
   },
   {
@@ -213,19 +221,34 @@ function writeDef(spec: Omit<ToolSpec, "level">, plan: (c: ToolCtx, a: Record<st
       const p = await plan(c, a);
       const all = [...p.touches, ...(p.creates ?? [])];
       c.path = all[0];
-      const reason = escalationReason(c.s, all);
+      const reason = escalationReason(c.s, all) ?? externalContentReason(a);
       if (reason) {
         const prop = await c.j.createProposal({ source: "assistant", title: p.summary, rationale: reason, ops: await p.ops() });
         return { escalated: true, proposalId: prop.id, reason, message: "No se ha cambiado nada: queda una propuesta pendiente para que el usuario la apruebe." };
       }
+      for (const x of all) c.s.touched.add(x); // se reserva antes de actuar: el límite cuenta también lo que falle a medias
       const snap = await c.undo.capture(p.touches);
-      const { out, created } = await p.apply();
-      const rec = await c.undo.commit(snap, { sessionId: c.s.id, tool: spec.name, summary: p.summary }, [...(p.creates ?? []), ...(created ?? [])]);
+      let res: Awaited<ReturnType<WritePlan["apply"]>> | undefined;
+      let failure: unknown;
+      try {
+        res = await p.apply();
+      } catch (e) {
+        failure = e;
+      }
+      const created = res?.created ?? [];
+      const rec = await c.undo.commit(snap, { sessionId: c.s.id, tool: spec.name, summary: failure ? `${p.summary} (incompleta)` : p.summary }, [...(p.creates ?? []), ...created]);
       c.undoId = rec.id;
-      for (const x of [...all, ...(created ?? [])]) c.s.touched.add(x);
-      return { ...(out as object), undoId: rec.id };
+      for (const x of created) c.s.touched.add(x);
+      if (failure) throw failure;
+      return { ...(res!.out as object), undoId: rec.id };
     },
   };
+}
+
+/** Texto que el asistente escribe y que un visor de Markdown cargaría solo (imágenes, enlaces, HTML): puede filtrar notas privadas, así que no se aplica sin aprobación. */
+const EXTERNAL_RE = /https?:\/\/|!\[|<\s*(?:img|script|iframe|link|svg|object|embed)\b|\bdata:/i;
+function externalContentReason(args: Record<string, unknown>): string | null {
+  return EXTERNAL_RE.test(JSON.stringify(args)) ? "El texto incluye enlaces web, imágenes o HTML: podrían usarse para sacar contenido de tus notas, así que necesita tu aprobación." : null;
 }
 
 const TASK_STATUSES = ["todo", "doing", "done", "dropped"];
@@ -406,6 +429,8 @@ export class AssistantTools {
   private undo: UndoStore;
   private exclude: string[];
   protected defs = new Map<string, Def>();
+  /** Las llamadas de una misma sesión se ejecutan de una en una: el límite y el Deshacer no admiten carreras. */
+  private queues = new WeakMap<AssistantSession, Promise<unknown>>();
 
   constructor(j: Jarvis, undo: UndoStore, cfg: { exclude?: string[] } = {}) {
     this.j = j;
@@ -418,7 +443,13 @@ export class AssistantTools {
     return [...this.defs.values()].map((d) => d.spec);
   }
 
-  async call(s: AssistantSession, name: string, args: unknown): Promise<ToolResult> {
+  call(s: AssistantSession, name: string, args: unknown): Promise<ToolResult> {
+    const run = (this.queues.get(s) ?? Promise.resolve()).then(() => this.callNow(s, name, args));
+    this.queues.set(s, run.catch(() => undefined));
+    return run;
+  }
+
+  private async callNow(s: AssistantSession, name: string, args: unknown): Promise<ToolResult> {
     const def = this.defs.get(name);
     if (!def) return { isError: true, text: `Herramienta desconocida: ${name}` };
     const a = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};

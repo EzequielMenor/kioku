@@ -46,6 +46,18 @@ test("sesiones: byToken devuelve la sesión abierta y null tras close o sin toke
 test("política: assistant.json se parsea con tolerancia", async () => {
   const { parseAssistantConfig } = await import("../src/assistant/policy.ts");
   assert.deepEqual(parseAssistantConfig('{"exclude":["Privado/"," ", 3]}').exclude, ["Privado/"]);
-  assert.deepEqual(parseAssistantConfig("{roto").exclude, []);
   assert.deepEqual(parseAssistantConfig(null).exclude, []);
+});
+
+test("política: assistant.json roto falla cerrado (no equivale a «sin exclusiones»)", async () => {
+  const { parseAssistantConfig } = await import("../src/assistant/policy.ts");
+  assert.throws(() => parseAssistantConfig('{"exclude":["Privado/"],}'), /assistant\.json/);
+});
+
+test("política: las exclusiones se normalizan (NFC/NFD, mayúsculas, ./ y barra final)", async () => {
+  const { checkAssistantPath, parseAssistantConfig } = await import("../src/assistant/policy.ts");
+  const nfc = "Diseño/x.md", nfd = "Diseño/x.md".normalize("NFD");
+  const ex = parseAssistantConfig(JSON.stringify({ exclude: ["./Diseño", "/privado"] })).exclude;
+  for (const p of [nfc, nfd, "PRIVADO/a.md", "privado/b/c.md"]) assert.throws(() => checkAssistantPath(p, ex), /excluida/, p);
+  assert.equal(checkAssistantPath("PrivadoX/a.md", ex), "PrivadoX/a.md", "«privado» no excluye «PrivadoX»");
 });

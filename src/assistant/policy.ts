@@ -21,8 +21,22 @@ export function checkAssistantPath(rel: unknown, exclude: string[]): string {
   if (rel.startsWith("/") || rel.includes("\\") || rel.split("/").some((seg) => seg === "" || seg === ".." || seg.startsWith("."))) {
     throw new AssistantError("path", "Ruta no permitida");
   }
-  if (exclude.some((p) => p && rel.startsWith(p))) throw new AssistantError("excluded", "Esa carpeta está excluida del asistente");
+  if (isExcludedPath(rel, exclude)) throw new AssistantError("excluded", "Esa carpeta está excluida del asistente");
   return rel;
+}
+
+const foldKey = (s: string): string => s.normalize("NFC").toLowerCase();
+
+/** Entrada de exclusión lista para comparar: NFC, sin mayúsculas, sin `./` ni `/` inicial y con `/` final (salvo ficheros .md). */
+function exclusionKey(x: string): string {
+  const k = foldKey(x.trim()).replace(/^(\.?\/)+/, "");
+  return k && !k.endsWith("/") && !k.endsWith(".md") ? `${k}/` : k;
+}
+
+/** ¿Está la ruta dentro de una carpeta (o es un fichero) excluida? Insensible a mayúsculas y a NFC/NFD. */
+export function isExcludedPath(rel: string, exclude: string[]): boolean {
+  const k = foldKey(rel);
+  return exclude.some((x) => { const e = exclusionKey(x); return e !== "" && k.startsWith(e); });
 }
 
 export function isProtectedPath(rel: string): boolean {
@@ -37,13 +51,15 @@ export function filterProps(props: unknown): Record<string, unknown> {
   return { ...(props as Record<string, unknown>) };
 }
 
-/** `.jarvis/assistant.json`: `{ "exclude": ["Privado/"] }`. Tolerante: un fichero ilegible equivale a «sin exclusiones». */
+/** `.jarvis/assistant.json`: `{ "exclude": ["Privado/"] }`. Sin fichero = sin exclusiones; si existe y está roto, falla cerrado. */
 export function parseAssistantConfig(text: string | null): { exclude: string[] } {
+  if (!text) return { exclude: [] };
+  let v: unknown;
   try {
-    const v = text ? JSON.parse(text) : null;
-    const ex = v && typeof v === "object" && Array.isArray(v.exclude) ? v.exclude : [];
-    return { exclude: ex.filter((x: unknown): x is string => typeof x === "string" && x.trim() !== "").map((x: string) => x.trim()) };
+    v = JSON.parse(text);
   } catch {
-    return { exclude: [] };
+    throw new AssistantError("invalid", "assistant.json no es JSON válido: corrígelo para usar el asistente (así no se salta ninguna exclusión)");
   }
+  const ex = v && typeof v === "object" && Array.isArray((v as { exclude?: unknown }).exclude) ? (v as { exclude: unknown[] }).exclude : [];
+  return { exclude: ex.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()) };
 }

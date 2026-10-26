@@ -196,3 +196,15 @@ test("asistente API: memoria lista lo que Hermes guardó y solo borra dentro de 
     assert.deepEqual((await s.call("GET", "/api/assistant/memory")).json, []);
   } finally { await s.done(); }
 });
+
+test("asistente API: assistant.json roto → ask 503 y tools/call 503, sin ejecutar el motor", async () => {
+  let asked = 0;
+  const s = await setup(async () => { asked++; return "no debería llegar"; });
+  try {
+    await s.j.vault.writeInternal("assistant.json", '{"exclude":["Privado/"],}');
+    const r = await s.call("POST", "/api/assistant/ask", { message: "hola", conversation: "x" });
+    assert.equal(r.status, 503);
+    assert.match(r.json.error, /assistant\.json/);
+    assert.equal(asked, 0);
+  } finally { await s.done(); }
+});

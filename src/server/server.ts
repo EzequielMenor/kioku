@@ -101,7 +101,11 @@ export async function startServer(
   const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .jarvis/assistant.json
   const assistantTools = new AssistantTools(j, undo, { exclude });
   const loadExclude = async () => {
-    exclude.splice(0, exclude.length, ...parseAssistantConfig(await j.vault.readInternal("assistant.json")).exclude);
+    try {
+      exclude.splice(0, exclude.length, ...parseAssistantConfig(await j.vault.readInternal("assistant.json")).exclude);
+    } catch (e) {
+      throw new HttpError(503, (e as Error).message); // config rota: no se actúa sin saber qué está excluido
+    }
   };
 
   const sseClients = new Set<http.ServerResponse>();

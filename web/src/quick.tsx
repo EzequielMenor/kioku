@@ -5,7 +5,7 @@ import { api } from "./api.ts";
 import type { CaptureResult, SearchHit } from "./types.ts";
 
 const HINTS: [string, string][] = [
-  ["t", "tarea  !mañana  @proyecto  p1"], ["d", "decisión  @proyecto"], ["n", "nota"], ["/", "buscar"], ["a", "preguntar al asistente"],
+  ["t", "tarea  !mañana  @proyecto  p1"], ["d", "decisión  @proyecto"], ["n", "nota"], ["/", "buscar"], ["a:", "preguntar al asistente"],
 ];
 
 function Quick() {
@@ -52,7 +52,7 @@ function Quick() {
     void hide();
   };
 
-  /** `a <pregunta>`: respuesta corta del asistente sin salir de la ventana rápida. */
+  /** `a: <pregunta>` (con dos puntos, para no confundirlo con capturas como «a las 5 llamar»): respuesta corta del asistente sin salir de la ventana rápida. */
   const ask = async (message: string) => {
     setAsking(true);
     setMsg({ t: "Pensando…" });
@@ -70,7 +70,7 @@ function Quick() {
 
   const submit = async () => {
     if (asking) return;
-    const q = /^a\s+(.+)$/s.exec(text.trim());
+    const q = /^a:\s*(.+)$/s.exec(text.trim());
     if (q) { await ask(q[1]); return; }
     if (searching) { if (hits[sel]) await openHit(hits[sel]); return; }
     if (!text.trim()) return;

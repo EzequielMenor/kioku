@@ -58,13 +58,16 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
     push({ role: "user", text: m });
     setBusy(true);
     setLive("Pensando…");
+    const startedAt = new Date().toISOString();
     try {
       const before = await pendingIds().catch(() => new Set<string>());
       const r = await api<{ answer: string; reads: string[]; actions: UndoRecord[] }>("POST", "/api/assistant/ask", { message: m, conversation });
       const after = await api<Proposal[]>("GET", "/api/proposals?status=pending").catch(() => [] as Proposal[]);
       push({ role: "assistant", text: r.answer, reads: r.reads, actions: r.actions, proposals: after.filter((p) => !before.has(p.id) && p.source === "assistant") });
     } catch (e) {
-      push({ role: "assistant", text: (e as Error).message, error: true });
+      // Si falló a medias, lo que ya cambió sigue siendo deshacible: se muestra igualmente.
+      const actions = await api<UndoRecord[]>("GET", "/api/assistant/actions").then((l) => l.filter((a) => a.ts >= startedAt && !a.undone), () => []);
+      push({ role: "assistant", text: (e as Error).message, error: true, actions });
     } finally {
       setBusy(false);
       setLive(null);
