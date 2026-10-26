@@ -10,7 +10,7 @@ import { addDays, diffDays, localDate, localTime } from "./dates.ts";
 import { fuzzyScore, Index, relationTarget, type NoteRow, type NoteType, type TaskRow, type TaskStatus } from "./index.ts";
 import { ulid } from "./ids.ts";
 import { appendToSection, normKey, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
-import { ProposalStore, type Op, type Proposal } from "./proposals.ts";
+import { ProposalStore, type Op, type Proposal, type ProposalDraft } from "./proposals.ts";
 import { sanitizeFileName, Vault, VaultError } from "./vault.ts";
 
 export const FOLDERS: Record<NoteType, string> = {
@@ -207,9 +207,10 @@ export class Jarvis {
     return { hash, note };
   }
 
-  async createNote(opts: {
+  /** Ruta y texto que tendría una nota nueva, sin escribirla (lo usan createNote y las propuestas del asistente). */
+  buildNote(opts: {
     title: string; type?: NoteType; folder?: string; body?: string; fm?: Record<string, unknown>; parked?: string | null;
-  }): Promise<NoteRow> {
+  }): { rel: string; text: string } {
     const type = opts.type ?? "note";
     const title = opts.title.trim() || "Sin título";
     const base = sanitizeFileName(title);
@@ -219,7 +220,14 @@ export class Jarvis {
     Object.assign(fm, opts.fm ?? {});
     fm.created = this.now().toISOString();
     if (opts.parked) fm.parked = opts.parked;
-    await this.vault.write(rel, renderNote(fm, opts.body ?? ""), null);
+    return { rel, text: renderNote(fm, opts.body ?? "") };
+  }
+
+  async createNote(opts: {
+    title: string; type?: NoteType; folder?: string; body?: string; fm?: Record<string, unknown>; parked?: string | null;
+  }): Promise<NoteRow> {
+    const { rel, text } = this.buildNote(opts);
+    await this.vault.write(rel, text, null);
     const note = await this.reindexPath(rel);
     this.changed("note", rel);
     return note;
@@ -314,9 +322,13 @@ export class Jarvis {
 
   /* ---------------- tareas ---------------- */
 
+  /** Propiedades que implica un cambio de estado de tarea (done_at solo al completarla). */
+  taskStatusProps(status: TaskStatus): Record<string, unknown> {
+    return { status, done_at: status === "done" ? this.now().toISOString() : null };
+  }
+
   async setTaskStatus(rel: string, status: TaskStatus): Promise<NoteRow> {
-    const props: Record<string, unknown> = { status, done_at: status === "done" ? this.now().toISOString() : null };
-    const note = await this.setProps(rel, props);
+    const note = await this.setProps(rel, this.taskStatusProps(status));
     await this.log.record("task.status", rel, { status, project: this.projectOf(note) });
     return note;
   }
@@ -356,25 +368,29 @@ export class Jarvis {
     });
   }
 
-  async addDecision(projectPath: string, text: string): Promise<void> {
-    const cur = await this.vault.read(projectPath);
-    const { fmText, body } = splitFrontmatter(cur.text);
-    const next = (fmText === null ? "" : `---\n${fmText}\n---\n`) + appendToSection(body, "Decisiones", `${localDate(this.now())} — ${text}`);
-    await this.vault.write(projectPath, next, cur.hash);
-    await this.reindexPath(projectPath);
-    await this.log.record("decision", projectPath, { text, project: projectPath });
-    this.changed("note", projectPath);
-  }
-
-  async addCheckpoint(projectPath: string, text: string): Promise<void> {
+  /** Texto resultante de añadir una entrada a «Decisiones» o «Bitácora» (sin escribir). */
+  async withEntry(projectPath: string, kind: "decision" | "checkpoint", text: string): Promise<{ before: string; next: string }> {
     const d = this.now();
     const cur = await this.vault.read(projectPath);
     const { fmText, body } = splitFrontmatter(cur.text);
-    const next = (fmText === null ? "" : `---\n${fmText}\n---\n`) + appendToSection(body, "Bitácora", `${localDate(d)} ${localTime(d)} — ${text}`);
-    await this.vault.write(projectPath, next, cur.hash);
+    const [section, item] = kind === "decision" ? ["Decisiones", `${localDate(d)} — ${text}`] : ["Bitácora", `${localDate(d)} ${localTime(d)} — ${text}`];
+    return { before: cur.hash, next: (fmText === null ? "" : `---\n${fmText}\n---\n`) + appendToSection(body, section, item) };
+  }
+
+  private async writeEntry(projectPath: string, kind: "decision" | "checkpoint", text: string): Promise<void> {
+    const { before, next } = await this.withEntry(projectPath, kind, text);
+    await this.vault.write(projectPath, next, before);
     await this.reindexPath(projectPath);
-    await this.log.record("checkpoint", projectPath, { text, project: projectPath });
+    await this.log.record(kind, projectPath, { text, project: projectPath });
     this.changed("note", projectPath);
+  }
+
+  async addDecision(projectPath: string, text: string): Promise<void> {
+    await this.writeEntry(projectPath, "decision", text);
+  }
+
+  async addCheckpoint(projectPath: string, text: string): Promise<void> {
+    await this.writeEntry(projectPath, "checkpoint", text);
   }
 
   projectLastTouch(projectPath: string): string | null {
@@ -615,6 +631,14 @@ export class Jarvis {
     }
     if (created.length) this.changed("proposals", null);
     return created;
+  }
+
+  /** Crea una propuesta pendiente (la usa el asistente cuando una escritura excede su nivel). */
+  async createProposal(draft: ProposalDraft): Promise<Proposal> {
+    const p = await this.proposals.create(draft, this.now());
+    await this.log.record("proposal.created", null, { id: p.id, title: p.title, source: p.source });
+    this.changed("proposals", null);
+    return p;
   }
 
   /** Aplica una propuesta: valida TODOS los hashes antes de tocar nada. */
