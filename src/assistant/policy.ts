@@ -36,3 +36,14 @@ export function filterProps(props: unknown): Record<string, unknown> {
   }
   return { ...(props as Record<string, unknown>) };
 }
+
+/** `.jarvis/assistant.json`: `{ "exclude": ["Privado/"] }`. Tolerante: un fichero ilegible equivale a «sin exclusiones». */
+export function parseAssistantConfig(text: string | null): { exclude: string[] } {
+  try {
+    const v = text ? JSON.parse(text) : null;
+    const ex = v && typeof v === "object" && Array.isArray(v.exclude) ? v.exclude : [];
+    return { exclude: ex.filter((x: unknown): x is string => typeof x === "string" && x.trim() !== "").map((x: string) => x.trim()) };
+  } catch {
+    return { exclude: [] };
+  }
+}

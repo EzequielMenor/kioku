@@ -7,6 +7,11 @@ import { Jarvis } from "../core/jarvis.ts";
 import { isLocalUrl } from "../core/llm.ts";
 import { VaultError } from "../core/vault.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
+import type { AssistantEngine } from "../assistant/engine.ts";
+import { parseAssistantConfig } from "../assistant/policy.ts";
+import { SessionRegistry } from "../assistant/session.ts";
+import { AssistantTools } from "../assistant/tools.ts";
+import { UndoStore } from "../assistant/undo.ts";
 
 export const DEFAULT_PORT = 47800;
 
@@ -56,6 +61,8 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 export interface ServerHandle {
   port: number;
   url: string;
+  sessions: SessionRegistry;
+  assistantTools: AssistantTools;
   close(): Promise<void>;
 }
 
@@ -66,8 +73,17 @@ export async function startServer(
     webDir: string;
     onQuickHide?: () => void | Promise<void>;
     onOpenWorkspace?: (route: string) => void | Promise<void>;
+    assistant?: { engine: AssistantEngine };
   },
 ): Promise<ServerHandle> {
+  const sessions = new SessionRegistry();
+  const undo = new UndoStore(j);
+  const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .jarvis/assistant.json
+  const assistantTools = new AssistantTools(j, undo, { exclude });
+  const loadExclude = async () => {
+    exclude.splice(0, exclude.length, ...parseAssistantConfig(await j.vault.readInternal("assistant.json")).exclude);
+  };
+
   const sseClients = new Set<http.ServerResponse>();
   j.bus.on("change", (ev) => {
     const data = `data: ${JSON.stringify(ev)}\n\n`;
@@ -83,6 +99,14 @@ export async function startServer(
     res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
     res.end(text);
   };
+
+  /** Sesión del asistente a partir de «Authorization: Bearer …»; sin token válido nada se ejecuta. */
+  function bearer(req: http.IncomingMessage) {
+    const m = /^Bearer ([0-9a-f]{64})$/.exec(req.headers.authorization ?? "");
+    const sess = sessions.byToken(m?.[1]);
+    if (!sess) throw new HttpError(401, "Token de asistente ausente o caducado");
+    return sess;
+  }
 
   async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
     const m = req.method ?? "GET";
@@ -102,6 +126,11 @@ export async function startServer(
           return send(res, 200, cfg ? { configured: true, model: cfg.model, baseUrl: cfg.baseUrl, local: isLocalUrl(cfg.baseUrl), apiKeyEnv: cfg.apiKeyEnv ?? null } : { configured: false });
         }
         case "/api/ai/preview": return send(res, 200, await j.aiPreview());
+        case "/api/assistant/actions": return send(res, 200, (await undo.list(50)));
+        case "/api/assistant/tools/list": {
+          bearer(req);
+          return send(res, 200, assistantTools.specs());
+        }
         case "/api/graph": {
           const focus = q.get("focus");
           return send(res, 200, j.index.graph({ focus: focus ? userPath(focus) : undefined, depth: Math.min(3, Number(q.get("depth") ?? 1)), max: Number(q.get("max") ?? 400) }));
@@ -210,6 +239,35 @@ export async function startServer(
           return send(res, 200, { ok: true });
         }
         case "/api/desktop/quick/hide": { await opts.onQuickHide?.(); return send(res, 200, { ok: true }); }
+        case "/api/assistant/tools/call": {
+          const sess = bearer(req);
+          await loadExclude();
+          return send(res, 200, await assistantTools.call(sess, str(body.name, "name"), body.args));
+        }
+        case "/api/assistant/undo": return send(res, 200, await undo.undo(str(body.id, "id")));
+        case "/api/assistant/ask": {
+          if (!opts.assistant) throw new HttpError(503, "El asistente no está configurado");
+          const message = str(body.message, "message").trim();
+          if (!message) throw new HttpError(400, "Escribe un mensaje");
+          const avail = await opts.assistant.engine.available();
+          if (!avail.ok) throw new HttpError(503, avail.reason ?? "El asistente no está disponible");
+          await loadExclude();
+          const sess = sessions.open();
+          try {
+            await j.log.record("ai.request", null, { sessionId: sess.id, chars: message.length });
+            const { answer } = await opts.assistant.engine.ask({
+              message, conversation: typeof body.conversation === "string" && body.conversation ? body.conversation : "default",
+              session: sess, daemonUrl: `http://127.0.0.1:${boundPort}`,
+            });
+            const actions = (await undo.list(200)).filter((a) => a.sessionId === sess.id).reverse();
+            return send(res, 200, { answer, reads: [...sess.reads], actions });
+          } catch (e) {
+            if (e instanceof HttpError || e instanceof VaultError) throw e;
+            throw new HttpError(502, e instanceof Error ? e.message : String(e));
+          } finally {
+            sessions.close(sess.id);
+          }
+        }
         case "/api/ai/triage": {
           try { return send(res, 200, await j.llmTriage(str(body.hash, "hash"))); }
           catch (e) { if (e instanceof VaultError) throw e; throw new HttpError(502, e instanceof Error ? e.message : String(e)); }
@@ -279,7 +337,7 @@ export async function startServer(
   boundPort = (server.address() as AddressInfo).port;
   port = boundPort;
   return {
-    port, url: `http://127.0.0.1:${port}`,
+    port, url: `http://127.0.0.1:${port}`, sessions, assistantTools,
     close: () => new Promise((resolve) => {
       clearInterval(keepAlive);
       for (const c of sseClients) c.end();

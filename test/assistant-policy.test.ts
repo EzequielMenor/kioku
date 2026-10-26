@@ -42,3 +42,10 @@ test("sesiones: byToken devuelve la sesión abierta y null tras close o sin toke
   r.close(s.id);
   assert.equal(r.byToken(s.token), null);
 });
+
+test("política: assistant.json se parsea con tolerancia", async () => {
+  const { parseAssistantConfig } = await import("../src/assistant/policy.ts");
+  assert.deepEqual(parseAssistantConfig('{"exclude":["Privado/"," ", 3]}').exclude, ["Privado/"]);
+  assert.deepEqual(parseAssistantConfig("{roto").exclude, []);
+  assert.deepEqual(parseAssistantConfig(null).exclude, []);
+});
