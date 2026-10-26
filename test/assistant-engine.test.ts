@@ -51,6 +51,7 @@ test("SOUL: español, datos≠instrucciones, niveles y propose", () => {
   assert.match(t, /DATOS/);
   assert.match(t, /propose/);
   assert.match(t, /no inventes rutas/i);
+  assert.match(t, /memoria/i);
 });
 
 test("parseHermesOutput extrae session_id y la respuesta", () => {
@@ -58,6 +59,7 @@ test("parseHermesOutput extrae session_id y la respuesta", () => {
   assert.deepEqual(parseHermesOutput("Solo respuesta"), { sessionId: null, answer: "Solo respuesta" });
   assert.deepEqual(parseHermesOutput("Respuesta\nsession_id: zz9\n"), { sessionId: "zz9", answer: "Respuesta" });
   assert.equal(parseHermesOutput("⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only\nHola\n").answer, "Hola");
+  assert.equal(parseHermesOutput("⚠ tirith security scanner enabled but not available — x\r\nHola\r\n").answer, "Hola", "también con CRLF");
   assert.equal(parseHermesOutput("⚠ Atención: esto vence hoy").answer, "⚠ Atención: esto vence hoy", "no se borra texto legítimo del modelo");
 });
 
@@ -98,6 +100,8 @@ test("HermesEngine: escribe config con token, reanuda la conversación y limpia 
     const a1 = await eng.ask({ message: "hola", conversation: "c1", session: s, daemonUrl: "http://127.0.0.1:1" });
     assert.equal(a1.answer, "Primera.");
     assert.ok(seen[0].config.includes(s.token), "durante la ejecución el config lleva el token");
+    assert.match(seen[0].config, /cli: \[clarify, memory, skills\]/, "memoria y skills verificados (spec §7): sin terminal, ficheros ni navegador");
+    assert.doesNotMatch(seen[0].config, /terminal|file|browser|code_execution|computer_use/);
     assert.ok(!seen[0].args.includes("--resume"));
     assert.ok(existsSync(path.join(e.home, ".jarvis/hermes/SOUL.md")));
     assert.ok(!readFileSync(e.cfg, "utf8").includes(s.token), "al terminar se borra el token");

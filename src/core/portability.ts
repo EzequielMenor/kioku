@@ -20,6 +20,8 @@ export function exportVault(home: string, dest: string): { bytes: number } {
       "-czf", d,
       "--exclude=.jarvis/index.db", "--exclude=.jarvis/index.db-wal", "--exclude=.jarvis/index.db-shm",
       "--exclude=.jarvis/runtime.json", "--exclude=.jarvis/daemon.log",
+      // Hermes: la memoria y las sesiones viajan; credenciales, cachés y logs no.
+      ...["auth.json", "auth.lock", "logs", "cache", "image_cache", "audio_cache", "sandboxes"].map((x) => `--exclude=.jarvis/hermes/${x}`),
       "-C", path.dirname(h), path.basename(h),
     ],
     { encoding: "utf8" },
