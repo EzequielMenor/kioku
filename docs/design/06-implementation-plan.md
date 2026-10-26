@@ -14,6 +14,7 @@
 - Vista de grafo (global y local por nota; canvas propio, sin dependencias).
 - Vistas Tabla y Tablero de tareas (ordenar, mover entre estados; escriben `status` en el Markdown).
 - Proveedor LLM opcional (API compatible con OpenAI: Ollama/llama.cpp/API con clave propia): `jarvis ai …` y panel en Propuestas.
+- Asistente (Hermes en jaula): herramientas con niveles y Deshacer, propuestas, memoria visible, mantenimiento, diálogos propios, `jarvis ask`. Ver `07-assistant-spec.md`.
 
 ## Después (por prioridad)
 1. Vistas de base de datos genéricas (cualquier propiedad, calendario, rollups por proyecto) y vista Tabla de proyectos.

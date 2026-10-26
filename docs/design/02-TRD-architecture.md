@@ -50,8 +50,9 @@
 | D-13 | Vault de JARVIS por defecto `~/Documents/Jarvis`; `guardHome` rechaza carpetas con `.obsidian` | Protección de la bóveda real |
 | D-14 | Sin sincronización ni nube en V1 | Requisito; export/restore tar.gz como respaldo |
 | D-15 | LLM opcional compatible con OpenAI (`.jarvis/ai.json`, clave solo en variable de entorno); solo se envía tras ver el payload exacto (hash verificado en el servidor); el modelo únicamente clasifica y JARVIS construye las operaciones; cada envío queda en el log (`ai.request`) | Privacidad y control: nada sale sin que lo veas; un modelo no puede inventar rutas ni escribir |
+| D-16 | Asistente = Hermes Agent en jaula `bwrap` (sin montar la bóveda); solo ve las herramientas de JARVIS vía un puente MCP que llama al daemon con un token por sesión; los niveles (lectura / auto con Deshacer / aprobación) y el límite de 5 notas por consulta los impone el servidor, no el modelo | Un modelo (o una nota hostil) no puede borrar ni salirse de lo permitido; todo lo automático es reversible y queda en el registro. Spec: `07-assistant-spec.md` |
 
 ## Límites conocidos
 - La edición es Markdown con resaltado, no WYSIWYG ni bloques.
 - Quick "caliente" depende de Hyprland; en otros entornos abre una ventana efímera.
-- No hay proveedor LLM real: la interfaz y el flujo de propuestas existen, el motor es de reglas.
+- Sin el asistente (Hermes) ni un proveedor LLM configurado, el motor de propuestas es de reglas.

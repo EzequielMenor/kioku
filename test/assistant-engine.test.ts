@@ -54,6 +54,11 @@ test("SOUL: español, datos≠instrucciones, niveles y propose", () => {
   assert.match(t, /memoria/i);
 });
 
+test("parseHermesOutput descarta el aviso de tirith aunque venga sangrado (primera ejecución)", () => {
+  const warn = "  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only\r\n";
+  assert.deepEqual(parseHermesOutput(`${warn}hola\n`), { sessionId: null, answer: "hola" });
+});
+
 test("parseHermesOutput extrae session_id y la respuesta", () => {
   assert.deepEqual(parseHermesOutput("session_id: 20261026_abc\nTienes 2 capturas.\nUna: x\n"), { sessionId: "20261026_abc", answer: "Tienes 2 capturas.\nUna: x" });
   assert.deepEqual(parseHermesOutput("Solo respuesta"), { sessionId: null, answer: "Solo respuesta" });

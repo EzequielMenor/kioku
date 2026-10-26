@@ -97,7 +97,7 @@ export function buildJailArgs(o: {
 export function parseHermesOutput(stdout: string): { answer: string; sessionId: string | null } {
   const m = /^session_id:[ \t]*(\S+)[ \t]*$/m.exec(stdout);
   // Hermes antepone avisos propios en stdout (p. ej. el escáner tirith): no son respuesta.
-  const answer = (m ? stdout.replace(m[0], "") : stdout).replace(/^⚠ tirith [^\r\n]*\r?\n?/gm, "").trim();
+  const answer = (m ? stdout.replace(m[0], "") : stdout).replace(/^[ \t]*⚠ tirith [^\r\n]*\r?\n?/gm, "").trim();
   return { answer, sessionId: m ? m[1] : null };
 }
 
