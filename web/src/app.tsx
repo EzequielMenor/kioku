@@ -752,7 +752,7 @@ function snippetHtml(s: string): string {
 function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
     ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
-    ["g h · b · p · t · n · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Notas · Grafo · Asistente · Propuestas"],
+    ["g h · b · p · t · n · d · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Notas · Bases · Grafo · Asistente · Propuestas"],
     ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (
