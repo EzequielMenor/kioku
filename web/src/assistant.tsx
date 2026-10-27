@@ -26,9 +26,11 @@ export function liveLabel(tool: string, path?: string | null): string {
   if (tool === "today") return "Mirando tu día…";
   if (tool === "list_tasks") return "Revisando tus tareas…";
   if (tool === "list_notes") return "Listando tus notas…";
+  if (tool === "list_databases" || tool === "query_database") return "Consultando tus bases de datos…";
   if (tool === "neighbors") return `Mirando los enlaces de${p || " una nota"}…`;
   if (tool === "recent_activity") return "Repasando tu actividad reciente…";
   if (tool === "propose") return "Preparando una propuesta…";
+  if (tool === "create_row") return `Añadiendo una fila${path ? ` a ${path}` : ""}…`;
   if (tool.startsWith("create_") || tool.startsWith("add_") || tool === "append_to_note") return `Escribiendo${p}…`;
   if (tool === "set_props" || tool === "set_task_status" || tool === "convert_capture") return `Actualizando${p}…`;
   return `Consultando (${tool})…`;

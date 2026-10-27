@@ -302,8 +302,9 @@ export class Jarvis {
     return parseDatabase({ path: n.path, title: n.title, fm: n.fm });
   }
 
-  listDatabases(): { path: string; title: string; rows: number; views: View[]; warnings: string[] }[] {
-    const all = this.index.noteRows();
+  /** `skip`: filas que quien consulta no debe ver (p. ej. carpetas excluidas del asistente); tampoco se cuentan. */
+  listDatabases(opts: { skip?: (path: string) => boolean } = {}): { path: string; title: string; rows: number; views: View[]; warnings: string[] }[] {
+    const all = this.index.noteRows().filter((r) => !opts.skip?.(r.path) || r.type === "database");
     return all.filter((r) => r.type === "database").map((r) => {
       const def = parseDatabase(r);
       return { path: def.path, title: def.title, rows: all.filter((x) => matchesSource(def, x)).length, views: def.views, warnings: def.warnings };
@@ -311,7 +312,7 @@ export class Jarvis {
   }
 
   /** `view`: nombre de una vista guardada, o una vista ad hoc (filtros del momento sin guardar). Sin `view`, la primera. */
-  queryDatabase(rel: string, view?: string | View): QueryResult & { database: { path: string; title: string; views: View[]; warnings: string[]; available: Column[] } } {
+  queryDatabase(rel: string, view?: string | View, opts: { skip?: (path: string) => boolean } = {}): QueryResult & { database: { path: string; title: string; views: View[]; warnings: string[]; available: Column[] } } {
     const def = this.databaseDef(rel);
     let v: View;
     if (view === undefined) v = def.views[0];
@@ -320,7 +321,7 @@ export class Jarvis {
       if (!found) throw new VaultError("not-found", `Vista «${view}» no encontrada`);
       v = found;
     } else v = this.validView(view);
-    const rows = this.index.noteRows().filter((r) => matchesSource(def, r));
+    const rows = this.index.noteRows().filter((r) => !opts.skip?.(r.path) && matchesSource(def, r));
     return { ...queryRows(def, v, rows), database: { path: def.path, title: def.title, views: def.views, warnings: def.warnings, available: availableColumns(def, rows) } };
   }
 

@@ -23,6 +23,16 @@ test("política: acepta rutas normales y marca Notas/Importado/ como protegida",
   assert.equal(MAX_NOTES_PER_QUERY, 5);
 });
 
+test("política: filterProps admite cualquier propiedad de usuario, pero solo valores simples y nunca las del sistema", () => {
+  assert.deepEqual(filterProps({ Estado: "Leyendo", Nota: 9, Leído: true, Etiquetas: ["a", "b"], Autor: null }), { Estado: "Leyendo", Nota: 9, Leído: true, Etiquetas: ["a", "b"], Autor: null });
+  for (const bad of [{ views: { a: 1 } }, { x: [{ a: 1 }] }, { x: [["a"]] }, { x: { y: 1 } }, { x: () => 1 }, { x: "a".repeat(2001) }, { x: Array(51).fill("a") }]) assert.equal(code(() => filterProps(bad)), "props", JSON.stringify(bad).slice(0, 40));
+  for (const k of ["id", "created", "type", "parked"]) assert.equal(code(() => filterProps({ [k]: "x" })), "props", k);
+  for (const k of ["", "a\nb: c", "x".repeat(61), "__proto__"]) assert.equal(code(() => filterProps({ [k]: "x" })), "props", JSON.stringify(k));
+  assert.equal(code(() => filterProps({ views: "x" }, { database: true })), "props", "la definición de una base no se toca");
+  assert.equal(code(() => filterProps({ source: "x" }, { database: true })), "props");
+  assert.deepEqual(filterProps({ views: "x" }), { views: "x" }, "en una nota normal «views» es una propiedad más");
+});
+
 test("política: filterProps solo admite claves permitidas", () => {
   assert.deepEqual(filterProps({ status: "done", due: "2026-10-27" }), { status: "done", due: "2026-10-27" });
   assert.equal(code(() => filterProps({ id: "x" })), "props");

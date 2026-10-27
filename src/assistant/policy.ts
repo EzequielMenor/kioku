@@ -12,7 +12,13 @@ export class AssistantError extends Error {
 /** Notas distintas que una consulta puede modificar sola; a partir de ahí, propuesta. */
 export const MAX_NOTES_PER_QUERY = 5;
 
-export const ALLOWED_PROPS: readonly string[] = ["status", "project", "due", "priority", "related", "tags"];
+/** Claves que solo el sistema fija: identidad, fecha de creación, tipo y el aparcado del foco. */
+const RESERVED_PROPS: readonly string[] = ["id", "created", "type", "parked"];
+/** Definición de una base de datos: el asistente no la reescribe (cualquier cambio ahí es una propuesta que apruebas). */
+const DB_DEFINITION_PROPS: readonly string[] = ["source", "properties", "views"];
+const PROP_NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N} _.\-]{0,59}$/u;
+const MAX_PROP_TEXT = 2000;
+const MAX_PROP_LIST = 50;
 
 const PROTECTED_PREFIXES = ["Notas/Importado/"];
 
@@ -43,10 +49,21 @@ export function isProtectedPath(rel: string): boolean {
   return PROTECTED_PREFIXES.some((p) => rel.startsWith(p));
 }
 
-export function filterProps(props: unknown): Record<string, unknown> {
+const isScalar = (v: unknown): boolean =>
+  (typeof v === "string" && v.length <= MAX_PROP_TEXT) || typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v));
+
+/**
+ * Propiedades que el asistente puede escribir: cualquier clave de usuario con un valor simple (texto, número, casilla,
+ * lista de simples; `null` la quita). Nunca las del sistema, ni objetos (así no puede reescribir `views`/`source`/`properties`).
+ */
+export function filterProps(props: unknown, opts: { database?: boolean } = {}): Record<string, unknown> {
   if (!props || typeof props !== "object" || Array.isArray(props)) throw new AssistantError("props", "«props» debe ser un objeto");
-  for (const k of Object.keys(props)) {
-    if (!ALLOWED_PROPS.includes(k)) throw new AssistantError("props", `La propiedad «${k}» no se puede cambiar (permitidas: ${ALLOWED_PROPS.join(", ")})`);
+  for (const [k, v] of Object.entries(props)) {
+    if (!PROP_NAME_RE.test(k) || k.startsWith("__")) throw new AssistantError("props", `Nombre de propiedad no válido: «${k}»`);
+    if (RESERVED_PROPS.includes(k)) throw new AssistantError("props", `La propiedad «${k}» es del sistema y no se puede cambiar`);
+    if (opts.database && DB_DEFINITION_PROPS.includes(k)) throw new AssistantError("props", `«${k}» es parte de la definición de la base: propón el cambio para que lo apruebe el usuario`);
+    const ok = v === null || isScalar(v) || (Array.isArray(v) && v.length <= MAX_PROP_LIST && v.every(isScalar));
+    if (!ok) throw new AssistantError("props", `El valor de «${k}» debe ser texto, número, casilla, lista de valores simples o null (quitar)`);
   }
   return { ...(props as Record<string, unknown>) };
 }

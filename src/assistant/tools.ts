@@ -1,5 +1,6 @@
 // Herramientas que el asistente puede usar. El servidor (no el modelo) impone los niveles:
 //   read = libres · auto = reversibles con Deshacer · approval = solo como propuesta.
+import type { View } from "../core/database.ts";
 import { FOLDERS, type Jarvis } from "../core/jarvis.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
 import { normKey, setFrontmatter } from "../core/markdown.ts";
@@ -95,6 +96,39 @@ const READ_DEFS: Def[] = [
       if (!card) throw new AssistantError("invalid", "Proyecto no encontrado");
       c.path = path;
       return hideExcluded(card, c.exclude);
+    },
+  },
+  {
+    spec: { name: "list_databases", level: "read", description: "Bases de datos (tablas) de la bóveda: ruta, título, nº de filas y vistas guardadas.", inputSchema: obj({}) },
+    async run(c) {
+      const skip = (p: string) => isExcluded(p, c.exclude);
+      return c.j.listDatabases({ skip }).filter((d) => !skip(d.path)).map((d) => ({ path: d.path, title: d.title, rows: d.rows, views: d.views.map((v) => ({ name: v.name, kind: v.kind })) }));
+    },
+  },
+  {
+    spec: {
+      name: "query_database", level: "read",
+      description: "Consulta las filas de una base de datos. `view`: nombre de una vista guardada (opcional). `filter`: lista de {prop, op, value} que se suma a la vista; ops: is, is_not, contains, empty, not_empty, gt, lt, before, after, checked. Devuelve columnas, filas (con sus celdas), total y, si la vista agrupa, los grupos. Máximo 100 filas.",
+      inputSchema: obj({ path: S, view: S, filter: { type: "array", items: { type: "object" } } }, ["path"]),
+    },
+    async run(c, a) {
+      const path = checkAssistantPath(a.path, c.exclude);
+      const skip = (p: string) => isExcluded(p, c.exclude);
+      let view: string | View | undefined = argOpt(a, "view");
+      if (a.filter !== undefined) {
+        if (!Array.isArray(a.filter)) throw new AssistantError("invalid", "«filter» debe ser una lista de {prop, op, value}");
+        const base = c.j.queryDatabase(path, view, { skip }).database.views.find((v) => v.name === view) ?? c.j.queryDatabase(path, undefined, { skip }).database.views[0];
+        view = { ...base, name: "consulta", filter: [...base.filter, ...(a.filter as View["filter"])] };
+      }
+      const r = c.j.queryDatabase(path, view, { skip });
+      const LIMIT = 100;
+      let left = LIMIT;
+      const groups = r.groups?.map((g) => { const rows = g.rows.slice(0, left); left -= rows.length; return { key: g.key, rows }; }) ?? null;
+      return {
+        database: { path: r.database.path, title: r.database.title, views: r.database.views.map((v) => v.name) },
+        columns: r.columns, total: r.total, truncated: r.total > LIMIT,
+        rows: r.rows.slice(0, LIMIT), groups,
+      };
     },
   },
   { spec: { name: "today", level: "read", description: "Vista «Hoy»: siguiente paso sugerido, proyectos a reanudar, Bandeja, vencidas.", inputSchema: obj({}) }, async run(c) { return hideExcluded(await c.j.today(), c.exclude); } },
@@ -293,6 +327,22 @@ const WRITE_DEFS: Def[] = [
     },
   ),
   writeDef(
+    { name: "create_row", description: "Añade una fila (una nota) a una base de datos, con el título y las propiedades indicadas (valores simples). Se crea en la carpeta/tipo de origen de la base.", inputSchema: obj({ database: S, title: S, props: { type: "object" } }, ["database", "title"]) },
+    async (c, a) => {
+      const db = checkAssistantPath(a.database, c.exclude);
+      const title = argStr(a, "title");
+      const props = a.props === undefined ? {} : filterProps(a.props);
+      const opts = { title, props };
+      const { rel } = c.j.buildRow(db, opts);
+      checkAssistantPath(rel, c.exclude); // la base puede apuntar a una carpeta excluida: ahí tampoco se escribe
+      return {
+        summary: `Añadir la fila «${title}» a «${db}»`, touches: [], creates: [rel],
+        ops: async () => { const b = c.j.buildRow(db, opts); return [{ op: "create", path: b.rel, text: b.text }]; },
+        apply: async () => { const n = await c.j.createRow(db, opts); return { out: { path: n.path }, created: [n.path] }; },
+      };
+    },
+  ),
+  writeDef(
     { name: "set_task_status", description: "Cambia el estado de una tarea: todo, doing, done o dropped.", inputSchema: obj({ path: S, status: S }, ["path", "status"]) },
     async (c, a) => {
       const path = existingNote(c, a.path);
@@ -307,10 +357,10 @@ const WRITE_DEFS: Def[] = [
     },
   ),
   writeDef(
-    { name: "set_props", description: "Cambia propiedades de una nota. Solo se permiten: status, project, due, priority, related, tags.", inputSchema: obj({ path: S, props: { type: "object" } }, ["path", "props"]) },
+    { name: "set_props", description: "Cambia propiedades de una nota (status, due, priority, tags… o cualquier propiedad propia, p. ej. las columnas de una base). Valores simples (texto, número, true/false, lista de simples); null quita la propiedad. No se pueden tocar id, created, type ni la definición de una base.", inputSchema: obj({ path: S, props: { type: "object" } }, ["path", "props"]) },
     async (c, a) => {
       const path = existingNote(c, a.path);
-      const props = filterProps(a.props);
+      const props = filterProps(a.props, { database: c.j.index.getNote(path)?.type === "database" });
       if (!Object.keys(props).length) throw new AssistantError("props", "«props» está vacío");
       return {
         summary: `Cambiar propiedades de «${path}» (${Object.keys(props).join(", ")})`, touches: [path],
