@@ -20,7 +20,7 @@ test("inferType: deduce el tipo del valor", () => {
   assert.equal(inferType("2026-10-27"), "date");
   assert.equal(inferType(new Date("2026-10-27T00:00:00Z")), "date");
   assert.equal(inferType("https://ejemplo.org/x"), "url");
-  assert.equal(inferType("[[Jarvis]]"), "relation");
+  assert.equal(inferType("[[Kioku]]"), "relation");
   assert.equal(inferType(["[[A]]", "[[B]]"]), "relation");
   assert.equal(inferType(["a", "b"]), "multi");
   assert.equal(inferType("hola"), "text");

@@ -1,4 +1,4 @@
-// Log de actividad append-only en texto plano (.jarvis/log/YYYY-MM.jsonl).
+// Log de actividad append-only en texto plano (.kioku/log/YYYY-MM.jsonl).
 // Es la ÚNICA memoria de "qué hice": legible, auditable y reconstruible en el índice.
 import type { Vault } from "./vault.ts";
 import type { EventRow, Index } from "./index.ts";

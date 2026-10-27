@@ -15,7 +15,7 @@
 │ ✎ Notas    │                                           │              │
 │ ☼ Diario   │                                           │              │
 ├────────────┴───────────────────────────────────────────┴──────────────┤
-│ ● Foco: «Cablear watcher» · Jarvis · 23:41          [Terminar] ⌃K     │
+│ ● Foco: «Cablear watcher» · Kioku · 23:41          [Terminar] ⌃K     │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 La barra inferior de foco solo existe durante una sesión. El panel derecho se oculta con `Ctrl+\`.
@@ -52,4 +52,4 @@ CodeMirror 6 en modo Markdown: resaltado de sintaxis, `[[` con autocompletado y 
 Contraste AA en ambos temas, foco visible siempre, roles ARIA en lista/diálogo, respeta `prefers-reduced-motion`.
 
 ## Contenido y tono (UX copy)
-Español, directo, sin exclamaciones ni mascota. Verbos en infinitivo en botones ("Empezar foco"). Errores dicen qué pasó y qué hacer ("No se pudo guardar: el archivo cambió fuera de JARVIS. Ver diferencias").
+Español, directo, sin exclamaciones ni mascota. Verbos en infinitivo en botones ("Empezar foco"). Errores dicen qué pasó y qué hacer ("No se pudo guardar: el archivo cambió fuera de Kioku. Ver diferencias").

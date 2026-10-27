@@ -9,7 +9,7 @@ test("política: rechaza rutas con .., absolutas, ocultas, sin .md y excluidas",
   assert.equal(code(() => checkAssistantPath("../x.md", [])), "path");
   assert.equal(code(() => checkAssistantPath("Notas/../../x.md", [])), "path");
   assert.equal(code(() => checkAssistantPath("/etc/passwd.md", [])), "path");
-  assert.equal(code(() => checkAssistantPath(".jarvis/log/a.md", [])), "path");
+  assert.equal(code(() => checkAssistantPath(".kioku/log/a.md", [])), "path");
   assert.equal(code(() => checkAssistantPath("Notas/.oculta/a.md", [])), "path");
   assert.equal(code(() => checkAssistantPath("Notas/a.txt", [])), "path");
   assert.equal(code(() => checkAssistantPath(42, [])), "path");

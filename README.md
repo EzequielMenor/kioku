@@ -5,7 +5,7 @@
 **Tu segundo cerebro, local y tuyo.**
 Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un asistente que propone y tú apruebas.
 
-[![Versión](https://img.shields.io/badge/versión-0.2.0-e0a458)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versión-0.3.0-e0a458)](CHANGELOG.md)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
@@ -14,8 +14,6 @@ Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un a
 <img src="docs/img/hoy.png" alt="Pantalla Hoy: siguiente paso, capturas sin procesar y proyectos para retomar" width="860">
 
 </div>
-
-> **Nota sobre el nombre:** el repositorio se llama *Kioku* (記憶, «memoria» en japonés). La aplicación se muestra como **JARVIS** en la interfaz y su línea de comandos es `jarvis`.
 
 ## Qué es
 
@@ -74,33 +72,33 @@ npm run build:web
 
 # 3. (Opcional) haz el comando disponible desde cualquier carpeta
 mkdir -p ~/.local/bin
-ln -s "$PWD/bin/jarvis" ~/.local/bin/jarvis      # asegúrate de que ~/.local/bin está en tu PATH
+ln -s "$PWD/bin/kioku" ~/.local/bin/kioku      # asegúrate de que ~/.local/bin está en tu PATH
 
 # 4. Comprueba que funciona
-jarvis add "t Probar Kioku !hoy"
-jarvis today
-jarvis open                                       # abre el Workspace
+kioku add "t Probar Kioku !hoy"
+kioku today
+kioku open                                       # abre el Workspace
 ```
 
-Si no haces el paso 3, usa `bin/jarvis` desde la carpeta del proyecto.
+Si no haces el paso 3, usa `bin/kioku` desde la carpeta del proyecto.
 
 ### Dónde se guardan tus datos
 
-Por defecto en **`~/Documents/Jarvis`**. Cámbialo con la variable `JARVIS_HOME`:
+Por defecto en **`~/Documents/Kioku`**. Cámbialo con la variable `KIOKU_HOME`:
 
 ```bash
-export JARVIS_HOME=~/mi-cerebro        # por ejemplo, en tu ~/.bashrc
+export KIOKU_HOME=~/mi-cerebro        # por ejemplo, en tu ~/.bashrc
 ```
 
-> **Importante:** JARVIS se niega a usar como carpeta de trabajo una que parezca una bóveda de Obsidian (`.obsidian`) para no modificarla. Si ya usas Obsidian, deja tu bóveda donde está e [impórtala](#importar-desde-obsidian) como copia.
+> **Importante:** Kioku se niega a usar como carpeta de trabajo una que parezca una bóveda de Obsidian (`.obsidian`) para no modificarla. Si ya usas Obsidian, deja tu bóveda donde está e [impórtala](#importar-desde-obsidian) como copia.
 
 ### Atajo de teclado para la captura rápida (Hyprland / Omarchy)
 
-Añade esto **tú** a `~/.config/hypr/bindings.lua` (JARVIS nunca toca tu configuración). Hay un ejemplo en [`contrib/hyprland-bind.lua`](contrib/hyprland-bind.lua):
+Añade esto **tú** a `~/.config/hypr/bindings.lua` (Kioku nunca toca tu configuración). Hay un ejemplo en [`contrib/hyprland-bind.lua`](contrib/hyprland-bind.lua):
 
 ```lua
-o.bind("SUPER + N",       "JARVIS Quick",     "/ruta/a/kioku/bin/jarvis quick")
-o.bind("SUPER + ALT + N", "JARVIS Workspace", "/ruta/a/kioku/bin/jarvis open")
+o.bind("SUPER + N",       "Kioku Quick",     "/ruta/a/kioku/bin/kioku quick")
+o.bind("SUPER + ALT + N", "Kioku Workspace", "/ruta/a/kioku/bin/kioku open")
 ```
 
 Comprueba antes que esas teclas estén libres con `omarchy menu keybindings --print`.
@@ -108,9 +106,9 @@ Comprueba antes que esas teclas estén libres con `omarchy menu keybindings --pr
 ### Arranque automático (opcional)
 
 ```bash
-jarvis service install      # servicio de usuario de systemd; arranca con tu sesión
-jarvis service status
-jarvis service uninstall
+kioku service install      # servicio de usuario de systemd; arranca con tu sesión
+kioku service status
+kioku service uninstall
 ```
 
 ## Uso
@@ -128,12 +126,12 @@ Pulsa tu atajo (o `c` dentro del Workspace) y escribe. El **prefijo** decide qu�
 | `a: ¿qué hago hoy?` | Pregunta al asistente |
 | *cualquier otra cosa* | Captura en la Bandeja |
 
-Lo mismo desde la terminal, sin abrir ventana: `jarvis add "t Llamar a Ana !mañana @Tesis p1"`.
+Lo mismo desde la terminal, sin abrir ventana: `kioku add "t Llamar a Ana !mañana @Tesis p1"`.
 
 ### El flujo diario
 
 1. **Hoy** (`g h`): la tarjeta *Siguiente paso* sugiere una tarea y explica por qué. `Empezar foco` la activa.
-2. **Foco**: mientras dura, lo que captures queda aparcado en la Bandeja para después. Termina con `jarvis focus end -m "dónde lo dejas"` (o `--done`).
+2. **Foco**: mientras dura, lo que captures queda aparcado en la Bandeja para después. Termina con `kioku focus end -m "dónde lo dejas"` (o `--done`).
 3. **Retomar**: al volver a un proyecto verás *Lo dejaste en / Decidiste / Falta*.
 4. **Bandeja** (`g b`): convierte las capturas en tarea o nota con un clic, o deja que las clasifique el asistente.
 
@@ -172,8 +170,8 @@ views:
 Tu bóveda **no se toca**. La importación hace una *copia de solo lectura* del origen:
 
 ```bash
-jarvis import-obsidian ~/Documents/MiBoveda          # solo informa de lo que haría
-jarvis import-obsidian ~/Documents/MiBoveda --yes    # copia a JARVIS_HOME (en Notas/Importado/)
+kioku import-obsidian ~/Documents/MiBoveda          # solo informa de lo que haría
+kioku import-obsidian ~/Documents/MiBoveda --yes    # copia a KIOKU_HOME (en Notas/Importado/)
 ```
 
 ### Copias de seguridad
@@ -181,19 +179,19 @@ jarvis import-obsidian ~/Documents/MiBoveda --yes    # copia a JARVIS_HOME (en N
 Tu carpeta ya es la copia de seguridad (son ficheros). Además:
 
 ```bash
-jarvis export ~/respaldo.tar.gz
-jarvis restore ~/respaldo.tar.gz ~/carpeta-nueva
+kioku export ~/respaldo.tar.gz
+kioku restore ~/respaldo.tar.gz ~/carpeta-nueva
 ```
 
 ## Asistente
 
-Es opcional y la forma más cómoda de organizar el espacio: pídele que clasifique la Bandeja, que revise enlaces rotos o que te diga qué hacer hoy. Se abre en la pestaña **Asistente** (`g a`), con `jarvis ask "…"` o con `a:` en Quick.
+Es opcional y la forma más cómoda de organizar el espacio: pídele que clasifique la Bandeja, que revise enlaces rotos o que te diga qué hacer hoy. Se abre en la pestaña **Asistente** (`g a`), con `kioku ask "…"` o con `a:` en Quick.
 
-- **Motor:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) con tu suscripción de Codex (`~/.hermes/auth.json`), dentro de una jaula `bwrap`. Comprueba tus requisitos con `jarvis assistant status`.
-- **Qué hace solo:** lo pequeño y reversible (clasificar capturas, consultar tus bases, añadirles filas). Cada acción queda con un botón **Deshacer** (`jarvis assistant actions` · `jarvis assistant undo <id>`).
-- **Qué te pide aprobar:** borrar, mover o tocar más de 5 notas, o escribir contenido externo, se convierte en una **propuesta** con diff (`jarvis proposals`).
-- **Qué ve:** solo lo que lee a través de las herramientas de JARVIS; nunca monta tu bóveda. Puedes excluir carpetas en `.jarvis/assistant.json`: `{"exclude": ["Privado/"]}`. `Notas/Importado/` es de solo lectura para él.
-- **Qué recuerda:** texto plano en `.jarvis/hermes/` (pantalla *Memoria*); puedes borrarlo.
+- **Motor:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) con tu suscripción de Codex (`~/.hermes/auth.json`), dentro de una jaula `bwrap`. Comprueba tus requisitos con `kioku assistant status`.
+- **Qué hace solo:** lo pequeño y reversible (clasificar capturas, consultar tus bases, añadirles filas). Cada acción queda con un botón **Deshacer** (`kioku assistant actions` · `kioku assistant undo <id>`).
+- **Qué te pide aprobar:** borrar, mover o tocar más de 5 notas, o escribir contenido externo, se convierte en una **propuesta** con diff (`kioku proposals`).
+- **Qué ve:** solo lo que lee a través de las herramientas de Kioku; nunca monta tu bóveda. Puedes excluir carpetas en `.kioku/assistant.json`: `{"exclude": ["Privado/"]}`. `Notas/Importado/` es de solo lectura para él.
+- **Qué recuerda:** texto plano en `.kioku/hermes/` (pantalla *Memoria*); puedes borrarlo.
 
 > El texto de las notas que el asistente lee **se envía al proveedor del modelo**. Cada consulta queda registrada con las notas leídas. Si no quieres eso, no lo actives: el resto de Kioku funciona sin él.
 
@@ -202,10 +200,10 @@ Es opcional y la forma más cómoda de organizar el espacio: pídele que clasifi
 Para triaje con tu propio modelo, local (Ollama) o remoto compatible con la API de OpenAI:
 
 ```bash
-jarvis ai config http://127.0.0.1:11434/v1 <modelo>        # local
-jarvis ai config https://api.ejemplo.com/v1 <modelo> MI_VARIABLE_CON_LA_CLAVE   # remoto
-jarvis ai preview          # muestra EXACTAMENTE qué se enviaría
-jarvis ai triage --yes     # solo entonces se envía; el resultado son propuestas
+kioku ai config http://127.0.0.1:11434/v1 <modelo>        # local
+kioku ai config https://api.ejemplo.com/v1 <modelo> MI_VARIABLE_CON_LA_CLAVE   # remoto
+kioku ai preview          # muestra EXACTAMENTE qué se enviaría
+kioku ai triage --yes     # solo entonces se envía; el resultado son propuestas
 ```
 
 La clave nunca se guarda en disco: solo el nombre de la variable de entorno que la contiene.
@@ -225,25 +223,25 @@ La clave nunca se guarda en disco: solo el nombre de la variable de entorno que 
 | `export` · `restore` · `import-obsidian` | Portabilidad |
 | `daemon` · `status` · `service install\|uninstall\|status` | Servidor y arranque automático |
 
-`jarvis --help` lista todo con ejemplos.
+`kioku --help` lista todo con ejemplos.
 
 ## Cómo funciona
 
 ```
- Tu carpeta (JARVIS_HOME)                  Daemon (127.0.0.1)                 Interfaz
+ Tu carpeta (KIOKU_HOME)                  Daemon (127.0.0.1)                 Interfaz
  ┌───────────────────────┐   lee/escribe   ┌──────────────────────┐   HTTP   ┌────────────────┐
  │ Bandeja/  Tareas/     │ ◄─────────────► │ Núcleo (TypeScript)  │ ◄──────► │ Workspace      │
  │ Proyectos/ Notas/     │                 │  · parser Markdown   │  + SSE   │ (Preact)       │
  │ Bases/  Diario/ …     │                 │  · motor de bases    │          │ Quick          │
- │ .jarvis/  (derivado)  │                 │  · índice SQLite/FTS5│          └────────────────┘
+ │ .kioku/  (derivado)  │                 │  · índice SQLite/FTS5│          └────────────────┘
  └───────────────────────┘                 │  · propuestas + undo │          ┌────────────────┐
                                            └──────────┬───────────┘  MCP     │ Asistente      │
                                                       └─────────────────────►│ (Hermes, jaula)│
                                                           herramientas       └────────────────┘
 ```
 
-- **Fuente de verdad:** los `.md`. Escrituras atómicas con comprobación de hash: si editas un fichero fuera de JARVIS, no se pisa en silencio.
-- **Índice:** `.jarvis/index.db` (SQLite + FTS5). Es una caché: bórralo o ejecuta `jarvis reindex` y se reconstruye igual.
+- **Fuente de verdad:** los `.md`. Escrituras atómicas con comprobación de hash: si editas un fichero fuera de Kioku, no se pisa en silencio.
+- **Índice:** `.kioku/index.db` (SQLite + FTS5). Es una caché: bórralo o ejecuta `kioku reindex` y se reconstruye igual.
 - **Daemon:** servidor HTTP local con control de `Host`/`Origin`, que reparte la interfaz y una API JSON con eventos en tiempo real (SSE).
 - **Asistente:** habla con el núcleo solo a través de herramientas con permisos por niveles que **impone el servidor**, no el modelo.
 
@@ -268,7 +266,7 @@ npm run dev            # daemon en primer plano
 
 Pila: Node 24 (TypeScript nativo, `node:sqlite`), Preact, CodeMirror 6, esbuild. Dependencias de ejecución mínimas y fijadas (`yaml`, `preact`, `@codemirror/*`).
 
-Las pruebas y la validación manual usan siempre carpetas temporales (`JARVIS_HOME`); nunca tocan datos reales. Resultados y límites conocidos en [`docs/validation.md`](docs/validation.md).
+Las pruebas y la validación manual usan siempre carpetas temporales (`KIOKU_HOME`); nunca tocan datos reales. Resultados y límites conocidos en [`docs/validation.md`](docs/validation.md).
 
 ## Hoja de ruta
 
@@ -281,7 +279,7 @@ Ideas siguientes, sin orden de compromiso:
 
 ## Versiones
 
-Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.2.0**.
+Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.3.0**.
 
 ## Licencia
 

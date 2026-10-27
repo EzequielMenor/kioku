@@ -1,7 +1,7 @@
 // Herramientas que el asistente puede usar. El servidor (no el modelo) impone los niveles:
 //   read = libres · auto = reversibles con Deshacer · approval = solo como propuesta.
 import type { View } from "../core/database.ts";
-import { FOLDERS, type Jarvis } from "../core/jarvis.ts";
+import { FOLDERS, type Kioku } from "../core/kioku.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
 import { normKey, setFrontmatter } from "../core/markdown.ts";
 import type { Op } from "../core/proposals.ts";
@@ -26,7 +26,7 @@ export interface ToolResult {
 }
 
 export interface ToolCtx {
-  j: Jarvis;
+  j: Kioku;
   undo: UndoStore;
   s: AssistantSession;
   exclude: string[];
@@ -475,14 +475,14 @@ const PROPOSE_DEF: Def = {
 };
 
 export class AssistantTools {
-  private j: Jarvis;
+  private j: Kioku;
   private undo: UndoStore;
   private exclude: string[];
   protected defs = new Map<string, Def>();
   /** Las llamadas de una misma sesión se ejecutan de una en una: el límite y el Deshacer no admiten carreras. */
   private queues = new WeakMap<AssistantSession, Promise<unknown>>();
 
-  constructor(j: Jarvis, undo: UndoStore, cfg: { exclude?: string[] } = {}) {
+  constructor(j: Kioku, undo: UndoStore, cfg: { exclude?: string[] } = {}) {
     this.j = j;
     this.undo = undo;
     this.exclude = cfg.exclude ?? [];

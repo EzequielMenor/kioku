@@ -101,7 +101,7 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
       mark(c.dirty ? "dirty" : "saved");
       if (c.dirty) c.timer = window.setTimeout(() => void save(), 800);
     } catch (e) {
-      if (e instanceof ApiError && e.code === "conflict") mark("conflict", "El archivo cambió fuera de JARVIS.");
+      if (e instanceof ApiError && e.code === "conflict") mark("conflict", "El archivo cambió fuera de Kioku.");
       else mark("error", (e as Error).message);
     } finally {
       c.saving = false;
@@ -172,7 +172,7 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
       c.fm = fm; c.hash = fresh.hash;
       if (c.editor.getBody() !== body) { c.editor.setBody(body); c.dirty = false; }
     } else if (state !== "saving") {
-      mark("conflict", "El archivo cambió fuera de JARVIS mientras editabas.");
+      mark("conflict", "El archivo cambió fuera de Kioku mientras editabas.");
     }
   }, [fresh]);
 
@@ -189,7 +189,7 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
   };
 
   const trash = async () => {
-    if (!(await askConfirm({ title: "¿Mover esta nota a la papelera?", body: "Va a la papelera de JARVIS (.jarvis/trash); se puede recuperar desde ahí.", confirm: "Mover a la papelera", danger: true }))) return;
+    if (!(await askConfirm({ title: "¿Mover esta nota a la papelera?", body: "Va a la papelera de Kioku (.kioku/trash); se puede recuperar desde ahí.", confirm: "Mover a la papelera", danger: true }))) return;
     s.current.dirty = false;
     await api("POST", "/api/note/delete", { path });
     go("/hoy");
@@ -207,12 +207,12 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
         </header>
         {state === "conflict" && (
           <div class="banner warn" role="alert">
-            <span>{msg || "El archivo cambió fuera de JARVIS."}</span>
+            <span>{msg || "El archivo cambió fuera de Kioku."}</span>
             <button onClick={() => void reloadFromDisk()}>Cargar versión del disco</button>
             <button onClick={() => void save(true)}>Conservar la mía (sobrescribe)</button>
           </div>
         )}
-        {n?.fmError && <div class="banner warn">El frontmatter YAML de esta nota es inválido; JARVIS no lo modificará.</div>}
+        {n?.fmError && <div class="banner warn">El frontmatter YAML de esta nota es inválido; Kioku no lo modificará.</div>}
         {n && (n.type === "capture" || n.type === "task") && <h1 class="note-title">{n.title}</h1>}
         <div class="editor" ref={host} />
         <div class="hint">Ctrl+Enter sigue un [[enlace]] o marca una casilla · Ctrl+clic también · escribe [[ para enlazar</div>

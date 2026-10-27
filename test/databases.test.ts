@@ -2,12 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { Jarvis } from "../src/core/jarvis.ts";
+import { Kioku } from "../src/core/kioku.ts";
 import { tmpVault } from "./helpers.ts";
 
 async function setup() {
   const { root, cleanup } = tmpVault();
-  const j = await Jarvis.open({ root });
+  const j = await Kioku.open({ root });
   return { j, root, cleanup };
 }
 
@@ -116,8 +116,8 @@ test("bases: borrar el índice y reindexar da exactamente el mismo resultado", a
     const a = j.queryDatabase(db.path, "Por estado");
     j.close();
     const { rmSync } = await import("node:fs");
-    for (const f of ["index.db", "index.db-wal", "index.db-shm"]) rmSync(path.join(root, ".jarvis", f), { force: true });
-    const j2 = await Jarvis.open({ root });
+    for (const f of ["index.db", "index.db-wal", "index.db-shm"]) rmSync(path.join(root, ".kioku", f), { force: true });
+    const j2 = await Kioku.open({ root });
     assert.deepEqual(j2.queryDatabase(db.path, "Por estado"), a);
     j2.close();
   } finally { cleanup(); }
@@ -140,15 +140,15 @@ test("bases: queryDatabase expone las propiedades disponibles (esquema + las vis
   } finally { cleanup(); }
 });
 
-test("bases: una carpeta de origen con .. o segmentos ocultos no deja a createRow escribir en .jarvis", async () => {
+test("bases: una carpeta de origen con .. o segmentos ocultos no deja a createRow escribir en .kioku", async () => {
   const { j, root, cleanup } = await setup();
   try {
-    for (const folder of ["Notas/../.jarvis", ".jarvis/x", "../fuera", "a//b"]) {
+    for (const folder of ["Notas/../.kioku", ".kioku/x", "../fuera", "a//b"]) {
       const db = await j.createNote({ title: `Hostil ${folder.length}`, type: "database", fm: { source: { folder } } });
       await assert.rejects(() => j.createRow(db.path, { title: "pwn" }), /origen|carpeta|fuera|invalid|no válid/i, folder);
     }
     const { existsSync } = await import("node:fs");
-    assert.ok(!existsSync(path.join(root, ".jarvis", "pwn.md")));
+    assert.ok(!existsSync(path.join(root, ".kioku", "pwn.md")));
     j.close();
   } finally { cleanup(); }
 });

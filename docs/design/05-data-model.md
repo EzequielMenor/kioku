@@ -4,14 +4,14 @@
 **La verdad está en archivos de texto. Todo lo demás se puede borrar y reconstruir.**
 
 ```
-~/Documents/Jarvis/            ← JARVIS_HOME (configurable)
+~/Documents/Kioku/            ← KIOKU_HOME (configurable)
 ├── Bandeja/                   capturas sin procesar
 ├── Proyectos/                 un .md por proyecto
 ├── Tareas/                    un .md por tarea
 ├── Notas/                     conocimiento libre (subcarpetas permitidas)
 ├── Diario/                    YYYY-MM-DD.md
 ├── Recursos/                  documentos, referencias
-└── .jarvis/
+└── .kioku/
     ├── config.json            preferencias (puerto, proveedor IA, …)
     ├── log/YYYY-MM.jsonl      actividad (append-only, texto plano)
     ├── proposals/<id>.json    propuestas de IA pendientes/resueltas
@@ -26,14 +26,14 @@ Archivo `.md`, frontmatter YAML opcional. Si no tiene `type`, es `note`.
 
 | Campo frontmatter | Tipo | Notas |
 |---|---|---|
-| `id` | string (ULID) | Se escribe al crear con JARVIS. Si falta (archivo externo), la identidad es la ruta |
+| `id` | string (ULID) | Se escribe al crear con Kioku. Si falta (archivo externo), la identidad es la ruta |
 | `type` | `note` `task` `project` `journal` `resource` `capture` `database` | |
 | `title` | string | Si falta: primer `# H1`, si no, nombre de archivo |
 | `tags` | lista | También se extraen `#etiquetas` del cuerpo |
 | `aliases` | lista | Para resolver `[[alias]]` (compatible Obsidian); alimenta la tabla `names` del índice |
-| `created` | ISO-8601 | Lo escribe JARVIS al crear. No hay `updated`: la fecha de modificación es la del fichero |
+| `created` | ISO-8601 | Lo escribe Kioku al crear. No hay `updated`: la fecha de modificación es la del fichero |
 
-Propiedades desconocidas **se conservan intactas** al reescribir el frontmatter (JARVIS no pisa lo que no entiende).
+Propiedades desconocidas **se conservan intactas** al reescribir el frontmatter (Kioku no pisa lo que no entiende).
 
 ## Tipos especializados (propiedades de "base de datos", estilo Notion/Bases)
 
@@ -79,7 +79,7 @@ views:
 
 **journal**: `Diario/YYYY-MM-DD.md`, con `focus: ["[[Tarea]]", …]` opcional (foco elegido del día).
 
-**capture**: lo que crea Quick sin prefijo. Vive en `Bandeja/`. Se "procesa" convirtiéndolo (cambiar `type`, mover, enlazar a proyecto) — con propuesta de JARVIS.
+**capture**: lo que crea Quick sin prefijo. Vive en `Bandeja/`. Se "procesa" convirtiéndolo (cambiar `type`, mover, enlazar a proyecto) — con propuesta de Kioku.
 
 ## Enlaces
 Sintaxis Obsidian-compatible: `[[Destino]]`, `[[Destino|texto]]`, `[[Destino#Encabezado]]`, `[[Destino#^bloque]]`, `![[embed]]`. Resolución: coincidencia exacta de ruta → nombre de archivo (sin `.md`, insensible a mayúsculas/acentos) → alias. Ambigüedad → el más cercano por ruta; se registra como `ambiguous` en el índice.
@@ -96,14 +96,14 @@ events(id PK, ts, kind, path, data)                                -- carga del 
 meta(key, value)                                                   -- schema_version
 ```
 Las bases de datos **no** tienen tabla propia: `notes.fm_json` ya guarda todo el frontmatter y las consultas filtran y ordenan en memoria (ver «Bases de datos»).
-- **Reconstrucción:** `jarvis reindex` borra y regenera desde disco. Test de invariantes: reindex ⇒ mismo resultado que el índice incremental.
+- **Reconstrucción:** `kioku reindex` borra y regenera desde disco. Test de invariantes: reindex ⇒ mismo resultado que el índice incremental.
 - **Incremental:** el watcher (`fs.watch`) compara `mtime+hash` por archivo; sólo reparsea lo cambiado.
-- **Coherencia con escrituras externas** (Obsidian/editor): si el hash en disco ≠ hash base al guardar desde JARVIS, se rechaza el guardado con conflicto (nunca sobreescribir silenciosamente).
+- **Coherencia con escrituras externas** (Obsidian/editor): si el hash en disco ≠ hash base al guardar desde Kioku, se rechaza el guardado con conflicto (nunca sobreescribir silenciosamente).
 
-## Log de actividad (`.jarvis/log/YYYY-MM.jsonl`)
+## Log de actividad (`.kioku/log/YYYY-MM.jsonl`)
 Una línea JSON por evento: `{ts, kind, path?, data?}`.
 `kind`: `note.open` `note.edit` `capture` `task.status` `focus.start` `focus.end` `checkpoint` `decision` `proposal.created` `proposal.applied` `proposal.rejected`.
-Es texto plano, auditable, y **la única memoria** que usa JARVIS para "ayer dejaste…". No hay otra.
+Es texto plano, auditable, y **la única memoria** que usa Kioku para "ayer dejaste…". No hay otra.
 
 ## Retomar (contexto de un proyecto) — algoritmo determinista
 Entrada: `project_path`. Salida (`ResumeCard`):
@@ -130,7 +130,7 @@ Cada sugerencia devuelve `reasons: string[]` ("vence hoy", "ya la empezaste"), m
   "ops":[ {"op":"create|update|move|delete|setProp","path":"…","before":"hash|null","after":{…}} ],
   "rationale":"…" }
 ```
-Reglas: (a) nada modifica el vault sin pasar por `applyProposal`; (b) cada `op` lleva el hash `before` y se aborta si el archivo cambió; (c) se muestra el diff; (d) aplicar/rechazar se registra en el log; (e) borrar = mover a `.jarvis/trash/`.
+Reglas: (a) nada modifica el vault sin pasar por `applyProposal`; (b) cada `op` lleva el hash `before` y se aborta si el archivo cambió; (c) se muestra el diff; (d) aplicar/rechazar se registra en el log; (e) borrar = mover a `.kioku/trash/`.
 
 ## Qué NO está en el modelo (a propósito)
 Árbol de bloques en base de datos, CRDT, usuarios/permisos, `rollup`/`formula` (v2), grafo precomputado (se deriva de `links`).

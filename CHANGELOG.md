@@ -2,6 +2,19 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## [0.3.0] — 2026-10-27
+
+### Cambiado
+- **El proyecto pasa a llamarse Kioku** (記憶, «memoria» en japonés), antes JARVIS. Afecta a todo:
+  - el comando es `kioku` (antes `jarvis`) y el paquete se llama `kioku`;
+  - las variables de entorno son `KIOKU_HOME`, `KIOKU_PORT`… (antes `JARVIS_*`);
+  - la carpeta interna de cada bóveda es `.kioku/` (antes `.jarvis/`) y la carpeta de datos por defecto es `~/Documents/Kioku`;
+  - el servicio de usuario es `kioku.service`, y las ventanas se llaman «Kioku Quick» y «Kioku Workspace»;
+  - la clase principal `Jarvis` es ahora `Kioku` (`src/core/kioku.ts`).
+
+### Migrar desde 0.2.0 o anterior
+Con el daemon parado: mueve `~/Documents/Jarvis` a `~/Documents/Kioku` y, dentro, `.jarvis` a `.kioku`; renombra `jarvis-sessions.json` a `kioku-sessions.json` en `.kioku/hermes/`; ejecuta `kioku service uninstall` con el comando antiguo y `kioku service install` con el nuevo; y actualiza tus atajos de Hyprland (`bin/kioku`).
+
 ## [0.2.0] — 2026-10-27
 
 ### Añadido

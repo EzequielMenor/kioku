@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Jarvis } from "../src/core/jarvis.ts";
+import { Kioku } from "../src/core/kioku.ts";
 import { UndoStore } from "../src/assistant/undo.ts";
 import { tmpVault } from "./helpers.ts";
 
@@ -8,7 +8,7 @@ const meta = { sessionId: "s1", tool: "test", summary: "prueba" };
 
 async function setup() {
   const { root, cleanup } = tmpVault();
-  const j = await Jarvis.open({ root });
+  const j = await Kioku.open({ root });
   return { j, undo: new UndoStore(j), cleanup };
 }
 

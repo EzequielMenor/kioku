@@ -1,12 +1,12 @@
-// Puente MCP (stdio) entre el agente y el daemon de JARVIS. JS plano y sin dependencias:
+// Puente MCP (stdio) entre el agente y el daemon de Kioku. JS plano y sin dependencias:
 // corre dentro de la jaula con el Node montado. No toca ficheros: solo habla HTTP con el daemon,
 // que es quien impone los niveles de autonomía (el token acota la sesión).
 import readline from "node:readline";
 
-const URL_ = (process.env.JARVIS_URL ?? "").replace(/\/+$/, "");
-const TOKEN = process.env.JARVIS_TOKEN ?? "";
+const URL_ = (process.env.KIOKU_URL ?? "").replace(/\/+$/, "");
+const TOKEN = process.env.KIOKU_TOKEN ?? "";
 if (!URL_ || !TOKEN) {
-  process.stderr.write("jarvis-mcp: faltan JARVIS_URL o JARVIS_TOKEN\n");
+  process.stderr.write("kioku-mcp: faltan KIOKU_URL o KIOKU_TOKEN\n");
   process.exit(1);
 }
 
@@ -23,7 +23,7 @@ async function daemon(method, path, body) {
 async function handle(m) {
   switch (m.method) {
     case "initialize":
-      return { protocolVersion: m.params?.protocolVersion ?? "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "jarvis", version: "1" } };
+      return { protocolVersion: m.params?.protocolVersion ?? "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "kioku", version: "1" } };
     case "ping":
       return {};
     case "tools/list": {

@@ -11,7 +11,7 @@ import { HermesEngine, buildJailArgs, hermesConfigYaml, parseHermesOutput, soulT
 import { SessionRegistry } from "../src/assistant/session.ts";
 
 const jail = (over: Partial<Parameters<typeof buildJailArgs>[0]> = {}) => buildJailArgs({
-  hermesDir: "/vault/.jarvis/hermes", bridgePath: "/repo/src/assistant/bridge.mjs", realAuth: "/home/u/.hermes/auth.json",
+  hermesDir: "/vault/.kioku/hermes", bridgePath: "/repo/src/assistant/bridge.mjs", realAuth: "/home/u/.hermes/auth.json",
   nodeDir: "/node/bin", hermesBin: "/home/u/.hermes/hermes-agent/venv/bin/hermes", args: ["chat", "-q", "hola"], home: "/home/u", ...over,
 });
 
@@ -19,7 +19,7 @@ test("jaula: no monta el vault (solo su carpeta de Hermes) ni Documents ni ~/.co
   const a = jail();
   const binds = a.filter((x) => x.startsWith("/"));
   assert.ok(!binds.includes("/vault"), "el vault entero no se monta");
-  assert.ok(binds.filter((x) => x.startsWith("/vault")).every((x) => x === "/vault/.jarvis/hermes"));
+  assert.ok(binds.filter((x) => x.startsWith("/vault")).every((x) => x === "/vault/.kioku/hermes"));
   assert.ok(!binds.some((x) => x.includes("Documents") || x.includes("/.config") || x === "/home/u"));
   assert.ok(!a.includes("--share-net") && !a.includes("--unshare-all"), "la red se hereda: hace falta para el modelo");
   for (const f of ["--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--new-session", "--clearenv"]) assert.ok(a.includes(f), f);
@@ -31,18 +31,18 @@ test("jaula: incluye DNS (resolve), auth.json real y el puente en /opt", () => {
   const i = a.indexOf("/home/u/.hermes/auth.json");
   assert.equal(a[i - 1], "--bind");
   assert.equal(a[i + 1], "/home/u/.hermes-jail/auth.json");
-  assert.equal(a[a.indexOf("/opt/jarvis-mcp.mjs") - 2], "--ro-bind");
+  assert.equal(a[a.indexOf("/opt/kioku-mcp.mjs") - 2], "--ro-bind");
   assert.deepEqual(a.slice(-4), ["/home/u/.hermes/hermes-agent/venv/bin/hermes", "chat", "-q", "hola"]);
 });
 
-test("config de Hermes: solo clarify + MCP jarvis; sin terminal/file/browser/code_execution/computer_use", () => {
-  const y = hermesConfigYaml({ toolsets: ["clarify"], daemonUrl: "http://127.0.0.1:47800", token: "tok", bridgePath: "/opt/jarvis-mcp.mjs" });
+test("config de Hermes: solo clarify + MCP kioku; sin terminal/file/browser/code_execution/computer_use", () => {
+  const y = hermesConfigYaml({ toolsets: ["clarify"], daemonUrl: "http://127.0.0.1:47800", token: "tok", bridgePath: "/opt/kioku-mcp.mjs" });
   for (const bad of ["terminal", "file", "browser", "code_execution", "computer_use"]) assert.ok(!y.includes(bad), bad);
   assert.match(y, /cli: \[clarify\]/);
   assert.match(y, /max_turns: 20/);
   assert.match(y, /provider: openai-codex/);
-  assert.match(y, /JARVIS_TOKEN: "tok"/);
-  assert.match(y, /JARVIS_URL: "http:\/\/127.0.0.1:47800"/);
+  assert.match(y, /KIOKU_TOKEN: "tok"/);
+  assert.match(y, /KIOKU_URL: "http:\/\/127.0.0.1:47800"/);
 });
 
 test("SOUL: español, datos≠instrucciones, niveles y propose", () => {
@@ -91,14 +91,14 @@ function fakeSpawn(outputs: string[], seen: { args: string[]; config: string }[]
 }
 
 function engineEnv() {
-  const root = mkdtempSync(path.join(tmpdir(), "jarvis-eng-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kioku-eng-"));
   const userHome = path.join(root, "userhome");
   mkdirSync(path.join(userHome, ".hermes/hermes-agent/venv/bin"), { recursive: true });
   writeFileSync(path.join(userHome, ".hermes/hermes-agent/venv/bin/hermes"), "#!/bin/sh\n", { mode: 0o755 });
   writeFileSync(path.join(userHome, ".hermes/auth.json"), "{}");
   const home = path.join(root, "vault");
   mkdirSync(home);
-  return { root, userHome, home, cfg: path.join(home, ".jarvis/hermes/config.yaml"), done: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, userHome, home, cfg: path.join(home, ".kioku/hermes/config.yaml"), done: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 test("HermesEngine: escribe config con token, reanuda la conversación y limpia el token", async () => {
@@ -116,7 +116,7 @@ test("HermesEngine: escribe config con token, reanuda la conversación y limpia 
     assert.match(seen[0].config, /cli: \[clarify, memory, skills\]/, "memoria y skills verificados (spec §7): sin terminal, ficheros ni navegador");
     assert.doesNotMatch(seen[0].config, /terminal|file|browser|code_execution|computer_use/);
     assert.ok(!seen[0].args.includes("--resume"));
-    assert.ok(existsSync(path.join(e.home, ".jarvis/hermes/SOUL.md")));
+    assert.ok(existsSync(path.join(e.home, ".kioku/hermes/SOUL.md")));
     assert.ok(!readFileSync(e.cfg, "utf8").includes(s.token), "al terminar se borra el token");
     await eng.ask({ message: "otra", conversation: "c1", session: s, daemonUrl: "http://127.0.0.1:1" });
     const args = seen[1].args;
@@ -162,7 +162,7 @@ const realHome = os.homedir();
 const haveJail = spawnSync("bwrap", ["--version"]).status === 0 && existsSync(path.join(realHome, ".hermes/hermes-agent")) && existsSync("/usr/bin/bash");
 
 test("jaula (regresión): ni un fichero señuelo ni ~/Documents ni ~/.config son alcanzables", { skip: !haveJail && "bwrap o hermes no instalados" }, () => {
-  const work = mkdtempSync(path.join(tmpdir(), "jarvis-jail-"));
+  const work = mkdtempSync(path.join(tmpdir(), "kioku-jail-"));
   try {
     const hermesDir = path.join(work, "hermes");
     mkdirSync(hermesDir);

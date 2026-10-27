@@ -6,7 +6,7 @@
 ## Alcance, ética y límites
 
 - Análisis **estático e inerte**: REA parsea texto, no ejecuta Obsidian. No se tocó el vault ni se leyó contenido de notas. No se eludió ninguna protección; el ASAR es el artefacto que Obsidian instala en esta máquina.
-- **No se copia código propietario.** Solo extraemos patrones de diseño y comportamiento; JARVIS se implementa de forma independiente.
+- **No se copia código propietario.** Solo extraemos patrones de diseño y comportamiento; Kioku se implementa de forma independiente.
 - **Cobertura REA parcial (honesto):** el análisis completo agotó el límite de 300 s por fuente (un bundle minificado de ~17 MB de texto). Resultado retenido: 33 fuentes JS relevantes, **8 parseadas**, 25 sin examinar; 2 522 entradas de inventario; 195 módulos; 3 070 hallazgos. Evidencia: `ev_e6be2705141c66fc66481d4847e8bb1fc2f98aba46e7d719fd79f572130a9fc4` (padre), vistas `ev_41e51234…cd5349`, `ev_75f17d84…b5af`.
 - Etiquetas: **[REA]** observado en el artefacto · **[DOC]** documentación oficial · **[API]** `obsidian.d.ts` público · **[INF]** inferencia mía.
 
@@ -19,7 +19,7 @@ Fuente: <https://obsidian.md/help/Files+and+folders/How+Obsidian+stores+data>
 - **Caché de metadatos** local (IndexedDB) que alimenta grafo y outline; "puede desincronizarse" y se reconstruye desde ajustes.
 - La ayuda recomienda no anidar vaults.
 
-**Adoptamos:** carpeta de Markdown como verdad + índice derivado reconstruible (idéntico concepto: caché desechable). **Mejoramos:** reconstrucción como comando de primera clase (`jarvis reindex`) con test de equivalencia incremental/completo.
+**Adoptamos:** carpeta de Markdown como verdad + índice derivado reconstruible (idéntico concepto: caché desechable). **Mejoramos:** reconstrucción como comando de primera clase (`kioku reindex`) con test de equivalencia incremental/completo.
 
 ### O2. Enlaces bidireccionales: texto en el archivo, resolución en el índice — [DOC] [API]
 Fuentes: <https://obsidian.md/help/links>, <https://obsidian.md/help/Plugins/Backlinks>
@@ -68,7 +68,7 @@ Fuente: <https://obsidian.md/help/bases>
 - [API] Superficie: `App {vault, metadataCache, workspace, fileManager}`, `Events.on(...)`, eventos de `Vault` (create/modify/delete/rename), `MetadataCache` (`changed`, `resolved`, `deleted`), `Workspace` (`file-open`, `active-leaf-change`, `layout-change`), `FileManager.processFrontMatter(file, fn)` (lectura-mutación-guardado **atómico** del frontmatter) y `renameFile` (que actualiza enlaces).
 - [REA] También existen en el bundle núcleos que en Obsidian son "plugins del core": Canvas (`canvas.nudgeSelection`), Sync, Publish → la propia app está construida sobre la misma arquitectura de módulos.
 
-**Decisión V1:** *sin plugins de terceros*. **Pero** la arquitectura interna se diseña igual: `Jarvis` (núcleo) expone un bus de eventos tipado (`note.changed`, `index.updated`, `focus.started`…) y los módulos (Hoy, Bandeja, Foco, IA) son consumidores del mismo contrato público. Eso deja la puerta abierta a extensiones y a que un agente IA use la misma API (CLI/HTTP).
+**Decisión V1:** *sin plugins de terceros*. **Pero** la arquitectura interna se diseña igual: `Kioku` (núcleo) expone un bus de eventos tipado (`note.changed`, `index.updated`, `focus.started`…) y los módulos (Hoy, Bandeja, Foco, IA) son consumidores del mismo contrato público. Eso deja la puerta abierta a extensiones y a que un agente IA use la misma API (CLI/HTTP).
 
 ### O8. Búsqueda y navegación — [DOC] [REA] [INF]
 - [REA] Modal de búsqueda con clases `mod-search-suggestion`, `searchInfoEl`, `requestUpdateSearch()` (búsqueda incremental asíncrona al teclear), y un buscador dentro del documento (`document-replace`, `_foundInPageHandler`).
@@ -80,7 +80,7 @@ Fuente: <https://obsidian.md/help/bases>
 - Observa cambios externos y los reindexa; no bloquea archivos; el usuario puede trabajar en paralelo con otros editores/Git.
 - [INF] Para no corromper, Obsidian escribe de forma que otros procesos vean estados coherentes; la API `processFrontMatter` existe precisamente para evitar sobrescrituras ciegas.
 
-**Adoptamos:** `fs.watch` → resincronización por `mtime+size` → `hash`; al guardar desde JARVIS comparamos el hash leído (si cambió fuera: **conflicto**, no sobrescribe). Escritura atómica (tmp + rename). Probado.
+**Adoptamos:** `fs.watch` → resincronización por `mtime+size` → `hash`; al guardar desde Kioku comparamos el hash leído (si cambió fuera: **conflicto**, no sobrescribe). Escritura atómica (tmp + rename). Probado.
 
 ## Qué descartamos de Obsidian
 | Rasgo | Motivo |

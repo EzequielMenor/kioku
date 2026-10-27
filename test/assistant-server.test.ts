@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Jarvis } from "../src/core/jarvis.ts";
+import { Kioku } from "../src/core/kioku.ts";
 import { startServer } from "../src/server/server.ts";
 import type { AssistantEngine } from "../src/assistant/engine.ts";
 import { tmpVault } from "./helpers.ts";
@@ -12,9 +12,9 @@ type AskFn = Parameters<AssistantEngine["ask"]>[0];
 
 async function setup(onAsk?: (i: AskFn, tool: (name: string, args?: unknown) => Promise<any>) => Promise<string>) {
   const { root, cleanup } = tmpVault();
-  const web = mkdtempSync(path.join(tmpdir(), "jarvis-web-"));
+  const web = mkdtempSync(path.join(tmpdir(), "kioku-web-"));
   writeFileSync(path.join(web, "index.html"), "<h1>hola</h1>");
-  const j = await Jarvis.open({ root });
+  const j = await Kioku.open({ root });
   const engine: AssistantEngine | undefined = onAsk && {
     available: async () => ({ ok: true }),
     ask: async (i) => {

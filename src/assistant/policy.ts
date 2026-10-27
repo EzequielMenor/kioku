@@ -68,7 +68,7 @@ export function filterProps(props: unknown, opts: { database?: boolean } = {}): 
   return { ...(props as Record<string, unknown>) };
 }
 
-/** `.jarvis/assistant.json`: `{ "exclude": ["Privado/"] }`. Sin fichero = sin exclusiones; si existe y está roto, falla cerrado. */
+/** `.kioku/assistant.json`: `{ "exclude": ["Privado/"] }`. Sin fichero = sin exclusiones; si existe y está roto, falla cerrado. */
 export function parseAssistantConfig(text: string | null): { exclude: string[] } {
   if (!text) return { exclude: [] };
   let v: unknown;

@@ -24,7 +24,7 @@ export interface ReadResult {
   mtimeMs: number;
 }
 
-export const INTERNAL_DIR = ".jarvis";
+export const INTERNAL_DIR = ".kioku";
 
 export function hashText(text: string): string {
   return createHash("sha1").update(text).digest("hex");
@@ -53,7 +53,7 @@ export class Vault {
     return path.relative(this.root, full).split(path.sep).join("/");
   }
 
-  /** Las notas del usuario nunca viven dentro de .jarvis/. */
+  /** Las notas del usuario nunca viven dentro de .kioku/. */
   assertUserPath(rel: string): void {
     const top = rel.replaceAll("\\", "/").split("/")[0];
     if (top === INTERNAL_DIR) throw new VaultError("invalid", "Ruta reservada para uso interno");
@@ -95,7 +95,7 @@ export class Vault {
       }
       if (expectHash === null && current !== null) throw new VaultError("exists", `Ya existe: ${rel}`);
       if (expectHash !== null && current !== expectHash) {
-        throw new VaultError("conflict", `El archivo cambió fuera de JARVIS: ${rel}`);
+        throw new VaultError("conflict", `El archivo cambió fuera de Kioku: ${rel}`);
       }
     }
     await this.writeRaw(full, text);
@@ -109,7 +109,7 @@ export class Vault {
     await fs.rename(tmp, full);
   }
 
-  /** Escritura en el área interna (.jarvis/…): índice, log, propuestas. */
+  /** Escritura en el área interna (.kioku/…): índice, log, propuestas. */
   async writeInternal(rel: string, text: string): Promise<void> {
     await this.writeRaw(this.abs(`${INTERNAL_DIR}/${rel}`), text);
   }
@@ -143,7 +143,7 @@ export class Vault {
     await fs.rm(this.abs(`${INTERNAL_DIR}/${rel}`), { force: true });
   }
 
-  /** Mueve a .jarvis/trash/ (nunca borra de verdad). Devuelve la ruta en la papelera. */
+  /** Mueve a .kioku/trash/ (nunca borra de verdad). Devuelve la ruta en la papelera. */
   async trash(rel: string): Promise<string> {
     this.assertUserPath(rel);
     const src = this.abs(rel);
@@ -174,7 +174,7 @@ export class Vault {
     throw new VaultError("exists", `Sin nombre libre para ${rel}`);
   }
 
-  /** Lista todos los .md del usuario (ignora directorios ocultos como .obsidian y .jarvis). */
+  /** Lista todos los .md del usuario (ignora directorios ocultos como .obsidian y .kioku). */
   async listMarkdown(): Promise<FileInfo[]> {
     const out: FileInfo[] = [];
     const walk = async (dir: string): Promise<void> => {

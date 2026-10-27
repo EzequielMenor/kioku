@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { Jarvis } from "../src/core/jarvis.ts";
+import { Kioku } from "../src/core/kioku.ts";
 import { parseCapture } from "../src/core/capture.ts";
 import { parseWhen, addDays } from "../src/core/dates.ts";
 import { tmpVault } from "./helpers.ts";
@@ -19,29 +19,29 @@ test("parseWhen / parseCapture", () => {
   assert.equal(parseWhen("lunes", today), "2026-11-02");
   assert.equal(parseWhen("+3d", today), "2026-10-29");
   assert.equal(parseWhen("2026-02-30", today), null);
-  const p = parseCapture("t Llamar al banco !mañana @Jarvis p1", today);
-  assert.deepEqual([p.kind, p.title, p.due, p.projectQuery, p.priority], ["task", "Llamar al banco", "2026-10-27", "Jarvis", 1]);
+  const p = parseCapture("t Llamar al banco !mañana @Kioku p1", today);
+  assert.deepEqual([p.kind, p.title, p.due, p.projectQuery, p.priority], ["task", "Llamar al banco", "2026-10-27", "Kioku", 1]);
   assert.equal(parseCapture("idea suelta con #tag", today).kind, "capture");
   assert.equal(parseCapture("t Revisar !jamas", today).unparsed[0], "!jamas");
-  assert.equal(parseCapture("d Usar SQLite @jarvis", today).kind, "decision");
+  assert.equal(parseCapture("d Usar SQLite @kioku", today).kind, "decision");
 });
 
 test("Quick: captura, tarea con proyecto/fecha, decisión", async () => {
   const { root, cleanup } = tmpVault();
   try {
     const c = clock("2026-10-26T09:00:00");
-    const j = await Jarvis.open({ root, now: c.now });
-    const proj = await j.createProject("Jarvis");
+    const j = await Kioku.open({ root, now: c.now });
+    const proj = await j.createProject("Kioku");
     const r1 = await j.capture("idea: probar tmux popup");
     assert.equal(r1.message, "Guardado en Bandeja");
     assert.match(r1.path, /^Bandeja\//);
-    const r2 = await j.capture("t Cablear watcher !mañana @jarv p1");
+    const r2 = await j.capture("t Cablear watcher !mañana @kio p1");
     const t = j.index.tasks({ status: ["todo"] })[0];
     assert.equal(t.due, "2026-10-27");
     assert.equal(t.priority, 1);
     assert.equal(t.projectPath, proj.path);
     assert.equal(r2.warnings.length, 0);
-    await j.capture("d Usar SQLite solo como índice @jarvis");
+    await j.capture("d Usar SQLite solo como índice @kioku");
     const card = j.resume(proj.path)!;
     assert.match(card.decisions[0], /Usar SQLite solo como índice/);
     await assert.rejects(j.capture("d Sin proyecto"), /proyecto/);
@@ -53,7 +53,7 @@ test("P1 Hoy: sugerencia determinista y explicable", async () => {
   const { root, cleanup } = tmpVault();
   try {
     const c = clock("2026-10-26T09:00:00");
-    const j = await Jarvis.open({ root, now: c.now });
+    const j = await Kioku.open({ root, now: c.now });
     await j.capture("t Pagar luz !hoy");
     await j.capture("t Leer paper p1");
     await j.capture("t Tarea vencida !2026-10-20");
@@ -71,9 +71,9 @@ test("P2 Foco: las capturas durante el foco se aparcan y reaparecen al terminar"
   const { root, cleanup } = tmpVault();
   try {
     const c = clock("2026-10-26T09:00:00");
-    const j = await Jarvis.open({ root, now: c.now });
-    const proj = await j.createProject("Jarvis");
-    await j.capture("t Cablear watcher @jarvis");
+    const j = await Kioku.open({ root, now: c.now });
+    const proj = await j.createProject("Kioku");
+    await j.capture("t Cablear watcher @kioku");
     const task = j.index.tasks()[0];
     await j.startFocus({ taskPath: task.path });
     assert.equal(j.focusState().active, true);
@@ -102,7 +102,7 @@ test("P3 Retomar: tarjeta con checkpoint, decisiones, pendientes y días de inac
   const { root, cleanup } = tmpVault();
   try {
     const c = clock(new Date().toISOString()); // mtime de archivos es real: el reloj simulado parte de ahora
-    const j = await Jarvis.open({ root, now: c.now });
+    const j = await Kioku.open({ root, now: c.now });
     const proj = await j.createProject("Proyecto X");
     await j.createNote({ title: "Notas de diseño X", body: "enlaza [[Proyecto X]]\n" });
     await j.capture("t Terminar la API @proyecto-x");
@@ -127,22 +127,22 @@ test("Propuestas: triage por reglas, aplicar con hash, conflicto y rechazo", asy
   const { root, cleanup } = tmpVault();
   try {
     const c = clock("2026-10-26T09:00:00");
-    const j = await Jarvis.open({ root, now: c.now });
-    await j.createProject("Jarvis");
-    const t = await j.capture("Revisar el diseño de Jarvis");
+    const j = await Kioku.open({ root, now: c.now });
+    await j.createProject("Kioku");
+    const t = await j.capture("Revisar el diseño de Kioku");
     const n = await j.capture("Una idea sobre cocina");
     const made = await j.refreshTriage();
     assert.equal(made.length, 2);
     assert.equal((await j.refreshTriage()).length, 0, "no duplica propuestas pendientes");
     const pTask = made.find((p) => p.title.startsWith("Convertir en tarea"))!;
-    assert.match(pTask.title, /«Jarvis»/);
+    assert.match(pTask.title, /«Kioku»/);
     // nada cambió todavía
     assert.ok(j.vault.exists(t.path));
     await j.applyProposal(pTask.id);
     assert.equal(j.vault.exists(t.path), false);
     const moved = j.index.tasks()[0];
-    assert.equal(moved.title, "Revisar el diseño de Jarvis");
-    assert.equal(moved.projectTitle, "Jarvis");
+    assert.equal(moved.title, "Revisar el diseño de Kioku");
+    assert.equal(moved.projectTitle, "Kioku");
     // conflicto: se modifica externamente la otra captura
     const pNote = made.find((p) => p !== pTask)!;
     writeFileSync(path.join(root, n.path), readFileSync(path.join(root, n.path), "utf8") + "\ncambio externo\n");
@@ -158,7 +158,7 @@ test("Propuestas: triage por reglas, aplicar con hash, conflicto y rechazo", asy
 test("Guardado con conflicto: no sobrescribe cambios externos", async () => {
   const { root, cleanup } = tmpVault();
   try {
-    const j = await Jarvis.open({ root });
+    const j = await Kioku.open({ root });
     const note = await j.createNote({ title: "Mi nota", body: "uno\n" });
     const r = await j.readNote(note.path);
     writeFileSync(path.join(root, note.path), r.text + "externo\n");
@@ -171,7 +171,7 @@ test("Guardado con conflicto: no sobrescribe cambios externos", async () => {
 test("Reindex: borrar el índice no pierde nada y reproduce el mismo estado", async () => {
   const { root, cleanup } = tmpVault();
   try {
-    const j = await Jarvis.open({ root });
+    const j = await Kioku.open({ root });
     const p = await j.createProject("Alfa");
     await j.capture("t Hacer algo @alfa !hoy");
     await j.capture("d Decisión importante @alfa");
@@ -183,9 +183,9 @@ test("Reindex: borrar el índice no pierde nada y reproduce el mismo estado", as
     assert.equal(after, before);
     j.close();
     // reabrir desde cero (sin index.db) también reproduce
-    const files = readdirSync(path.join(root, ".jarvis"));
+    const files = readdirSync(path.join(root, ".kioku"));
     assert.ok(files.includes("index.db") && files.includes("log"));
-    const j2 = await Jarvis.open({ root });
+    const j2 = await Kioku.open({ root });
     assert.equal(j2.focusState().active, true);
     j2.close();
   } finally { cleanup(); }
@@ -194,9 +194,9 @@ test("Reindex: borrar el índice no pierde nada y reproduce el mismo estado", as
 test("el log de actividad es JSONL plano y tolera líneas corruptas", async () => {
   const { root, cleanup } = tmpVault();
   try {
-    const j = await Jarvis.open({ root, now: () => new Date("2026-10-26T10:00:00Z") });
+    const j = await Kioku.open({ root, now: () => new Date("2026-10-26T10:00:00Z") });
     await j.capture("algo");
-    const f = path.join(root, ".jarvis/log/2026-10.jsonl");
+    const f = path.join(root, ".kioku/log/2026-10.jsonl");
     writeFileSync(f, readFileSync(f, "utf8") + "esto no es json\n");
     assert.equal(await j.log.reload(), 1);
     j.close();
@@ -206,7 +206,7 @@ test("el log de actividad es JSONL plano y tolera líneas corruptas", async () =
 test("convertCapture: Bandeja → tarea/nota, y rechaza lo que no es captura", async () => {
   const { root, cleanup } = tmpVault();
   try {
-    const j = await Jarvis.open({ root, now: () => new Date("2026-10-26T10:00:00Z") });
+    const j = await Kioku.open({ root, now: () => new Date("2026-10-26T10:00:00Z") });
     const a = await j.capture("Comprar café");
     const b = await j.capture("Una idea para después");
     const t = await j.convertCapture(a.path, "task");
@@ -225,8 +225,8 @@ test("convertCapture: Bandeja → tarea/nota, y rechaza lo que no es captura", a
 test("IA real: payload visible, hash obligatorio, el modelo solo clasifica y todo pasa por Propuestas", async () => {
   const { root, cleanup } = tmpVault();
   try {
-    const j = await Jarvis.open({ root, now: clock("2026-10-26T09:00:00").now });
-    await j.createProject("Jarvis");
+    const j = await Kioku.open({ root, now: clock("2026-10-26T09:00:00").now });
+    await j.createProject("Kioku");
     const a = await j.capture("Idea suelta sobre el diseño");
     await j.capture("Llamar al dentista");
     assert.equal(await j.aiPreview(), null, "sin configuración no hay IA");
@@ -252,7 +252,7 @@ test("IA real: payload visible, hash obligatorio, el modelo solo clasifica y tod
     assert.equal(rules.length, 2);
     const prev2 = (await j.aiPreview())!;
     const content = "```json\n" + JSON.stringify({ items: [
-      { path: a.path, kind: "task", project: "jarvis", reason: "Es una acción de diseño" },
+      { path: a.path, kind: "task", project: "kioku", reason: "Es una acción de diseño" },
       { path: "Bandeja/inventada.md", kind: "task", project: null, reason: "x" },
       { path: "../../etc/passwd", kind: "note", project: null, reason: "x" },
     ] }) + "\n```";
@@ -260,7 +260,7 @@ test("IA real: payload visible, hash obligatorio, el modelo solo clasifica y tod
     assert.deepEqual(JSON.parse(JSON.stringify(sent!.messages)), JSON.parse(JSON.stringify(prev2.messages)));
     assert.equal(made.length, 1, "se descartan rutas que no están en la Bandeja");
     assert.equal(made[0].source, "llm:test-model");
-    assert.match(made[0].title, /tarea de «Jarvis»/);
+    assert.match(made[0].title, /tarea de «Kioku»/);
     assert.ok(j.vault.exists(a.path), "el modelo no modifica el vault");
     const pend = await j.proposals.list("pending");
     assert.equal(pend.filter((p) => p.key === `triage:${a.path}`).length, 1, "sustituye la propuesta de reglas de esa captura");
@@ -272,18 +272,18 @@ test("IA real: payload visible, hash obligatorio, el modelo solo clasifica y tod
 test("IA real: respuesta no válida o fallo del modelo → error, sin propuestas", async () => {
   const { root, cleanup } = tmpVault();
   try {
-    const j = await Jarvis.open({ root, now: clock("2026-10-26T09:00:00").now });
+    const j = await Kioku.open({ root, now: clock("2026-10-26T09:00:00").now });
     await j.capture("Algo");
-    await j.setAiConfig({ baseUrl: "https://api.example.com/v1", model: "m", apiKeyEnv: "JARVIS_TEST_NO_KEY" });
+    await j.setAiConfig({ baseUrl: "https://api.example.com/v1", model: "m", apiKeyEnv: "KIOKU_TEST_NO_KEY" });
     const prev = (await j.aiPreview())!;
     assert.equal(prev.local, false);
-    await assert.rejects(j.llmTriage(prev.hash, (async () => new Response("{}")) as typeof fetch), /JARVIS_TEST_NO_KEY/);
-    delete process.env.JARVIS_TEST_NO_KEY;
-    process.env.JARVIS_TEST_NO_KEY = "k";
+    await assert.rejects(j.llmTriage(prev.hash, (async () => new Response("{}")) as typeof fetch), /KIOKU_TEST_NO_KEY/);
+    delete process.env.KIOKU_TEST_NO_KEY;
+    process.env.KIOKU_TEST_NO_KEY = "k";
     try {
       await assert.rejects(j.llmTriage(prev.hash, (async () => new Response("no json", { status: 200 })) as typeof fetch), /JSON|inesperada/);
       await assert.rejects(j.llmTriage(prev.hash, (async () => new Response("boom", { status: 500 })) as typeof fetch), /500/);
-    } finally { delete process.env.JARVIS_TEST_NO_KEY; }
+    } finally { delete process.env.KIOKU_TEST_NO_KEY; }
     assert.equal((await j.proposals.list("pending")).length, 0);
     j.close();
   } finally { cleanup(); }

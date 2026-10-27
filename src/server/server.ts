@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { Jarvis } from "../core/jarvis.ts";
+import { Kioku } from "../core/kioku.ts";
 import { isLocalUrl } from "../core/llm.ts";
 import { VaultError } from "../core/vault.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
@@ -43,8 +43,8 @@ function memoryRel(v: unknown): string {
   return v;
 }
 
-/** Lo que Hermes guardó en su memoria (ficheros de texto de `.jarvis/hermes/memories/`). */
-async function listMemory(j: Jarvis): Promise<{ path: string; text: string }[]> {
+/** Lo que Hermes guardó en su memoria (ficheros de texto de `.kioku/hermes/memories/`). */
+async function listMemory(j: Kioku): Promise<{ path: string; text: string }[]> {
   const out: { path: string; text: string }[] = [];
   for (const f of (await j.vault.listInternal(MEMORY_DIR)).sort()) {
     if (f.startsWith(".")) continue;
@@ -87,7 +87,7 @@ export interface ServerHandle {
 }
 
 export async function startServer(
-  j: Jarvis,
+  j: Kioku,
   opts: {
     port?: number;
     webDir: string;
@@ -98,7 +98,7 @@ export async function startServer(
 ): Promise<ServerHandle> {
   const sessions = new SessionRegistry();
   const undo = new UndoStore(j);
-  const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .jarvis/assistant.json
+  const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .kioku/assistant.json
   const assistantTools = new AssistantTools(j, undo, { exclude });
   const loadExclude = async () => {
     try {

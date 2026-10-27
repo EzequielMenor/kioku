@@ -182,7 +182,7 @@ function App() {
   return (
     <div class="shell">
       <nav class="sidebar" aria-label="Navegación">
-        <div class="brand">JARVIS</div>
+        <div class="brand">Kioku</div>
         {NAV.map((n) => (
           <a key={n.route} href={`#${n.route}`} class={activeRoute === n.route ? "active" : ""}>
             <Icon name={n.icon} /><span>{n.label}</span>
@@ -369,7 +369,7 @@ function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; gua
     say(kind === "task" ? "Convertida en tarea." : "Guardada como nota.");
   });
   const discard = (path: string, title: string) => guard(async () => {
-    if (!(await askConfirm({ title: `¿Descartar «${title}»?`, body: "Va a la papelera de JARVIS (.jarvis/trash) y se puede recuperar.", confirm: "Descartar", danger: true }))) return;
+    if (!(await askConfirm({ title: `¿Descartar «${title}»?`, body: "Va a la papelera de Kioku (.kioku/trash) y se puede recuperar.", confirm: "Descartar", danger: true }))) return;
     await api("POST", "/api/note/delete", { path });
     say("Descartada.");
   });
@@ -596,7 +596,7 @@ function AiPanel({ rev, say, guard }: { rev: number; say: Say; guard: Guard }) {
   const { data: st } = useApi<AiStatus>("/api/ai", rev);
   const [prev, setPrev] = useState<AiPayload | null>(null);
   if (!st) return null;
-  if (!st.configured) return <p class="muted small">IA de un modelo real: opcional y desactivada. Para usar tu modelo local o una API: <code>jarvis ai config &lt;url&gt; &lt;modelo&gt;</code>.</p>;
+  if (!st.configured) return <p class="muted small">IA de un modelo real: opcional y desactivada. Para usar tu modelo local o una API: <code>kioku ai config &lt;url&gt; &lt;modelo&gt;</code>.</p>;
   const look = () => guard(async () => {
     const r = await api<AiPayload | null>("GET", "/api/ai/preview");
     if (!r) say("Nada que enviar: la Bandeja está vacía o ya tiene propuestas del modelo.");
@@ -758,7 +758,7 @@ function Help({ onClose }: { onClose(): void }) {
   return (
     <Modal title="Atajos" onClose={onClose}>
       <table class="keys"><tbody>{rows.map(([k, d]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{d}</td></tr>)}</tbody></table>
-      <p class="muted small">Quick (desde cualquier lugar): asigna una tecla de Hyprland a <code>jarvis quick</code>.<br />Sintaxis: <code>t tarea !mañana @proyecto p1</code> · <code>d decisión @proyecto</code> · <code>n nota</code></p>
+      <p class="muted small">Quick (desde cualquier lugar): asigna una tecla de Hyprland a <code>kioku quick</code>.<br />Sintaxis: <code>t tarea !mañana @proyecto p1</code> · <code>d decisión @proyecto</code> · <code>n nota</code></p>
     </Modal>
   );
 }
@@ -767,7 +767,7 @@ function ContextDialog({ path, onClose }: { path: string; onClose(): void }) {
   const { data, error } = useApi<unknown>(`/api/context?path=${encodeURIComponent(path)}`, 0);
   return (
     <Modal title="Contexto que vería un modelo de IA" onClose={onClose} wide>
-      <p class="muted small">Esto es exactamente lo que se enviaría a un proveedor (por defecto solo se usan reglas locales; un modelo real es opcional (jarvis ai config)). No hay memoria oculta.</p>
+      <p class="muted small">Esto es exactamente lo que se enviaría a un proveedor (por defecto solo se usan reglas locales; un modelo real es opcional (kioku ai config)). No hay memoria oculta.</p>
       <pre class="ctxjson">{error ?? JSON.stringify(data, null, 2)}</pre>
       <div class="row end"><button onClick={onClose}>Cerrar</button></div>
     </Modal>

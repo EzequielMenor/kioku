@@ -1,23 +1,23 @@
 // Servicio de usuario de systemd (opcional): arranca el daemon al iniciar sesión.
-// Solo escribe ~/.config/systemd/user/jarvis.service; no toca nada fuera de eso y es reversible con `uninstall`.
+// Solo escribe ~/.config/systemd/user/kioku.service; no toca nada fuera de eso y es reversible con `uninstall`.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readRuntime, repoRoot } from "./desktop.ts";
 
-const UNIT = path.join(os.homedir(), ".config", "systemd", "user", "jarvis.service");
+const UNIT = path.join(os.homedir(), ".config", "systemd", "user", "kioku.service");
 
 export function unitText(home: string): string {
   const main = path.join(repoRoot, "src", "cli", "main.ts");
   return `[Unit]
-Description=JARVIS (daemon local, solo 127.0.0.1)
+Description=Kioku (daemon local, solo 127.0.0.1)
 After=graphical-session.target
 
 [Service]
 Type=simple
 ExecStart=${process.execPath} --no-warnings ${main} daemon
-Environment=JARVIS_HOME=${home}
+Environment=KIOKU_HOME=${home}
 Restart=on-failure
 RestartSec=2
 
@@ -45,7 +45,7 @@ export function installService(home: string): string[] {
   mkdirSync(path.dirname(UNIT), { recursive: true });
   writeFileSync(UNIT, unitText(home));
   log.push(`Escrito ${UNIT}`);
-  const steps: [string, string[]][] = [["recarga", ["daemon-reload"]], ["activación", ["enable", "--now", "jarvis.service"]]];
+  const steps: [string, string[]][] = [["recarga", ["daemon-reload"]], ["activación", ["enable", "--now", "kioku.service"]]];
   for (const [name, a] of steps) {
     const r = ctl(...a);
     if (!r.ok) throw new Error(`systemctl ${name} falló: ${r.out}`);
@@ -57,7 +57,7 @@ export function installService(home: string): string[] {
 export function uninstallService(): string[] {
   const log: string[] = [];
   if (!serviceInstalled()) return ["El servicio no está instalado."];
-  ctl("disable", "--now", "jarvis.service");
+  ctl("disable", "--now", "kioku.service");
   unlinkSync(UNIT);
   ctl("daemon-reload");
   log.push(`Servicio desactivado y eliminado (${UNIT}).`);
@@ -65,8 +65,8 @@ export function uninstallService(): string[] {
 }
 
 export function serviceStatus(): string {
-  if (!serviceInstalled()) return "servicio no instalado (jarvis service install)";
-  const active = ctl("is-active", "jarvis.service").out;
-  const enabled = ctl("is-enabled", "jarvis.service").out;
+  if (!serviceInstalled()) return "servicio no instalado (kioku service install)";
+  const active = ctl("is-active", "kioku.service").out;
+  const enabled = ctl("is-enabled", "kioku.service").out;
   return `servicio: ${active}, ${enabled}`;
 }

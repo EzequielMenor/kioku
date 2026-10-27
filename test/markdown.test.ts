@@ -16,15 +16,15 @@ test("extractLinks: alias, ancla, bloque, embed y código ignorado", () => {
 });
 
 test("extractTags: soporta acentos y anidadas; ignora #123, encabezados y código", () => {
-  const t = extractTags("# Título\nIdea #diseño y #proy/jarvis, no #123 ni `#code`\n```\n#fenced\n```\nurl.com/#frag");
-  assert.deepEqual(t.sort(), ["diseño", "proy/jarvis"]);
+  const t = extractTags("# Título\nIdea #diseño y #proy/kioku, no #123 ni `#code`\n```\n#fenced\n```\nurl.com/#frag");
+  assert.deepEqual(t.sort(), ["diseño", "proy/kioku"]);
 });
 
 test("parseNote: título por frontmatter > H1 > nombre; relaciones en frontmatter cuentan como enlaces", () => {
-  const n = parseNote('---\ntype: task\nproject: "[[Jarvis]]"\ntags: [a, b]\n---\n# Hola\n[[X]] #c', "Tareas/foo.md");
+  const n = parseNote('---\ntype: task\nproject: "[[Kioku]]"\ntags: [a, b]\n---\n# Hola\n[[X]] #c', "Tareas/foo.md");
   assert.equal(n.title, "Hola");
   assert.equal(n.frontmatter.type, "task");
-  assert.deepEqual(n.links.map((l) => l.target).sort(), ["Jarvis", "X"]);
+  assert.deepEqual(n.links.map((l) => l.target).sort(), ["Kioku", "X"]);
   assert.deepEqual(n.tags.sort(), ["a", "b", "c"]);
   assert.equal(parseNote("sin nada", "Notas/mi-nota.md").title, "mi-nota");
 });

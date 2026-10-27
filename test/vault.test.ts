@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { Vault, VaultError, sanitizeFileName } from "../src/core/vault.ts";
 import { tmpVault } from "./helpers.ts";
 
-test("no permite salir de la raíz ni rutas absolutas ni .jarvis para notas", async () => {
+test("no permite salir de la raíz ni rutas absolutas ni .kioku para notas", async () => {
   const { root, cleanup } = tmpVault();
   try {
     const v = new Vault(root);
     assert.throws(() => v.abs("../fuera.md"), (e: VaultError) => e.code === "outside-root");
     assert.throws(() => v.abs("/etc/passwd"), (e: VaultError) => e.code === "outside-root");
     assert.throws(() => v.abs("a/../../x"), (e: VaultError) => e.code === "outside-root");
-    await assert.rejects(v.write(".jarvis/x.md", "a"), (e: VaultError) => e.code === "invalid");
+    await assert.rejects(v.write(".kioku/x.md", "a"), (e: VaultError) => e.code === "invalid");
   } finally { cleanup(); }
 });
 

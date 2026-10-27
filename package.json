@@ -1,15 +1,15 @@
 {
-  "name": "jarvis",
-  "version": "0.2.0",
+  "name": "kioku",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Kioku (JARVIS) — segundo cerebro local-first: Markdown, índice SQLite derivado, bases de datos y asistente con aprobación",
+  "description": "Kioku (Kioku) — segundo cerebro local-first: Markdown, índice SQLite derivado, bases de datos y asistente con aprobación",
   "engines": {
     "node": ">=24"
   },
   "bin": {
-    "jarvis": "./bin/jarvis"
+    "kioku": "./bin/kioku"
   },
   "scripts": {
     "build:web": "node scripts/build-web.mjs",

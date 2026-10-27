@@ -18,10 +18,10 @@ export function exportVault(home: string, dest: string): { bytes: number } {
     "tar",
     [
       "-czf", d,
-      "--exclude=.jarvis/index.db", "--exclude=.jarvis/index.db-wal", "--exclude=.jarvis/index.db-shm",
-      "--exclude=.jarvis/runtime.json", "--exclude=.jarvis/daemon.log",
+      "--exclude=.kioku/index.db", "--exclude=.kioku/index.db-wal", "--exclude=.kioku/index.db-shm",
+      "--exclude=.kioku/runtime.json", "--exclude=.kioku/daemon.log",
       // Hermes: la memoria y las sesiones viajan; credenciales, cachés y logs no.
-      ...["auth.json", "auth.lock", "logs", "cache", "image_cache", "audio_cache", "sandboxes"].map((x) => `--exclude=.jarvis/hermes/${x}`),
+      ...["auth.json", "auth.lock", "logs", "cache", "image_cache", "audio_cache", "sandboxes"].map((x) => `--exclude=.kioku/hermes/${x}`),
       "-C", path.dirname(h), path.basename(h),
     ],
     { encoding: "utf8" },
@@ -59,14 +59,14 @@ export interface ImportReport {
 }
 
 /**
- * Copia un vault de Obsidian a `Notas/Importado/` dentro de JARVIS.
+ * Copia un vault de Obsidian a `Notas/Importado/` dentro de Kioku.
  * Garantías: el origen solo se LEE (readdir/readFile/copyFile-origen); no se toca .obsidian;
  * los archivos se copian byte a byte (sin reescribir enlaces); nunca se pisa un archivo existente.
  */
 export async function importObsidian(src: string, home: string, apply: boolean): Promise<ImportReport> {
   const s = path.resolve(src);
   const h = path.resolve(home);
-  if (inside(h, s) || inside(s, h)) throw new Error("El origen y el vault de JARVIS no pueden estar anidados");
+  if (inside(h, s) || inside(s, h)) throw new Error("El origen y el vault de Kioku no pueden estar anidados");
   const st = await fs.stat(s).catch(() => null);
   if (!st?.isDirectory()) throw new Error(`No existe la carpeta: ${s}`);
 

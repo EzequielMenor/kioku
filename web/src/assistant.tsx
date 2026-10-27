@@ -94,7 +94,7 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
       {!ack && (
         <div class="card notice-card">
           <div class="eyebrow">Antes de empezar</div>
-          <p>Para responder, el asistente <b>lee las notas que necesita</b> y su texto se envía al proveedor del modelo (OpenAI, a través de tu suscripción de Codex). Queda registrado qué notas lee en cada consulta y puedes excluir carpetas en <code>.jarvis/assistant.json</code>.</p>
+          <p>Para responder, el asistente <b>lee las notas que necesita</b> y su texto se envía al proveedor del modelo (OpenAI, a través de tu suscripción de Codex). Queda registrado qué notas lee en cada consulta y puedes excluir carpetas en <code>.kioku/assistant.json</code>.</p>
           <p class="muted small">Lo pequeño y reversible lo hace solo, con botón <b>Deshacer</b>. Borrar, mover o tocar muchas notas siempre te lo propone antes.</p>
           <button class="primary" onClick={() => { lsSet("assistant.privacy", "1"); setAck(true); }}>Entendido</button>
         </div>
@@ -206,7 +206,7 @@ export function AssistantMemory({ rev, say }: { rev: number; say: Say }) {
   return (
     <div class="page narrow">
       <header class="page-head"><h1>Qué recuerda el asistente</h1><a class="pill" href="#/asistente">Volver</a></header>
-      <p class="muted">Son ficheros de texto en <code>.jarvis/hermes/memories/</code>: nada opaco. Puedes borrar lo que no quieras que recuerde.</p>
+      <p class="muted">Son ficheros de texto en <code>.kioku/hermes/memories/</code>: nada opaco. Puedes borrar lo que no quieras que recuerde.</p>
       {data && data.length === 0 && <div class="empty">Todavía no recuerda nada.</div>}
       <ul class="cards">
         {(data ?? []).map((m) => (

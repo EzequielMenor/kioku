@@ -1,4 +1,4 @@
-// Motor de pruebas locales (JARVIS_ASSISTANT_FAKE=1): sin Hermes ni red. Sirve para ver la UI y probar el flujo.
+// Motor de pruebas locales (KIOKU_ASSISTANT_FAKE=1): sin Hermes ni red. Sirve para ver la UI y probar el flujo.
 import type { AssistantEngine } from "./engine.ts";
 
 export class FakeEngine implements AssistantEngine {

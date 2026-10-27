@@ -5,12 +5,12 @@ import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const QUICK_TITLE = "JARVIS Quick";
-export const WORKSPACE_TITLE = "JARVIS";
-const SPECIAL = "jarvis";
+export const QUICK_TITLE = "Kioku Quick";
+export const WORKSPACE_TITLE = "Kioku";
+const SPECIAL = "kioku";
 
-export function jarvisHome(): string {
-  return path.resolve(process.env.JARVIS_HOME ?? path.join(os.homedir(), "Documents", "Jarvis"));
+export function kiokuHome(): string {
+  return path.resolve(process.env.KIOKU_HOME ?? path.join(os.homedir(), "Documents", "Kioku"));
 }
 
 export const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -20,7 +20,7 @@ interface Runtime { pid: number; port: number; startedAt: string }
 
 export function readRuntime(home: string): Runtime | null {
   try {
-    return JSON.parse(readFileSync(path.join(home, ".jarvis", "runtime.json"), "utf8")) as Runtime;
+    return JSON.parse(readFileSync(path.join(home, ".kioku", "runtime.json"), "utf8")) as Runtime;
   } catch {
     return null;
   }
@@ -41,10 +41,10 @@ async function healthy(port: number): Promise<boolean> {
 export async function ensureDaemon(home: string): Promise<string> {
   const rt = readRuntime(home);
   if (rt && (await healthy(rt.port))) return `http://127.0.0.1:${rt.port}`;
-  mkdirSync(path.join(home, ".jarvis"), { recursive: true });
-  const log = openSync(path.join(home, ".jarvis", "daemon.log"), "a");
+  mkdirSync(path.join(home, ".kioku"), { recursive: true });
+  const log = openSync(path.join(home, ".kioku", "daemon.log"), "a");
   const child = spawn(process.execPath, ["--no-warnings", path.join(repoRoot, "src", "cli", "main.ts"), "daemon"], {
-    detached: true, stdio: ["ignore", log, log], env: { ...process.env, JARVIS_HOME: home },
+    detached: true, stdio: ["ignore", log, log], env: { ...process.env, KIOKU_HOME: home },
   });
   child.unref();
   const t0 = Date.now();
@@ -53,7 +53,7 @@ export async function ensureDaemon(home: string): Promise<string> {
     const r2 = readRuntime(home);
     if (r2 && r2.pid === child.pid && (await healthy(r2.port))) return `http://127.0.0.1:${r2.port}`;
   }
-  throw new Error(`El daemon no arrancó. Revisa ${path.join(home, ".jarvis", "daemon.log")}`);
+  throw new Error(`El daemon no arrancó. Revisa ${path.join(home, ".kioku", "daemon.log")}`);
 }
 
 function browser(): string {
@@ -65,7 +65,7 @@ function browser(): string {
 
 /** Perfil propio por ventana: con un perfil compartido Chromium delega en el proceso ya abierto y las reglas de Hyprland no se aplican. */
 function browserArgs(url: string, title: string, profileName: string): string[] {
-  const profile = path.join(os.homedir(), ".cache", "jarvis", profileName);
+  const profile = path.join(os.homedir(), ".cache", "kioku", profileName);
   mkdirSync(profile, { recursive: true });
   return [
     `--app=${url}`, `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check",
@@ -146,4 +146,4 @@ export function openWorkspace(base: string, route: string): void {
   spawn(browser(), [...browserArgs(`${base}/#${route}`, WORKSPACE_TITLE, "browser"), "--window-size=1280,820"], { detached: true, stdio: "ignore" }).unref();
 }
 
-export const hasBrowserProfile = () => existsSync(path.join(os.homedir(), ".cache", "jarvis", "browser"));
+export const hasBrowserProfile = () => existsSync(path.join(os.homedir(), ".cache", "kioku", "browser"));

@@ -46,7 +46,7 @@ test("puente: initialize, tools/list, tools/call y ping contra un daemon falso",
     ? { status: 200, json: [{ name: "search", description: "Busca", inputSchema: { type: "object" }, level: "read" }] }
     : { status: 200, json: { text: '["Notas/A.md"]', isError: false } });
   try {
-    const r = await talk({ JARVIS_URL: d.url, JARVIS_TOKEN: "t".repeat(64) }, [
+    const r = await talk({ KIOKU_URL: d.url, KIOKU_TOKEN: "t".repeat(64) }, [
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } },
       { jsonrpc: "2.0", method: "notifications/initialized" },
       { jsonrpc: "2.0", id: 2, method: "tools/list" },
@@ -54,7 +54,7 @@ test("puente: initialize, tools/list, tools/call y ping contra un daemon falso",
       { jsonrpc: "2.0", id: 4, method: "ping" },
       { jsonrpc: "2.0", id: 5, method: "resources/list" },
     ]);
-    assert.equal(r.get(1).result.serverInfo.name, "jarvis");
+    assert.equal(r.get(1).result.serverInfo.name, "kioku");
     assert.deepEqual(r.get(2).result.tools, [{ name: "search", description: "Busca", inputSchema: { type: "object" } }]);
     assert.equal(r.get(3).result.content[0].text, '["Notas/A.md"]');
     assert.equal(r.get(3).result.isError, false);
@@ -68,7 +68,7 @@ test("puente: initialize, tools/list, tools/call y ping contra un daemon falso",
 test("puente: un isError del daemon se propaga", async () => {
   const d = await fakeDaemon(() => ({ status: 200, json: { text: "Ruta no permitida", isError: true } }));
   try {
-    const r = await talk({ JARVIS_URL: d.url, JARVIS_TOKEN: "a".repeat(64) }, [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "read_note", arguments: { path: "../x.md" } } }]);
+    const r = await talk({ KIOKU_URL: d.url, KIOKU_TOKEN: "a".repeat(64) }, [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "read_note", arguments: { path: "../x.md" } } }]);
     assert.equal(r.get(1).result.isError, true);
     assert.equal(r.get(1).result.content[0].text, "Ruta no permitida");
   } finally { await d.close(); }
@@ -77,14 +77,14 @@ test("puente: un isError del daemon se propaga", async () => {
 test("puente: si el daemon responde 401 la llamada devuelve isError", async () => {
   const d = await fakeDaemon(() => ({ status: 401, json: { error: "Token de asistente ausente o caducado" } }));
   try {
-    const r = await talk({ JARVIS_URL: d.url, JARVIS_TOKEN: "b".repeat(64) }, [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search", arguments: {} } }]);
+    const r = await talk({ KIOKU_URL: d.url, KIOKU_TOKEN: "b".repeat(64) }, [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search", arguments: {} } }]);
     assert.equal(r.get(1).result.isError, true);
     assert.match(r.get(1).result.content[0].text, /caducado/);
   } finally { await d.close(); }
 });
 
-test("puente: sin JARVIS_TOKEN sale con código 1", async () => {
-  const child = spawn(process.execPath, [BRIDGE], { env: { PATH: process.env.PATH, JARVIS_URL: "http://127.0.0.1:1" }, stdio: "ignore" });
+test("puente: sin KIOKU_TOKEN sale con código 1", async () => {
+  const child = spawn(process.execPath, [BRIDGE], { env: { PATH: process.env.PATH, KIOKU_URL: "http://127.0.0.1:1" }, stdio: "ignore" });
   const code = await new Promise((r) => child.once("close", r));
   assert.equal(code, 1);
 });

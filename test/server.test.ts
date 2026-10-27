@@ -3,16 +3,16 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Jarvis } from "../src/core/jarvis.ts";
+import { Kioku } from "../src/core/kioku.ts";
 import { startServer } from "../src/server/server.ts";
 import { tmpVault } from "./helpers.ts";
 
 async function setup() {
   const { root, cleanup } = tmpVault();
-  const web = mkdtempSync(path.join(tmpdir(), "jarvis-web-"));
+  const web = mkdtempSync(path.join(tmpdir(), "kioku-web-"));
   writeFileSync(path.join(web, "index.html"), "<h1>hola</h1>");
   writeFileSync(path.join(web, "quick.html"), "<h1>quick</h1>");
-  const j = await Jarvis.open({ root });
+  const j = await Kioku.open({ root });
   const srv = await startServer(j, { port: 0, webDir: web });
   const call = async (method: string, p: string, body?: unknown, headers: Record<string, string> = {}) => {
     const r = await fetch(srv.url + p, {
@@ -62,7 +62,7 @@ test("API: guardado con hash, conflicto 409, y 404", async () => {
 test("Seguridad: rutas internas/traversal, Host, Origin y content-type", async () => {
   const s = await setup();
   try {
-    for (const bad of [".jarvis/index.db", "../x.md", ".obsidian/a.md", "/etc/passwd.md"]) {
+    for (const bad of [".kioku/index.db", "../x.md", ".obsidian/a.md", "/etc/passwd.md"]) {
       const r = await s.call("GET", "/api/note?path=" + encodeURIComponent(bad));
       assert.ok(r.status === 400, `${bad} → ${r.status}`);
     }

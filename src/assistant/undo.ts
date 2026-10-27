@@ -1,6 +1,6 @@
 // Deshacer de las acciones automáticas del asistente: instantánea previa en texto plano + hash posterior.
 // Solo se deshace si NADA del grupo cambió desde la acción (si no, avisa y no pisa nada).
-import type { Jarvis } from "../core/jarvis.ts";
+import type { Kioku } from "../core/kioku.ts";
 import { ulid } from "../core/ids.ts";
 import { hashText, VaultError } from "../core/vault.ts";
 
@@ -20,10 +20,10 @@ export interface Snapshot {
 }
 
 export class UndoStore {
-  private j: Jarvis;
+  private j: Kioku;
   private lastMs = 0;
 
-  constructor(j: Jarvis) {
+  constructor(j: Kioku) {
     this.j = j;
   }
 

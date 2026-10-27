@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Jarvis } from "../src/core/jarvis.ts";
+import { Kioku } from "../src/core/kioku.ts";
 import { AssistantTools } from "../src/assistant/tools.ts";
 import { SessionRegistry } from "../src/assistant/session.ts";
 import { UndoStore } from "../src/assistant/undo.ts";
@@ -8,7 +8,7 @@ import { tmpVault } from "./helpers.ts";
 
 async function setup(exclude: string[] = []) {
   const { root, cleanup } = tmpVault();
-  const j = await Jarvis.open({ root });
+  const j = await Kioku.open({ root });
   const libros = await j.createDatabase({ name: "Libros", template: "libros" });
   await j.createRow(libros.path, { title: "Dune", props: { Estado: "Leyendo", Nota: 9 } });
   await j.createRow(libros.path, { title: "Ubik", props: { Estado: "Leído", Nota: 7 } });

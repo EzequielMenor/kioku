@@ -1,6 +1,6 @@
 // Proveedor LLM opcional (API compatible con OpenAI: Ollama, llama.cpp, LM Studio, o una API remota con clave propia).
 // Garantías: solo se usa cuando el usuario lo pide y tras ver el payload EXACTO; la clave vive en una variable de entorno
-// (nunca en disco); el modelo solo clasifica capturas — las operaciones las construye JARVIS y pasan por Propuestas.
+// (nunca en disco); el modelo solo clasifica capturas — las operaciones las construye Kioku y pasan por Propuestas.
 import { createHash } from "node:crypto";
 import { triageDraft, type AIProvider, type TriageInput } from "./ai.ts";
 import { normKey } from "./markdown.ts";
@@ -47,7 +47,7 @@ export const isLocalUrl = (baseUrl: string): boolean => {
 };
 
 const SYSTEM = [
-  "Eres el clasificador de la Bandeja de JARVIS, un segundo cerebro local. Recibes capturas rápidas y una lista de proyectos.",
+  "Eres el clasificador de la Bandeja de Kioku, un segundo cerebro local. Recibes capturas rápidas y una lista de proyectos.",
   "Para cada captura decide: kind = \"task\" si es una acción concreta que hay que hacer, o \"note\" si es información/idea.",
   "Si la captura pertenece claramente a uno de los proyectos dados, indica su título EXACTO en project; si no, null.",
   "No inventes proyectos ni rutas. Responde SOLO con JSON: {\"items\":[{\"path\":\"…\",\"kind\":\"task|note\",\"project\":\"…\"|null,\"reason\":\"una frase breve en español\"}]}",

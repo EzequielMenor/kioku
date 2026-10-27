@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Jarvis } from "../src/core/jarvis.ts";
+import { Kioku } from "../src/core/kioku.ts";
 import { AssistantTools } from "../src/assistant/tools.ts";
 import { SessionRegistry } from "../src/assistant/session.ts";
 import { UndoStore } from "../src/assistant/undo.ts";
@@ -8,9 +8,9 @@ import { tmpVault } from "./helpers.ts";
 
 async function setup(exclude: string[] = []) {
   const { root, cleanup } = tmpVault();
-  const j = await Jarvis.open({ root });
-  const proj = await j.createProject("Jarvis");
-  const cocina = await j.createNote({ title: "Cocina", body: "receta de lentejas con [[Jarvis]]" });
+  const j = await Kioku.open({ root });
+  const proj = await j.createProject("Kioku");
+  const cocina = await j.createNote({ title: "Cocina", body: "receta de lentejas con [[Kioku]]" });
   await j.createNote({ title: "Secreto", folder: "Privado", body: "lentejas secretas" });
   const cap = await j.capture("Idea suelta de bandeja");
   const tools = new AssistantTools(j, new UndoStore(j), { exclude });
@@ -68,7 +68,7 @@ test("herramientas: el resto de lecturas devuelven JSON válido", async () => {
   try {
     assert.equal((await call("inbox")).json.length, 1);
     assert.ok(Array.isArray((await call("list_tasks")).json));
-    assert.equal((await call("get_project", { path: proj.path })).json.project.title, "Jarvis");
+    assert.equal((await call("get_project", { path: proj.path })).json.project.title, "Kioku");
     assert.match((await call("today")).json.date, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok((await call("neighbors", { path: "Notas/Cocina.md" })).json.outgoing.length >= 1);
     assert.ok(Array.isArray((await call("recent_activity", { days: 7 })).json));
@@ -109,11 +109,11 @@ test("herramientas: cada llamada emite assistant.tool y queda como ai.action", a
 test("escritura: create_task crea la tarea y devuelve undoId que la deshace", async () => {
   const { j, call, tools, cleanup } = await setup();
   try {
-    const r = await call("create_task", { title: "Llamar a Ana", project: "Jarvis", due: "2026-10-30", priority: 1 });
+    const r = await call("create_task", { title: "Llamar a Ana", project: "Kioku", due: "2026-10-30", priority: 1 });
     assert.ok(!r.isError, r.text);
     assert.ok(r.undoId);
     const t = j.index.tasks().find((x) => x.title === "Llamar a Ana")!;
-    assert.equal(t.projectTitle, "Jarvis");
+    assert.equal(t.projectTitle, "Kioku");
     assert.equal(t.due, "2026-10-30");
     assert.equal(t.priority, 1);
     await new UndoStore(j).undo(r.undoId!);
@@ -205,7 +205,7 @@ test("escritura: convert_capture, add_checkpoint, add_decision y create_note", a
     assert.ok(j.index.tasks().some((t) => t.title.includes("Idea suelta")));
     await new UndoStore(j).undo(c.undoId!);
     assert.equal(j.vault.exists(cap.path), true);
-    assert.ok(!(await call("add_checkpoint", { project: "Jarvis", text: "Dejé la API a medias" })).isError);
+    assert.ok(!(await call("add_checkpoint", { project: "Kioku", text: "Dejé la API a medias" })).isError);
     assert.ok(!(await call("add_decision", { project: proj.path, text: "Usar Hermes" })).isError);
     const txt = (await j.readNote(proj.path)).text;
     assert.match(txt, /Dejé la API a medias/);
@@ -255,7 +255,7 @@ test("herramientas: inbox anota las capturas cuyo texto se entrega en session.re
 test("mantenimiento: find_broken_links lista el enlace roto con su origen", async () => {
   const { j, call, cleanup } = await setup();
   try {
-    await j.createNote({ title: "Con rotos", body: "ver [[No existe nada]] y [[Jarvis]]" });
+    await j.createNote({ title: "Con rotos", body: "ver [[No existe nada]] y [[Kioku]]" });
     const r = await call("find_broken_links");
     assert.ok(!r.isError, r.text);
     assert.deepEqual(r.json.map((b: { from: string; target: string }) => [b.from, b.target]), [["Notas/Con rotos.md", "No existe nada"]]);
@@ -298,7 +298,7 @@ test("mantenimiento: stale_projects respeta days y excluye proyectos al día", a
 test("exclude: today, list_tasks y get_project no filtran nada de carpetas excluidas", async () => {
   const { j, call, proj, cleanup } = await setup(["Privado/"]);
   try {
-    const t = await j.createNote({ title: "Tarea secreta", folder: "Privado", type: "task", fm: { status: "todo", due: "2000-01-01", priority: 1, project: "[[Jarvis]]" } });
+    const t = await j.createNote({ title: "Tarea secreta", folder: "Privado", type: "task", fm: { status: "todo", due: "2000-01-01", priority: 1, project: "[[Kioku]]" } });
     assert.ok(j.index.getNote(t.path), "la tarea existe en el índice");
     for (const [name, args] of [["today", {}], ["list_tasks", {}], ["get_project", { path: proj.path }]] as const) {
       const r = await call(name, args);
@@ -319,7 +319,7 @@ test("escritura: texto con enlaces o imágenes externas va a propuesta (exfiltra
       assert.equal(r.json.escalated, true, text);
     }
     assert.equal((await j.readNote(cocina.path)).text, before);
-    const ok = await call("append_to_note", { path: cocina.path, text: "ver [[Jarvis]] y seguir" });
+    const ok = await call("append_to_note", { path: cocina.path, text: "ver [[Kioku]] y seguir" });
     assert.ok(ok.json.undoId, "texto normal sigue siendo automático");
     j.close();
   } finally { cleanup(); }

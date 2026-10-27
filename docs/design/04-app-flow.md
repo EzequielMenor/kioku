@@ -3,7 +3,7 @@
 Flujos principales, con el resultado observable que verificamos en pruebas.
 
 ## F1 — Captura rápida (resuelve fricción de captura y P2)
-1. Atajo de Hyprland ejecuta `jarvis quick`.
+1. Atajo de Hyprland ejecuta `kioku quick`.
 2. Si el daemon no corre, se arranca (≈ 300 ms). Se muestra/alterna la ventana Quick.
 3. Usuario escribe. Gramática (primer token decide):
    | Entrada | Resultado |
@@ -20,7 +20,7 @@ Flujos principales, con el resultado observable que verificamos en pruebas.
 Fechas naturales soportadas (v1): `hoy`, `mañana`, `lunes…domingo`, `+3d`, `YYYY-MM-DD`.
 
 ## F2 — Empezar el día (P1)
-1. Abrir JARVIS → **Hoy**.
+1. Abrir Kioku → **Hoy**.
 2. Arriba: *"Empieza por: «Tarea» — vence hoy · en curso"* (+ botón **Empezar foco**). Debajo, 2 alternativas, colapsadas por defecto.
 3. Debajo: tarjetas "Retomar" de proyectos activos (máx. 3, por impulso).
 4. Lateral: Bandeja (n sin procesar) y Propuestas pendientes.
@@ -43,7 +43,7 @@ Fechas naturales soportadas (v1): `hoy`, `mañana`, `lunes…domingo`, `+3d`, `Y
 - En una nota: panel **Backlinks** (menciones enlazadas) y *menciones sin enlazar* (búsqueda FTS del título).
 
 ## F6 — Procesar la Bandeja (la organización no debe ser trabajo)
-1. JARVIS crea una **propuesta** por captura: tipo sugerido (tarea/nota), proyecto probable (coincidencia por palabras clave/enlaces), con razón.
+1. Kioku crea una **propuesta** por captura: tipo sugerido (tarea/nota), proyecto probable (coincidencia por palabras clave/enlaces), con razón.
 2. Pantalla Bandeja: `a` aceptar, `e` editar, `x` descartar, `j/k` moverse. Aceptar ⇒ `applyProposal` (mueve/convierte con hash `before`).
 3. Nada se aplica sin acción del usuario.
 
@@ -51,14 +51,14 @@ Fechas naturales soportadas (v1): `hoy`, `mañana`, `lunes…domingo`, `+3d`, `Y
 Cualquier generador (reglas hoy, LLM mañana) crea `Proposal`. UI: diff por operación → *Aprobar todo / Aprobar parcial / Rechazar*. Todo en el log.
 
 ## F8 — Importar / Exportar
-- `jarvis import-obsidian <ruta>`: **solo lectura** del origen; copia `.md` y adjuntos a `Notas/Importado/`, informa de enlaces rotos. Dry-run por defecto; requiere `--yes`.
-- `jarvis export <destino.zip>` y `jarvis restore <zip>` (restaura a carpeta vacía; nunca sobrescribe).
+- `kioku import-obsidian <ruta>`: **solo lectura** del origen; copia `.md` y adjuntos a `Notas/Importado/`, informa de enlaces rotos. Dry-run por defecto; requiere `--yes`.
+- `kioku export <destino.zip>` y `kioku restore <zip>` (restaura a carpeta vacía; nunca sobrescribe).
 
 ## Estados de error relevantes
 | Situación | Comportamiento |
 |---|---|
-| Archivo cambiado fuera de JARVIS durante edición | Conflicto: se muestra diff y se elige; no se sobrescribe |
+| Archivo cambiado fuera de Kioku durante edición | Conflicto: se muestra diff y se elige; no se sobrescribe |
 | Frontmatter YAML inválido | La nota se indexa como texto, se marca `⚠`, no se reescribe el frontmatter |
 | Índice corrupto/ausente | Reconstrucción automática en segundo plano; la app sigue funcionando leyendo disco |
-| Puerto ocupado | Siguiente puerto libre; se escribe en `.jarvis/runtime.json` |
+| Puerto ocupado | Siguiente puerto libre; se escribe en `.kioku/runtime.json` |
 | IA no disponible | Todo lo demás funciona; se omite la sugerencia en prosa |

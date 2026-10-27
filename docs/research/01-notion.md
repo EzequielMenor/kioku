@@ -18,7 +18,7 @@ Fuente: <https://www.notion.com/blog/data-model-behind-notion>
 - Una página es un bloque cuyo contenido son sus hijos. La indentación es estructural: mueve el bloque al `content` del anterior.
 - Edición = operaciones sobre registros agrupadas en **transacciones** que se aplican primero en local (UI en ms) y se encolan en `TransactionQueue` (IndexedDB/SQLite) hasta que el servidor acepta.
 
-**Qué merece la pena para JARVIS:** el desacople tipo/datos y la creación optimista local. **Qué descartamos:** el servidor de transacciones, WebSocket de sincronización y permisos por herencia (JARVIS es de un solo usuario y local-first). **Qué adaptamos:** nuestro "bloque" será el **Markdown**; no necesitamos un árbol de bloques en base de datos para v1 (ver decisión D-03).
+**Qué merece la pena para Kioku:** el desacople tipo/datos y la creación optimista local. **Qué descartamos:** el servidor de transacciones, WebSocket de sincronización y permisos por herencia (Kioku es de un solo usuario y local-first). **Qué adaptamos:** nuestro "bloque" será el **Markdown**; no necesitamos un árbol de bloques en base de datos para v1 (ver decisión D-03).
 
 ### N2. Bases de datos = colecciones de páginas con propiedades tipadas — [COMPROBADO]
 Fuente: <https://developers.notion.com/reference/property-object>, <https://www.notion.com/help/intro-to-databases>
@@ -28,7 +28,7 @@ Fuente: <https://developers.notion.com/reference/property-object>, <https://www.
 - Vistas enlazadas (*linked views*): mostrar una colección dentro de otra página; full-page vs inline.
 - La API actual separa `database` (contenedor) de `data source` (esquema + filas) — [COMPROBADO] por el endpoint `POST /v1/data_sources/{id}/query`.
 
-**Para JARVIS (v1):** `status` agrupado, `date`, `select`, `relation` y *vistas guardadas* (filtro+orden+agrupación). **Diferido:** rollup, formula, vistas calendario/timeline/galería.
+**Para Kioku (v1):** `status` agrupado, `date`, `select`, `relation` y *vistas guardadas* (filtro+orden+agrupación). **Diferido:** rollup, formula, vistas calendario/timeline/galería.
 
 ### N3. Navegación y velocidad de interacción — [COMPROBADO]
 Fuente: <https://www.notion.com/help/keyboard-shortcuts>
@@ -38,7 +38,7 @@ Fuente: <https://www.notion.com/help/keyboard-shortcuts>
 - `Ctrl+/` menú de acciones sobre la selección.
 - La ayuda **no documenta** una captura rápida global ni un "centro de mando" propio — [COMPROBADO como ausencia en esa página].
 
-**Para JARVIS:** paleta de comandos única (`Ctrl+K`) que une *buscar + navegar + crear + ejecutar acciones*; slash menu. Esto es el núcleo de **Quick**.
+**Para Kioku:** paleta de comandos única (`Ctrl+K`) que une *buscar + navegar + crear + ejecutar acciones*; slash menu. Esto es el núcleo de **Quick**.
 
 ### N4. Páginas anidadas como organización — [COMPROBADO] / [INFERIDO]
 - [COMPROBADO] árbol arbitrario de sub-páginas bajo el workspace.

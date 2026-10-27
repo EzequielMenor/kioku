@@ -1,4 +1,4 @@
-// Fachada del producto. Toda la lógica de JARVIS vive aquí; servidor, CLI y UI son clientes finos.
+// Fachada del producto. Toda la lógica de Kioku vive aquí; servidor, CLI y UI son clientes finos.
 import { EventEmitter } from "node:events";
 import { watch as fsWatch, type FSWatcher } from "node:fs";
 import path from "node:path";
@@ -27,7 +27,7 @@ export function isPlainValue(v: unknown): boolean {
   return scalar(v) || (Array.isArray(v) && v.every(scalar));
 }
 
-/** Carpeta donde se crean las filas: sin `..`, segmentos vacíos ni ocultos (`.jarvis`, `.obsidian`…). */
+/** Carpeta donde se crean las filas: sin `..`, segmentos vacíos ni ocultos (`.kioku`, `.obsidian`…). */
 function rowFolder(folder: string): string {
   const clean = folder.replace(/^\.?\/+|\/+$/g, "");
   const segs = clean.split(/[\\/]/);
@@ -83,7 +83,7 @@ export interface TodayView {
   proposals: number;
 }
 
-export interface JarvisOptions {
+export interface KiokuOptions {
   root: string;
   now?: () => Date;
   /** Proveedores de IA; por defecto solo reglas locales. */
@@ -119,7 +119,7 @@ function compareSuggestions(a: Suggestion, b: Suggestion): number {
   );
 }
 
-export class Jarvis {
+export class Kioku {
   readonly vault: Vault;
   readonly index: Index;
   readonly log: ActivityLog;
@@ -131,19 +131,19 @@ export class Jarvis {
   private syncTimer: NodeJS.Timeout | null = null;
   private lastEditLogged = new Map<string, number>();
 
-  private constructor(opts: JarvisOptions) {
+  private constructor(opts: KiokuOptions) {
     this.now = opts.now ?? (() => new Date());
     this.vault = new Vault(opts.root);
-    this.index = new Index(path.join(this.vault.root, ".jarvis", "index.db"));
+    this.index = new Index(path.join(this.vault.root, ".kioku", "index.db"));
     this.log = new ActivityLog(this.vault, this.index, this.now);
     this.proposals = new ProposalStore(this.vault);
     this.providers = opts.providers ?? [new RulesProvider()];
   }
 
-  static async open(opts: JarvisOptions): Promise<Jarvis> {
-    const j = new Jarvis(opts);
+  static async open(opts: KiokuOptions): Promise<Kioku> {
+    const j = new Kioku(opts);
     await j.vault.writeInternal("README.txt",
-      "Carpeta interna de JARVIS. index.db es un índice DERIVADO: se puede borrar y se reconstruye.\n" +
+      "Carpeta interna de Kioku. index.db es un índice DERIVADO: se puede borrar y se reconstruye.\n" +
       "log/ = actividad (texto plano), proposals/ = propuestas de IA, trash/ = borrados recuperables.\n");
     await j.log.reload();
     await j.index.sync(j.vault);
