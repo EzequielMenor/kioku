@@ -54,3 +54,11 @@ test("appHeight: en la app instalada usa la altura completa que iOS declara (lvh
   assert.equal(appHeight({ ...iphone, inner: 874 }), null, "ventana ya completa");
   assert.equal(appHeight({ ...iphone, lvh: 2000, vh: 2000 }), 874, "nunca por encima de la pantalla");
 });
+
+test("formatScreen: informa de la altura aplicada (--app-h) y de dónde acaba la barra inferior, o «sin» si no hay", async () => {
+  const { formatScreen } = await import("../web/src/screen-info.ts");
+  const snap = { inner: [402, 812] as [number, number], screen: [402, 874] as [number, number], visual: null, safeTop: 62, safeBottom: 34, standalone: true };
+  assert.match(formatScreen({ ...snap, layout: { appH: 874, navBottom: 873.6 } }), /· app-h 874 · barra ↓874$/);
+  assert.match(formatScreen({ ...snap, layout: { appH: null, navBottom: null } }), /· app-h sin · barra ↓sin$/);
+  assert.doesNotMatch(formatScreen(snap), /app-h/, "sin datos de maquetación no se inventa nada");
+});

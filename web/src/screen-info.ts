@@ -8,6 +8,8 @@ export interface ScreenSnapshot {
   standalone: boolean;
   /** Altura en px de 100lvh y 100vh según el navegador (0 si no entiende la unidad). */
   units?: { lvh: number; vh: number };
+  /** Altura que `watchAppHeight` ha aplicado (`--app-h`) y dónde acaba la barra inferior; null si no hay. */
+  layout?: { appH: number | null; navBottom: number | null };
 }
 
 const px = ([w, h]: [number, number]) => `${Math.round(w)}×${Math.round(h)}`;
@@ -20,6 +22,7 @@ export function formatScreen(s: ScreenSnapshot): string {
     `área segura ↑${Math.round(s.safeTop)} ↓${Math.round(s.safeBottom)}`,
     s.standalone ? "app instalada" : "navegador",
     ...(s.units ? [`lvh ${Math.round(s.units.lvh)} · vh ${Math.round(s.units.vh)}`] : []),
+    ...(s.layout ? [`app-h ${s.layout.appH === null ? "sin" : Math.round(s.layout.appH)} · barra ↓${s.layout.navBottom === null ? "sin" : Math.round(s.layout.navBottom)}`] : []),
   ].join(" · ");
 }
 
@@ -78,5 +81,9 @@ export function readScreen(): ScreenSnapshot {
     safeBottom,
     standalone: isStandalone(),
     units: { lvh: unitHeight("lvh"), vh: unitHeight("vh") },
+    layout: {
+      appH: parseFloat(document.documentElement.style.getPropertyValue("--app-h")) || null,
+      navBottom: document.querySelector(".bottomnav")?.getBoundingClientRect().bottom ?? null,
+    },
   };
 }
