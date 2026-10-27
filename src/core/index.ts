@@ -7,8 +7,8 @@ import { normKey, parseNote, type Frontmatter } from "./markdown.ts";
 
 const SCHEMA_VERSION = 2;
 
-export type NoteType = "note" | "task" | "project" | "journal" | "resource" | "capture";
-const NOTE_TYPES = new Set<string>(["note", "task", "project", "journal", "resource", "capture"]);
+export type NoteType = "note" | "task" | "project" | "journal" | "resource" | "capture" | "database";
+const NOTE_TYPES = new Set<string>(["note", "task", "project", "journal", "resource", "capture", "database"]);
 export type TaskStatus = "todo" | "doing" | "done" | "dropped";
 export const OPEN_STATUSES: TaskStatus[] = ["todo", "doing"];
 

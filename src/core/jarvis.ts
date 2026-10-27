@@ -14,7 +14,7 @@ import { ProposalStore, type Op, type Proposal, type ProposalDraft } from "./pro
 import { sanitizeFileName, Vault, VaultError } from "./vault.ts";
 
 export const FOLDERS: Record<NoteType, string> = {
-  capture: "Bandeja", task: "Tareas", project: "Proyectos", note: "Notas", journal: "Diario", resource: "Recursos",
+  capture: "Bandeja", task: "Tareas", project: "Proyectos", note: "Notas", journal: "Diario", resource: "Recursos", database: "Bases",
 };
 
 export interface CaptureResult {
