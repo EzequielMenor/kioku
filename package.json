@@ -1,10 +1,10 @@
 {
   "name": "jarvis",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "JARVIS — segundo cerebro local-first",
+  "description": "Kioku (JARVIS) — segundo cerebro local-first: Markdown, índice SQLite derivado, bases de datos y asistente con aprobación",
   "engines": {
     "node": ">=24"
   },
