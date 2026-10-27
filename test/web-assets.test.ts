@@ -56,5 +56,6 @@ test("móvil: la app está anclada al viewport y el documento no se desplaza (en
   assert.match(mobile, /html,\s*body\s*{[^}]*overscroll-behavior:\s*none/, "sin rebote del documento");
   assert.match(mobile, /\.shell\s*{[^}]*position:\s*fixed[^}]*inset:\s*0/, ".shell fijo a los cuatro bordes del viewport");
   assert.match(mobile, /main\s*{[^}]*overscroll-behavior:\s*contain/, "el scroll de main no se encadena al documento");
+  assert.match(mobile, /html\s*{[^}]*background:\s*var\(--side\)/, "el fondo del documento es el de la barra: una franja bajo ella no se ve como una barra negra");
   assert.match(mobile, /#root\s*{[^}]*overflow-y:\s*auto/, "«Falta la clave» (fuera de .shell) sigue siendo alcanzable en horizontal");
 });

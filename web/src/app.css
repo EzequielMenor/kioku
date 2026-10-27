@@ -336,10 +336,12 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 .sheet-list li:last-child a, .sheet-list li:last-child button { border-bottom: 0; }
 
 @media (hover: none) { .kcard .kmove { opacity: 1; } }
+.screen-info { margin: 10px 2px 2px; word-break: break-word; text-align: center; }
 
 @media (max-width: 720px) {
   /* Anclada al viewport: solo `main` hace scroll. Con height:100% en iOS (PWA o Safari) sobran píxeles, el documento se desplaza y deja un hueco bajo la barra. */
   html, body { overflow: hidden; overscroll-behavior: none; }
+  html { background: var(--side); } /* si iOS deja una franja bajo la barra inferior, se funde con ella en vez de verse como una barra negra */
   .shell { position: fixed; inset: 0; height: auto; }
   main { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   #root { overflow-y: auto; }

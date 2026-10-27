@@ -9,6 +9,7 @@ import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
 import { extractKey } from "./pairing.ts";
 import { SEAL_PATH } from "./seal.ts";
+import { formatScreen, readScreen } from "./screen-info.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
 import { NoteView } from "./note-view.tsx";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
@@ -741,6 +742,7 @@ function MoreSheet({ counts, theme, setTheme, onClose, onCapture, onJournal }: {
           <li><button onClick={onCapture}>Captura rápida</button></li>
           <li><button onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}</button></li>
         </ul>
+        <p class="muted small screen-info">{formatScreen(readScreen())}</p>
       </div>
     </div>
   );

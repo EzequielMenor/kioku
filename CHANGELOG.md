@@ -12,7 +12,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 - Contraste revisado (texto ≥ 4.5:1 en ambos temas). Capturas del README renovadas.
 
 ### Corregido
-- **Móvil (iOS):** una barra negra bajo la navegación inferior obligaba a desplazar la página y «todo subía». La app ahora se ancla al viewport en pantallas estrechas y solo `main` hace scroll; el documento ya no se mueve.
+- **Móvil (iOS):** una barra negra bajo la navegación inferior obligaba a desplazar la página y «todo subía». La app ahora se ancla al viewport en pantallas estrechas y solo `main` hace scroll; el documento ya no se mueve, y su fondo es el de la barra inferior, de modo que una franja sobrante no se ve como una barra negra.
+- «Más» muestra una línea con las medidas de la pantalla (ventana, pantalla, área segura, app instalada o navegador) para diagnosticar problemas de altura en el iPhone.
 
 ### Desarrollo
 - Nueva dependencia de desarrollo `@fontsource/shippori-mincho` 5.3.0 (licencia OFL-1.1); el build copia solo los dos pesos usados.

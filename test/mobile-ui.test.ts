@@ -33,3 +33,12 @@ test("pinchZoom: respeta los límites de zoom y no divide por cero", () => {
   assert.equal(pinchZoom({ k: 0.21, tx: 0, ty: 0 }, 1000, 10, { x: 0, y: 0 }).k, 0.2);
   assert.deepEqual(pinchZoom(v, 0, 50, { x: 5, y: 5 }), v, "distancia previa 0: sin cambios");
 });
+
+test("formatScreen: resume ventana, pantalla, área segura y modo en una línea que se pueda leer de un vistazo", async () => {
+  const { formatScreen } = await import("../web/src/screen-info.ts");
+  const snap = { inner: [390, 750] as [number, number], screen: [390, 844] as [number, number], visual: [390, 750] as [number, number] | null, safeTop: 47, safeBottom: 34, standalone: true };
+  assert.equal(formatScreen(snap), "ventana 390×750 · pantalla 390×844 · visual 390×750 · área segura ↑47 ↓34 · app instalada");
+  assert.match(formatScreen({ ...snap, standalone: false, visual: null }), /· navegador$/);
+  assert.doesNotMatch(formatScreen({ ...snap, visual: null }), /visual/, "sin visualViewport no se inventa el dato");
+  assert.match(formatScreen({ ...snap, inner: [390.4, 750.6] as [number, number] }), /ventana 390×751/, "redondea las medidas fraccionarias");
+});
