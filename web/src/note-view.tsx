@@ -1,4 +1,5 @@
 import { askConfirm } from "./dialogs.tsx";
+import { isMobile } from "./role.ts";
 import { Fragment } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, ApiError } from "./api.ts";
@@ -268,7 +269,7 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
         {(info?.unlinked ?? []).length > 0 && (
           <LinkList title="Menciones sin enlazar" empty="" items={info!.unlinked} go={go} />
         )}
-        <section><button class="danger" onClick={() => void trash()}>Mover a la papelera</button></section>
+        {!isMobile() && <section><button class="danger" onClick={() => void trash()}>Mover a la papelera</button></section>}
       </aside>
     </div>
   );

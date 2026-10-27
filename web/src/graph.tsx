@@ -1,5 +1,6 @@
 // Vista de grafo: layout de fuerzas propio sobre <canvas> (sin dependencias). Pensado para cientos de nodos.
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { pinchZoom } from "./graph-math.ts";
 import { useApi } from "./hooks.ts";
 
 interface GNode { path: string; title: string; type: string; degree: number }
@@ -207,16 +208,30 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
 
   const open = (n: GNode) => go(n.type === "project" ? `/proyecto/${n.path}` : `/nota/${n.path}`);
 
+  // Táctil: dos dedos hacen zoom (la rueda no existe en el móvil).
+  const ptrs = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<number | null>(null);
+  const spread = () => { const [a, b] = [...ptrs.current.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+
   const down = (e: PointerEvent) => {
     const s = st.current, i = hit(e);
     s.touched = true;
+    ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (ptrs.current.size === 2) { s.drag = null; pinch.current = spread(); return; }
     if (i >= 0) { s.drag = { i, moved: false }; s.nodes[i].pinned = true; }
     else s.drag = { pan: true, x: e.clientX, y: e.clientY, moved: false };
     wake(0.15);
   };
   const move = (e: PointerEvent) => {
     const s = st.current, d = s.drag;
+    if (ptrs.current.has(e.pointerId)) ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.current !== null && ptrs.current.size === 2) {
+      const [a, b] = [...ptrs.current.values()], r = cv.current!.getBoundingClientRect(), now = spread();
+      const v = pinchZoom(s, pinch.current, now, { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top });
+      s.k = v.k; s.tx = v.tx; s.ty = v.ty; pinch.current = now; draw();
+      return;
+    }
     if (d && "pan" in d) {
       s.tx += e.clientX - d.x; s.ty += e.clientY - d.y; d.x = e.clientX; d.y = e.clientY; d.moved = true; draw();
     } else if (d) {
@@ -226,8 +241,10 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
       if (i !== s.hover) { s.hover = i; cv.current!.style.cursor = i >= 0 ? "pointer" : "grab"; draw(); }
     }
   };
-  const up = () => {
+  const up = (e: PointerEvent) => {
     const s = st.current, d = s.drag;
+    ptrs.current.delete(e.pointerId);
+    if (pinch.current !== null) { if (ptrs.current.size < 2) pinch.current = null; s.drag = null; return; } // el final de un pellizco no abre nodos
     s.drag = null;
     if (d && !("pan" in d)) {
       s.nodes[d.i].pinned = false;
@@ -253,10 +270,10 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
 
   return (
     <div class="graph-wrap" ref={wrap}>
-      <canvas ref={cv} style="width:100%;height:100%;cursor:grab" onPointerDown={down} onPointerMove={move} onPointerUp={up}
+      <canvas ref={cv} style="width:100%;height:100%;cursor:grab" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
         onPointerLeave={() => { if (!st.current.drag) { st.current.hover = -1; draw(); } }} aria-label="Grafo de notas y enlaces" />
       <button class="mini graph-fit" onClick={() => { st.current.touched = false; fit(); draw(); }}>Encuadrar</button>
-      <div class="graph-hint muted small">Arrastra para mover · rueda para zoom · clic en un nodo para abrirlo</div>
+      <div class="graph-hint muted small">Arrastra para mover · rueda o pellizco para zoom · toca un nodo para abrirlo</div>
     </div>
   );
 }

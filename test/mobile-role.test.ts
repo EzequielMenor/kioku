@@ -16,7 +16,7 @@ const FM = (extra: string) => `---\nid: 01HX${Math.random().toString(36).slice(2
 const SEED = {
   "Notas/Publica.md": FM("type: note\n") + "Texto público. Enlace a [[Secreto]].\n",
   "Privado/Secreto.md": FM("type: note\n") + "MARCASECRETA contenido reservado\n",
-  "Privado/Tarea privada.md": FM("type: task\nstatus: todo\ndue: 2026-10-27\n") + "MARCASECRETA tarea\n",
+  "Privado/Tarea privada.md": FM("type: task\nstatus: todo\ndue: 2020-01-01\npriority: 1\n") + "MARCASECRETA tarea\n",
   "Privado/Proyecto oculto.md": FM("type: project\nstatus: active\n") + "MARCASECRETA proyecto\n",
   "Tareas/Tarea publica.md": FM("type: task\nstatus: todo\n") + "Hacer algo\n",
 };
@@ -142,11 +142,15 @@ test("móvil: el grafo sin lo privado conserva las aristas entre notas visibles"
   const s = await setup();
   try {
     await s.j.createNote({ title: "Otra pública", body: "ver [[Publica]]" });
-    const g = (await s.call("GET", "/api/graph")).json as { nodes: { path: string }[]; edges: [number, number][] };
+    const g = (await s.call("GET", "/api/graph")).json as { nodes: { path: string; degree: number }[]; edges: [number, number][]; total: number; isolated: number };
     assert.ok(g.nodes.every((n) => !n.path.startsWith("Privado/")));
     assert.ok(g.edges.every(([a, b]) => g.nodes[a] && g.nodes[b]), "ninguna arista apunta a un nodo inexistente");
     const names = g.edges.map(([a, b]) => [g.nodes[a].path, g.nodes[b].path].sort().join("|"));
     assert.ok(names.some((n) => n.includes("Notas/Otra pública.md") && n.includes("Notas/Publica.md")), "se conserva el enlace visible");
+    // los contadores tampoco delatan lo privado: 3 notas visibles, una aislada, y el grado cuenta solo vecinos visibles
+    assert.equal(g.total, 3);
+    assert.equal(g.isolated, 1);
+    assert.equal(g.nodes.find((n) => n.path === "Notas/Publica.md")!.degree, 1, "el enlace a [[Secreto]] no cuenta");
   } finally { await s.done(); }
 });
 
@@ -233,5 +237,22 @@ test("móvil: el SSE no deja pasar eventos de rutas privadas ni de escritorio/as
     ac.abort(); await pump;
     assert.match(seen, /Notas\/Publica\.md/);
     assert.doesNotMatch(seen, /Privado|assistant\.tool|navigate/);
+  } finally { await s.done(); }
+});
+
+test("móvil: «Hoy» sin lo privado conserva la forma que espera la interfaz (siguiente paso = la mejor tarea visible, foco ajeno oculto)", async () => {
+  const s = await setup();
+  try {
+    await s.j.startFocus({ taskPath: "Privado/Tarea privada.md" });
+    const full = (await s.call("GET", "/api/today", undefined, KEY)).json;
+    assert.equal(full.suggestion.task.path, "Privado/Tarea privada.md", "control: con la clave completa la privada es la sugerida");
+    const t = (await s.call("GET", "/api/today")).json;
+    assert.equal(t.suggestion?.task.path, "Tareas/Tarea publica.md", "se promociona la mejor tarea visible");
+    assert.ok(t.alternatives.every((a: { task: { path: string } } | null) => a && !a.task.path.startsWith("Privado/")));
+    assert.deepEqual(t.focus, { active: false }, "no se revela el foco sobre una tarea privada");
+    assert.ok(t.resume.every((r: { project: { path: string } } | null) => r && r.project && !r.project.path.startsWith("Privado/")));
+    assert.ok(Array.isArray(t.inbox.items));
+    assert.deepEqual((await s.call("GET", "/api/focus")).json, { active: false });
+    assert.doesNotMatch(JSON.stringify(t), /Privado|MARCASECRETA|Tarea privada/);
   } finally { await s.done(); }
 });

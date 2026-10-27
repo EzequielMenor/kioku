@@ -1,7 +1,7 @@
 // Acceso desde el móvil: lista blanca del rol `mobile` (la impone el servidor, la UI solo la refleja),
 // privacidad (`.kioku/mobile.json`: carpetas que nunca salen del portátil) y filtrado de respuestas.
 import path from "node:path";
-import { hideExcluded, isExcludedPath, parseAssistantConfig } from "../assistant/policy.ts";
+import { isExcludedPath, parseAssistantConfig } from "../assistant/policy.ts";
 
 export type Role = "full" | "mobile";
 
@@ -43,23 +43,41 @@ export function parseMobileConfig(text: string | null): string[] {
   }
 }
 
-interface Graph { nodes: { path: string }[]; edges: [number, number][] }
+type Obj = Record<string, unknown>;
+const isObj = (x: unknown): x is Obj => !!x && typeof x === "object" && !Array.isArray(x);
 
-/** El grafo va por índices: al quitar nodos hay que reindexar las aristas que sobreviven. */
-function filterGraph(g: Graph, exclude: string[]): Graph {
-  const remap = new Map<number, number>();
-  const nodes: Graph["nodes"] = [];
-  g.nodes.forEach((n, i) => { if (!isPrivate(n.path, exclude)) { remap.set(i, nodes.length); nodes.push(n); } });
-  const edges = g.edges.flatMap(([a, b]) => (remap.has(a) && remap.has(b) ? [[remap.get(a)!, remap.get(b)!] as [number, number]] : []));
-  return { ...g, nodes, edges };
+/** Claves que nombran una nota en las respuestas (la tarea de un foco, el proyecto de una tarea…). */
+const NOTE_KEYS = ["path", "projectPath", "taskPath"];
+const names = (o: Obj, exclude: string[]) => NOTE_KEYS.some((k) => typeof o[k] === "string" && isPrivate(o[k] as string, exclude));
+/** El objeto es de una nota privada, o lleva una (`{ task: {…privada…} }`, `{ project: {…} }`). */
+const touches = (o: Obj, exclude: string[]) => names(o, exclude) || Object.values(o).some((x) => isObj(x) && names(x, exclude));
+
+/** Quita lo privado: los elementos de las listas desaparecen; un objeto suelto que lo toca queda en `null`. */
+function clean(v: unknown, exclude: string[]): unknown {
+  if (Array.isArray(v)) return v.filter((x) => !(isObj(x) && touches(x, exclude))).map((x) => clean(x, exclude));
+  if (!isObj(v)) return v;
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, isObj(x) && touches(x, exclude) ? null : clean(x, exclude)]));
+}
+
+/** «Hoy»: si la mejor tarea es privada se sugiere la mejor visible, y el foco o los proyectos privados no aparecen. */
+function todayView(t: Obj, exclude: string[]): unknown {
+  const visible = [t.suggestion, ...(Array.isArray(t.alternatives) ? t.alternatives : [])].filter((s) => isObj(s) && !touches(s, exclude));
+  const inbox = isObj(t.inbox) && Array.isArray(t.inbox.items) ? t.inbox : null;
+  const hidden = inbox ? (inbox.items as unknown[]).length - (clean(inbox.items, exclude) as unknown[]).length : 0;
+  const base = clean({ ...t, suggestion: null, alternatives: [], focus: isObj(t.focus) && touches(t.focus, exclude) ? { active: false } : t.focus }, exclude) as Obj;
+  return {
+    ...base, suggestion: clean(visible[0] ?? null, exclude), alternatives: clean(visible.slice(1), exclude),
+    ...(inbox && hidden ? { inbox: { ...(base.inbox as Obj), count: Math.max(0, Number(inbox.count) - hidden) } } : {}),
+  };
 }
 
 /** Respuesta de lectura sin nada de las carpetas privadas. */
 export function mobileView(route: string, v: unknown, exclude: string[]): unknown {
   if (!exclude.length) return v;
-  if (route === "/api/graph") return filterGraph(v as Graph, exclude);
   if (route === "/api/resolve") { const r = v as { path: string | null }; return { ...r, path: r.path && isPrivate(r.path, exclude) ? null : r.path }; }
-  return hideExcluded(v, exclude);
+  if (route === "/api/today" && isObj(v)) return todayView(v, exclude);
+  if (route === "/api/focus" && isObj(v) && touches(v, exclude)) return { active: false };
+  return clean(v, exclude);
 }
 
 /** Eventos en vivo que le llegan al móvil: cambios de notas visibles; nada de escritorio, asistente ni rutas privadas. */

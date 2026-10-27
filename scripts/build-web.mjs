@@ -1,6 +1,6 @@
 // Empaqueta la UI (Preact + CodeMirror 6) en dist/web. Sin framework de build: solo esbuild.
 import { build } from "esbuild";
-import { copyFileSync, mkdirSync, statSync } from "node:fs";
+import { cpSync, copyFileSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -21,6 +21,7 @@ await build({
   legalComments: "none",
   logLevel: "info",
 });
-for (const f of ["index.html", "quick.html"]) copyFileSync(path.join(root, "web", f), path.join(out, f));
+for (const f of ["index.html", "quick.html", "manifest.webmanifest"]) copyFileSync(path.join(root, "web", f), path.join(out, f));
+cpSync(path.join(root, "web", "icons"), path.join(out, "icons"), { recursive: true });
 const size = (f) => (statSync(path.join(out, f)).size / 1024).toFixed(0) + " KB";
 console.log(`dist/web listo → app.js ${size("app.js")}, quick.js ${size("quick.js")}`);

@@ -48,6 +48,18 @@
 - Sin calendario, galería, relaciones entre bases, rollups, fórmulas ni plantillas de fila (siguientes pasos en `06-implementation-plan.md`); el asistente aún no crea bases nuevas, solo añade filas.
 - Varias propuestas del asistente por fila (una por llamada escalada) en vez de una sola en lote.
 
+## Kioku en el móvil (0.5.0, JARV-13)
+**Verificado**
+- `npm test`: 174/174 y `npm run typecheck` limpio. `test/mobile-role.test.ts` (13): la clave del móvil se crea una vez con 0600, es distinta de la completa y no entra en `kioku export`; `/api/session` dice el rol; **lista blanca** (borrar nota, asistente, escritorio, propuestas, mantenimiento, IA, foco, crear proyecto/base → 403; capturar, estado de tarea, editar nota, crear nota y `database/query` → 200); **carpetas privadas ausentes de todas las lecturas** (notas, búsqueda, tareas, proyectos, bandeja, Hoy, grafo, bases, foco, resolver, sugerencias, nota, SSE), incluidos trucos de ruta (`/Privado/…`, `//`, `..`, mayúsculas) y escrituras a rutas privadas → 403; Hoy promueve la mejor tarea visible si la primera es privada y oculta un foco ajeno; el grafo no delata contadores ni grados; revocar la clave surte efecto al instante; `Host`/`Origin` de la lista aceptados (cookie `Secure`) y otros rechazados (también por sufijo); cookie con `Max-Age` de un año; MIME del manifiesto. Los tests de privacidad se comprobaron quitando cada protección (fallan). `test/pair.test.ts` (7) cubre `kioku pair`, `--revoke` y `KIOKU_ALLOWED_HOSTS` en el unit del servicio; `test/mobile-ui.test.ts` (4) la clave pegada y el zoom por pellizco.
+- E2E en Chromium headless a **390 px** con datos temporales y rol móvil real (más de 20 comprobaciones, cero errores de consola): barra inferior y botón «+», sin scroll horizontal, «Más» sin Asistente ni Propuestas, captura desde el «+», marcar tarea, editar una nota (queda guardada en el `.md`), panel lateral de la nota debajo del texto, rutas prohibidas forzadas → 403 y la nota sigue ahí, Bandeja/Bases sin controles de borrar o crear, y **lo privado ausente** en Notas, grafo y búsqueda (con la clave completa sí existe). En escritorio (1280 px, rol completo) todo sigue igual y sin errores. Pantalla «Falta la clave»: pegar la clave o la URL de `kioku pair` entra y deja la cookie de un año.
+- Encontrado y corregido con esa prueba: si la mejor tarea de Hoy era privada, el filtro la anulaba y la pantalla fallaba.
+
+**No verificado**
+- **Un iPhone/iPad real:** «Añadir a pantalla de inicio», que la cookie de Safari pase a la app instalada (si no, está el campo para pegar la clave), el tacto y el pellizco del grafo. Hay checklist en el README.
+- Tailscale en sí (`tailscale serve`): lo instala y configura el usuario; aquí solo se prueba el daemon aceptando el `Host` de la lista.
+- Sin service worker ni copia local: **sin conexión no funciona** (fases 2 y 3, v0.6.0 y v0.7.0).
+- El contador de tareas vencidas de Hoy incluye las de carpetas privadas (solo el número).
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.

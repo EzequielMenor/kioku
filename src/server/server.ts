@@ -192,7 +192,7 @@ export async function startServer(
         }
         case "/api/graph": {
           const focus = q.get("focus");
-          return send(res, 200, j.index.graph({ focus: focus ? userPath(focus) : undefined, depth: Math.min(3, Number(q.get("depth") ?? 1)), max: Number(q.get("max") ?? 400) }));
+          return send(res, 200, j.index.graph({ focus: focus ? userPath(focus) : undefined, depth: Math.min(3, Number(q.get("depth") ?? 1)), max: Number(q.get("max") ?? 400), skip }));
         }
         case "/api/resolve": return send(res, 200, { path: j.index.resolve(q.get("q") ?? "") });
         case "/api/suggest-links": return send(res, 200, j.index.suggestLinks(q.get("q") ?? "", 8));

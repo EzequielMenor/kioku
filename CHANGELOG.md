@@ -2,6 +2,20 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## [0.5.0] — 2026-10-27
+
+### Añadido
+- **Kioku en el iPhone/iPad** (JARV-13, fase 1 de 3): la interfaz funciona en pantallas estrechas (barra inferior, botón «+» para capturar, nota con su panel debajo, tableros de una columna, zoom por pellizco en el grafo) y se instala como app («Añadir a pantalla de inicio»: manifiesto e iconos). Por ahora **requiere conexión** con el portátil (sin conexión: 0.6 y 0.7).
+- **Acceso por Tailscale:** `tailscale serve` publica el daemon, que sigue ligado a `127.0.0.1`. Solo acepta `Host`/`Origin` de la lista cerrada `KIOKU_ALLOWED_HOSTS` (el servicio la conserva).
+- **`kioku pair` / `kioku pair --revoke`:** crea una clave solo para el móvil (`.kioku/secret-mobile`, 0600, fuera de las copias) con la dirección para abrirla (y QR si hay `qrencode`); revocarla surte efecto al instante.
+- **Rol «móvil» impuesto por el servidor:** puede leer, capturar, marcar tareas y editar notas/propiedades; borrar, asistente, propuestas, foco, escritorio, mantenimiento y edición de bases devuelven 403 aunque se fuerce la petición. La interfaz oculta esos controles.
+- **Carpetas privadas** (`.kioku/mobile.json`, `{"exclude": ["Privado/"]}`): nunca salen del portátil. Se aplican a todas las lecturas y escrituras del móvil (incluidos Hoy, el grafo con sus contadores, la búsqueda y los eventos en vivo) y normalizan trucos de ruta.
+- La pantalla «Falta la clave» admite pegar la clave o la dirección de `kioku pair` (iOS no siempre pasa la cookie de Safari a la app instalada).
+- Favicon (arregla el 404 de `/favicon.ico`).
+
+### Cambiado
+- La cookie de acceso dura un año (antes era de sesión) y lleva `Secure` cuando el acceso no es local.
+
 ## [0.4.1] — 2026-10-27
 
 ### Corregido

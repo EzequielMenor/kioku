@@ -465,13 +465,14 @@ export class Index {
   }
 
   /** Grafo de enlaces resueltos. Con `focus`, solo el vecindario (no dirigido) hasta `depth`; si no, los `max` nodos más conectados. */
-  graph(opts: { focus?: string; depth?: number; max?: number } = {}): {
+  graph(opts: { focus?: string; depth?: number; max?: number; skip?: (path: string) => boolean } = {}): {
     nodes: { path: string; title: string; type: NoteType; degree: number }[];
     edges: [number, number][];
     total: number;
     isolated: number;
   } {
-    const notes = this.db.prepare("SELECT path,title,type FROM notes").all() as { path: string; title: string; type: NoteType }[];
+    const all = this.db.prepare("SELECT path,title,type FROM notes").all() as { path: string; title: string; type: NoteType }[];
+    const notes = opts.skip ? all.filter((n) => !opts.skip!(n.path)) : all; // lo omitido no cuenta ni como nodo, ni como vecino, ni en los totales
     const raw = this.db
       .prepare("SELECT DISTINCT src, dst_path AS dst FROM links WHERE dst_path IS NOT NULL AND src<>dst_path")
       .all() as { src: string; dst: string }[];

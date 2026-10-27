@@ -1,6 +1,7 @@
 // Bases de datos: Tabla / Tablero / Lista sobre notas Markdown. La definición vive en el frontmatter de la base;
 // aquí solo se consulta y se edita (cada celda es una propiedad de su nota).
 import { useEffect, useState } from "preact/hooks";
+import { isMobile } from "./role.ts";
 import { api, lsGet, lsSet } from "./api.ts";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi } from "./hooks.ts";
@@ -47,14 +48,14 @@ export function DatabasesList({ rev, go, guard }: { rev: number; go: Go; guard: 
     <div class="page narrow">
       <header class="page-head"><h1>Bases</h1></header>
       <p class="muted">Una base es una nota que reúne otras notas como filas (por carpeta, tipo o etiqueta) con propiedades y vistas. Todo queda en ficheros Markdown.</p>
-      <form class="inline addbar" onSubmit={create}>
+      {!isMobile() && <form class="inline addbar" onSubmit={create}>
         <input placeholder="Nombre de la nueva base…" value={name} onInput={(e) => setName(e.currentTarget.value)} aria-label="Nombre de la base" />
         <select value={tpl} onChange={(e) => setTpl(e.currentTarget.value)} aria-label="Plantilla">
           {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
         <button class="primary" disabled={!name.trim()}>Crear</button>
-      </form>
-      {data && data.length === 0 && <div class="empty">Aún no tienes bases. Crea una arriba, por ejemplo «Libros».</div>}
+      </form>}
+      {data && data.length === 0 && <div class="empty">{isMobile() ? "Aún no hay bases. Se crean desde el portátil." : "Aún no tienes bases. Crea una arriba, por ejemplo «Libros»."}</div>}
       <div class="cards">
         {(data ?? []).map((d) => (
           <a key={d.path} class="card dbcard" href={`#/bases/${enc(d.path)}`}>
@@ -155,20 +156,22 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
         {draft ? (
           <>
             <span class="chip accent">Cambios sin guardar</span>
-            <button class="primary" onClick={() => void saveView()}>Guardar vista</button>
+            {!isMobile() && <button class="primary" onClick={() => void saveView()}>Guardar vista</button>}
             <button onClick={() => setDraft(null)}>Descartar</button>
           </>
-        ) : db.views.length > 1 && <button class="subtle" onClick={() => void deleteView()}>Borrar vista</button>}
+        ) : db.views.length > 1 && !isMobile() && <button class="subtle" onClick={() => void deleteView()}>Borrar vista</button>}
       </div>
 
       {db.warnings.length > 0 && <div class="notice warn" role="status">{db.warnings.map((w) => <div key={w}>{w}</div>)}</div>}
       {panel && <ViewPanel view={view} available={db.available} edit={edit} />}
 
-      <form class="inline addbar" onSubmit={(e) => { e.preventDefault(); void addRow(); }}>
-        <input placeholder="Nueva fila…  (título)" value={title} onInput={(e) => setTitle(e.currentTarget.value)} aria-label="Título de la nueva fila" />
-        <button class="primary" disabled={!title.trim()}>Añadir</button>
-        <span class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</span>
-      </form>
+      {isMobile()
+        ? <div class="addbar"><span class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</span></div>
+        : <form class="inline addbar" onSubmit={(e) => { e.preventDefault(); void addRow(); }}>
+          <input placeholder="Nueva fila…  (título)" value={title} onInput={(e) => setTitle(e.currentTarget.value)} aria-label="Título de la nueva fila" />
+          <button class="primary" disabled={!title.trim()}>Añadir</button>
+          <span class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</span>
+        </form>}
 
       {kind === "table" && <Table res={res} view={view} sortBy={sortBy} setCell={setCell} />}
       {kind === "list" && <List res={res} />}

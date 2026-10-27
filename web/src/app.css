@@ -317,3 +317,55 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 .props dt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
 .props .addprop { display: grid; grid-template-columns: 1fr 1fr auto; gap: 4px; } .props .addprop button { padding: 2px 9px; }
 .props .addprop-t { opacity: .7; }
+
+/* ───────────── Móvil / iPad: barra inferior y diseño de una columna ───────────── */
+.bottomnav, .fab { display: none; }
+.locked { margin: 20vh auto; max-width: 34rem; text-align: center; padding: 0 16px; }
+.locked .inline { justify-content: center; margin-top: 14px; }
+.locked .inline input { flex: 1; min-width: 0; }
+.sheet-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.sheet-list a, .sheet-list button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 8px 6px; background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--fg); font-size: 15px; text-align: left; border-radius: 0; }
+.sheet-list a svg { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--accent); }
+.sheet-list a span { flex: 1; }
+.sheet-list li:last-child a, .sheet-list li:last-child button { border-bottom: 0; }
+
+@media (hover: none) { .kcard .kmove { opacity: 1; } }
+
+@media (max-width: 720px) {
+  .sidebar { display: none; }
+  .content { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+  .bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; background: var(--side); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  .bottomnav a, .bottomnav button { flex: 1; min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: none; border: 0; border-radius: 0; color: var(--muted); font-size: 11px; padding: 6px 0; }
+  .bottomnav .active { color: var(--accent); }
+  .bottomnav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .fab { display: flex; align-items: center; justify-content: center; position: fixed; right: 16px; bottom: calc(74px + env(safe-area-inset-bottom)); z-index: 41; width: 54px; height: 54px; padding: 0; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-fg); font-size: 30px; line-height: 1; box-shadow: var(--shadow); }
+  .page, .page.narrow, .page.wide { padding: 16px 16px 96px; }
+  .page-head { flex-wrap: wrap; }
+  .page-head .row { flex-wrap: wrap; }
+  h1 { font-size: 22px; }
+  .note-layout { flex-direction: column; }
+  .note-main { padding: 14px 16px 20px; max-width: none; width: 100%; }
+  .note-title { font-size: 24px; }
+  .note-side { display: block; width: auto; border-left: 0; border-top: 1px solid var(--line); padding: 18px 16px 96px; }
+  .grid { grid-template-columns: 1fr; }
+  .board { grid-template-columns: 1fr; }
+  .focusbar { padding: 9px 14px; }
+  .toast { bottom: calc(80px + env(safe-area-inset-bottom)); max-width: 92vw; }
+  .scrim { padding: 12px; }
+  .scrim.top { padding-top: 8vh; }
+  .sheet-scrim { align-items: flex-end; padding: 0; }
+  .modal.sheet { width: 100%; border-radius: 16px 16px 0 0; padding: 8px 16px calc(12px + env(safe-area-inset-bottom)); max-height: 85vh; }
+  .modal { max-height: 86vh; }
+  /* 16 px evita el zoom automático de iOS al enfocar un campo; 40 px de alto para dedos */
+  input, select, textarea { font-size: 16px; }
+  button, .chip.btn, .pill, select, input:not([type=checkbox]):not([type=radio]) { min-height: 40px; }
+  .mini { min-height: 36px; padding: 4px 12px; }
+  .task input[type=checkbox] { width: 22px; height: 22px; }
+  .graph-page { padding: 14px 12px 12px; }
+  .graph-hint { display: none; }
+  .graph-fit { right: auto; left: 12px; }
+  .hint { display: none; }
+  .cards .row.small { flex-wrap: wrap; gap: 8px; }
+  .rows li { flex-wrap: wrap; }
+  .rows .path { display: none; }
+}

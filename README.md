@@ -5,7 +5,7 @@
 **Tu segundo cerebro, local y tuyo.**
 Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un asistente que propone y tú apruebas.
 
-[![Versión](https://img.shields.io/badge/versión-0.4.1-e0a458)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versión-0.5.0-e0a458)](CHANGELOG.md)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
@@ -209,6 +209,19 @@ kioku ai triage --yes     # solo entonces se envía; el resultado son propuestas
 
 La clave nunca se guarda en disco: solo el nombre de la variable de entorno que la contiene.
 
+## Kioku en el móvil (iPhone / iPad)
+
+Kioku es una app web: el móvil la abre desde tu portátil a través de [Tailscale](https://tailscale.com) (una VPN privada entre tus dispositivos; no se abre ningún puerto a Internet). Sirve para **leer, repasar y apuntar** fuera de casa; lo demás (asistente, propuestas, foco, borrar, bases) sigue siendo cosa del portátil. De momento **necesita conexión** con el portátil: el modo sin conexión llegará en las versiones 0.6 y 0.7.
+
+1. Instala Tailscale en el portátil y en el móvil (misma cuenta) y activa HTTPS en tu tailnet.
+2. En el portátil: `tailscale serve --bg 47800` (publica `https://<equipo>.<tu-tailnet>.ts.net` hacia el daemon; sigue ligado a `127.0.0.1`).
+3. Dile al daemon qué nombre aceptar: `KIOKU_ALLOWED_HOSTS=<equipo>.<tu-tailnet>.ts.net` (con `kioku service install` hecho **después** de definirla, se conserva) y reinicia el daemon.
+4. **Carpetas privadas (recomendado):** crea `.kioku/mobile.json` con `{"exclude": ["Privado/"]}`; lo que esté ahí no sale del portátil.
+5. `kioku pair` imprime la dirección de emparejamiento (con QR si tienes `qrencode`). Ábrela en Safari y pulsa Compartir → **Añadir a pantalla de inicio**. Si la app instalada pide la clave, pega la dirección en la pantalla «Falta la clave».
+6. Para desemparejar un móvil perdido: `kioku pair --revoke` (surte efecto al instante).
+
+El móvil usa una clave **limitada** (`.kioku/secret-mobile`): puede leer, capturar, marcar tareas y editar notas, pero el daemon le niega borrar, el asistente y el escritorio aunque se fuerce la petición. Ten en cuenta que, tras abrir una nota, su texto está en el teléfono.
+
 ## Referencia de la CLI
 
 | Comando | Descripción |
@@ -222,6 +235,7 @@ La clave nunca se guarda en disco: solo el nombre de la variable de entorno que 
 | `ai …` · `ask <mensaje>` · `assistant status\|actions\|undo` | IA opcional y asistente |
 | `reindex` | Reconstruye el índice desde los ficheros |
 | `export` · `restore` · `import-obsidian` | Portabilidad |
+| `url` · `pair [--revoke]` | URL de acceso con clave · emparejar (o desemparejar) el móvil |
 | `daemon` · `status` · `service install\|uninstall\|status` | Servidor y arranque automático |
 
 `kioku --help` lista todo con ejemplos.
@@ -255,6 +269,7 @@ Diseño completo en [`docs/design`](docs/design) (PRD, arquitectura y decisiones
 - Las escrituras de la IA pasan por propuestas, o por acciones reversibles con Deshacer, y quedan auditadas.
 - Tu bóveda de Obsidian nunca se modifica: la importación es una copia.
 - **La API del daemon exige una clave.** Al arrancar crea `.kioku/secret` (0600, no se incluye en las copias de seguridad) y toda ruta `/api` la pide, lecturas incluidas, por cookie (`HttpOnly`, `SameSite=Strict`) o cabecera `x-kioku-key`. `kioku open`, `kioku quick` y los atajos la llevan solos; `kioku url` imprime una URL de acceso para abrirla a mano. Así, aunque la jaula del asistente comparta la red del equipo (Hermes necesita llegar a su proveedor), no puede leer ni cambiar tus notas saltándose las herramientas con token de sesión. Límite: otro proceso de tu mismo usuario que pueda leer `.kioku/secret` sí puede usar la API (es el mismo nivel de acceso que ya tiene a tus ficheros).
+- **El móvil tiene su propia clave, más limitada** (`kioku pair`): el daemon solo acepta otros nombres de host si los listas en `KIOKU_ALLOWED_HOSTS`, impone en el servidor lo que el móvil puede hacer, oculta las carpetas de `.kioku/mobile.json` y la clave se revoca al instante. Ver [Kioku en el móvil](#kioku-en-el-móvil-iphone--ipad).
 
 ## Desarrollo
 
@@ -280,7 +295,7 @@ Ideas siguientes, sin orden de compromiso:
 
 ## Versiones
 
-Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.4.1**.
+Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.5.0**.
 
 ## Licencia
 

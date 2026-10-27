@@ -7,6 +7,8 @@ import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
+import { extractKey } from "./pairing.ts";
+import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
 import { NoteView } from "./note-view.tsx";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
 import type {
@@ -41,6 +43,9 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/asistente", label: "Asistente", key: "a", icon: "asistente" },
   { route: "/propuestas", label: "Propuestas", key: "r", icon: "propuestas" },
 ];
+
+/** Entradas de navegación que ve quien usa la interfaz (el móvil no tiene Asistente ni Propuestas). */
+const visibleNav = () => NAV.filter((n) => !(isMobile() && MOBILE_HIDDEN.has(n.route)));
 
 const enc = (p: string) => encodeURI(p);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -81,7 +86,7 @@ function listNav(e: KeyboardEvent): boolean {
 function App() {
   const [route, setRoute] = useRoute();
   const [toast, setToast] = useState<Toast | null>(null);
-  const [overlay, setOverlay] = useState<null | "palette" | "capture" | "help" | "context" | "endfocus">(null);
+  const [overlay, setOverlay] = useState<null | "palette" | "capture" | "help" | "context" | "endfocus" | "more">(null);
   const [ctxPath, setCtxPath] = useState<string | null>(null);
   const [theme, setTheme] = useState(lsGet("theme") ?? "dark");
   const rev = useRevision((e) => { if (e.kind === "navigate" && e.route) setRoute(e.route); });
@@ -94,6 +99,11 @@ function App() {
     addEventListener(UNAUTHORIZED_EVENT, on);
     return () => removeEventListener(UNAUTHORIZED_EVENT, on);
   }, []);
+  const [, setRoleTick] = useState(0);
+  useEffect(() => {
+    api<{ role: "full" | "mobile" }>("GET", "/api/session").then((r) => { const changed = r.role !== getRole(); setRole(r.role); if (changed) setRoleTick((n) => n + 1); }, () => {});
+  }, []);
+  const mobile = isMobile();
 
   const say = (text: string, error = false) => {
     setToast({ text, error });
@@ -120,15 +130,15 @@ function App() {
       if (e.key === "Escape" && overlay) { setOverlay(null); return; }
       if (typing || e.ctrlKey || e.metaKey || e.altKey || overlay) return;
       if (g && Date.now() - g < 1200) {
-        const hit = NAV.find((n) => n.key === e.key);
+        const hit = visibleNav().find((n) => n.key === e.key);
         g = 0;
         if (hit) { e.preventDefault(); setRoute(hit.route); }
         return;
       }
       if (e.key === "g") { g = Date.now(); return; }
       if (e.key === "c") { e.preventDefault(); setOverlay("capture"); }
-      else if (e.key === "a") { e.preventDefault(); setRoute("/asistente"); }
-      else if (e.key === "f") { e.preventDefault(); void toggleFocus(); }
+      else if (e.key === "a" && !isMobile()) { e.preventDefault(); setRoute("/asistente"); }
+      else if (e.key === "f" && !isMobile()) { e.preventDefault(); void toggleFocus(); }
       else if (e.key === "?") setOverlay("help");
       else if (e.key === "/") { e.preventDefault(); setOverlay("palette"); }
     };
@@ -168,12 +178,7 @@ function App() {
   });
 
   if (locked) {
-    return (
-      <div class="empty" style="margin:20vh auto;max-width:34rem;text-align:center">
-        <h2>Falta la clave de Kioku</h2>
-        <p>Esta página no se abrió con la clave del daemon. Ábrela con <code>kioku open</code> (o copia la URL de <code>kioku url</code>).</p>
-      </div>
-    );
+    return <LockedScreen />;
   }
 
   let view;
@@ -198,7 +203,7 @@ function App() {
     <div class="shell">
       <nav class="sidebar" aria-label="Navegación">
         <div class="brand">Kioku</div>
-        {NAV.map((n) => (
+        {visibleNav().map((n) => (
           <a key={n.route} href={`#${n.route}`} class={activeRoute === n.route ? "active" : ""}>
             <Icon name={n.icon} /><span>{n.label}</span>
             {n.route === "/bandeja" && counts && counts.inbox.count > 0 && <b class="badge">{counts.inbox.count}</b>}
@@ -215,10 +220,13 @@ function App() {
         <button class="side-btn subtle" onClick={() => setOverlay("help")}>Atajos <kbd>?</kbd></button>
       </nav>
       <div class="content">
-        {focus?.active && <FocusBar focus={focus} onEnd={() => setOverlay("endfocus")} go={setRoute} />}
+        {focus?.active && !mobile && <FocusBar focus={focus} onEnd={() => setOverlay("endfocus")} go={setRoute} />}
         <main>{view}</main>
       </div>
 
+      <BottomNav active={activeRoute} onSearch={() => setOverlay("palette")} onMore={() => setOverlay("more")} />
+      <button class="fab" aria-label="Capturar" onClick={() => setOverlay("capture")}>+</button>
+      {overlay === "more" && <MoreSheet counts={counts} theme={theme} setTheme={setTheme} onClose={() => setOverlay(null)} onCapture={() => setOverlay("capture")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
       {overlay === "palette" && <Palette go={(r) => { setOverlay(null); setRoute(r); }} onClose={() => setOverlay(null)} newNote={() => { setOverlay(null); void newNote("note"); }}
         newProject={() => { setOverlay(null); void newNote("project"); }} journal={() => { setOverlay(null); void openJournal(); }} toggleFocus={() => { setOverlay(null); void toggleFocus(); }}
         focusActive={!!focus?.active} />}
@@ -298,6 +306,7 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
   if (!t) return <div class="empty muted">Cargando…</div>;
   const start = (path: string) => guard(async () => { await api("POST", "/api/focus/start", { taskPath: path }); say("Foco iniciado."); });
   const nothing = !t.suggestion && t.resume.length === 0 && t.inbox.count === 0;
+  const mobile = isMobile();
   return (
     <div class="page narrow">
       <h1>Hoy <span class="muted date">{t.date}</span></h1>
@@ -310,14 +319,14 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
             {t.suggestion.reasons.map((r) => <span class="chip" key={r}>{r}</span>)}
           </div>
           <div class="row">
-            {!t.focus.active && <button class="primary" onClick={() => void start(t.suggestion!.task.path)}>Empezar foco</button>}
+            {!t.focus.active && !mobile && <button class="primary" onClick={() => void start(t.suggestion!.task.path)}>Empezar foco</button>}
             <button onClick={() => void guard(() => api("POST", "/api/task/status", { path: t.suggestion!.task.path, status: "done" }))}>Ya está hecha</button>
           </div>
           {t.alternatives.length > 0 && (
             <details>
               <summary>Otras opciones ({t.alternatives.length})</summary>
               <ul class="tasks">
-                {t.alternatives.map((a) => <TaskLine key={a.task.path} t={a.task} today={t.date} go={go} guard={guard} onFocus={t.focus.active ? undefined : () => void start(a.task.path)} />)}
+                {t.alternatives.map((a) => <TaskLine key={a.task.path} t={a.task} today={t.date} go={go} guard={guard} onFocus={t.focus.active || mobile ? undefined : () => void start(a.task.path)} />)}
               </ul>
             </details>
           )}
@@ -326,11 +335,11 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
         <section class="card"><div class="eyebrow">Siguiente paso</div><p class="muted">No hay tareas abiertas. Captura algo con <kbd>c</kbd> o escribe <code>t …</code>.</p></section>
       )}
 
-      {(t.overdue > 0 || t.inbox.count > 0 || t.proposals > 0) && (
+      {(t.overdue > 0 || t.inbox.count > 0 || (t.proposals > 0 && !mobile)) && (
         <div class="pills">
           {t.overdue > 0 && <a class="pill bad" href="#/tareas">{plural(t.overdue, "tarea vencida", "tareas vencidas")}</a>}
           {t.inbox.count > 0 && <a class="pill" href="#/bandeja">{plural(t.inbox.count, "captura sin procesar", "capturas sin procesar")}</a>}
-          {t.proposals > 0 && <a class="pill accent" href="#/propuestas">{plural(t.proposals, "propuesta por revisar", "propuestas por revisar")}</a>}
+          {t.proposals > 0 && !mobile && <a class="pill accent" href="#/propuestas">{plural(t.proposals, "propuesta por revisar", "propuestas por revisar")}</a>}
         </div>
       )}
 
@@ -373,7 +382,8 @@ function ResumeTile({ r, go }: { r: ResumeCard; go: Go }) {
 
 function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; guard: Guard }) {
   const { data } = useApi<{ path: string; title: string; mtime: number; excerpt: string }[]>("/api/inbox", rev);
-  const props = useApi<Proposal[]>("/api/proposals", rev).data ?? [];
+  const mobile = isMobile();
+  const props = useApi<Proposal[]>(mobile ? null : "/api/proposals", rev).data ?? [];
   const triaged = new Set(props.map((p) => p.key));
   const suggest = () => guard(async () => {
     const r = await api<Proposal[]>("POST", "/api/triage");
@@ -392,9 +402,11 @@ function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; gua
     <div class="page narrow">
       <header class="page-head">
         <h1>Bandeja</h1>
-        <button onClick={() => void suggest()}>Sugerir organización</button>
+        {!mobile && <button onClick={() => void suggest()}>Sugerir organización</button>}
       </header>
-      <p class="muted">Capturas sin procesar. Nada se mueve solo: las sugerencias llegan como <a href="#/propuestas">propuestas</a> que tú apruebas.</p>
+      {mobile
+        ? <p class="muted">Capturas sin procesar. Conviértelas en tarea o nota; organizarlas con sugerencias se hace en el portátil.</p>
+        : <p class="muted">Capturas sin procesar. Nada se mueve solo: las sugerencias llegan como <a href="#/propuestas">propuestas</a> que tú apruebas.</p>}
       {data && data.length === 0 && <div class="empty">Bandeja vacía.</div>}
       <ul class="cards">
         {(data ?? []).map((n) => (
@@ -408,7 +420,7 @@ function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; gua
               <button class="mini" onClick={() => void convert(n.path, "task")}>→ Tarea</button>
               <button class="mini" onClick={() => void convert(n.path, "note")}>→ Nota</button>
               <button class="mini" onClick={() => go(`/nota/${n.path}`)}>Abrir</button>
-              <button class="mini danger" onClick={() => void discard(n.path, n.title)}>Descartar</button>
+              {!mobile && <button class="mini danger" onClick={() => void discard(n.path, n.title)}>Descartar</button>}
             </div>
           </li>
         ))}
@@ -424,7 +436,7 @@ function ProjectsView({ rev, go, onNew }: { rev: number; go: Go; onNew(): void }
   const groups: [string, string][] = [["active", "Activos"], ["paused", "En pausa"], ["someday", "Algún día"], ["done", "Terminados"]];
   return (
     <div class="page">
-      <header class="page-head"><h1>Proyectos</h1><button class="primary" onClick={onNew}>Nuevo proyecto</button></header>
+      <header class="page-head"><h1>Proyectos</h1>{!isMobile() && <button class="primary" onClick={onNew}>Nuevo proyecto</button>}</header>
       {data && data.length === 0 && <div class="empty">Aún no hay proyectos. Crea uno o escribe <code>t algo @NuevoProyecto</code>.</div>}
       {groups.map(([st, label]) => {
         const items = (data ?? []).filter((r) => (r.project.status || "active") === st);
@@ -463,20 +475,20 @@ function ProjectView({ path, rev, go, say, guard, focus, onContext }: { path: st
           <h1>{r.project.title}</h1>
           <div class="muted small">{r.project.status} · {r.idleDays === null ? "sin actividad registrada" : r.idleDays === 0 ? "activo hoy" : `parado hace ${r.idleDays} d`}</div>
         </div>
-        <div class="row">
+        {!isMobile() && <div class="row">
           <button onClick={() => onContext(path)} title="Muestra exactamente qué datos recibiría un modelo de IA">Contexto IA</button>
           {!focus?.active && <button class="primary" onClick={() => void guard(async () => { await api("POST", "/api/focus/start", { projectPath: path }); say("Foco iniciado."); })}>Foco en este proyecto</button>}
-        </div>
+        </div>}
       </header>
       <div class="two">
         <div>
           <section class="card">
             <div class="eyebrow">Dónde lo dejaste</div>
             {r.lastCheckpoint ? <><p class="cp big">{r.lastCheckpoint.text}</p><div class="muted small">{r.lastCheckpoint.ts}</div></> : <p class="muted">Sin checkpoint. Escribe uno abajo al terminar de trabajar.</p>}
-            <form class="inline" onSubmit={(e) => { e.preventDefault(); void add("checkpoint", cp, () => setCp("")); }}>
+            {!isMobile() && <form class="inline" onSubmit={(e) => { e.preventDefault(); void add("checkpoint", cp, () => setCp("")); }}>
               <input placeholder="Nuevo checkpoint: dónde lo dejas, siguiente paso…" value={cp} onInput={(e) => setCp(e.currentTarget.value)} />
               <button>Guardar</button>
-            </form>
+            </form>}
           </section>
           <section class="card">
             <div class="eyebrow">Tareas abiertas ({r.open.length})</div>
@@ -492,10 +504,10 @@ function ProjectView({ path, rev, go, say, guard, focus, onContext }: { path: st
             <div class="eyebrow">Decisiones</div>
             {r.decisions.length === 0 && <p class="muted">Aún ninguna.</p>}
             <ul class="plain">{r.decisions.map((d, i) => <li key={i}>{d}</li>)}</ul>
-            <form class="inline" onSubmit={(e) => { e.preventDefault(); void add("decision", dec, () => setDec("")); }}>
+            {!isMobile() && <form class="inline" onSubmit={(e) => { e.preventDefault(); void add("decision", dec, () => setDec("")); }}>
               <input placeholder="Registrar decisión y su porqué…" value={dec} onInput={(e) => setDec(e.currentTarget.value)} />
               <button>Registrar</button>
-            </form>
+            </form>}
           </section>
           {r.touched.length > 0 && (
             <section class="card">
@@ -668,6 +680,70 @@ function ProposalsView({ rev, say, guard }: { rev: number; say: Say; guard: Guar
   );
 }
 
+// ───────────────────────────── Móvil ─────────────────────────────
+
+/** Pantalla sin clave. En el móvil la cookie de Safari no siempre pasa a la app instalada: se puede pegar la clave o la URL de `kioku pair`. */
+function LockedScreen() {
+  const [text, setText] = useState("");
+  const [bad, setBad] = useState(false);
+  const submit = (e: Event) => {
+    e.preventDefault();
+    const k = extractKey(text);
+    if (!k) { setBad(true); return; }
+    location.href = `/?k=${k}`; // el daemon cambia la clave por una cookie y redirige
+  };
+  return (
+    <div class="empty locked">
+      <h2>Falta la clave de Kioku</h2>
+      <p>Esta página no se abrió con la clave del daemon. En el portátil, ábrela con <code>kioku open</code> (o copia la URL de <code>kioku url</code>). Desde el móvil, pega aquí la clave o la dirección que da <code>kioku pair</code>.</p>
+      <form class="inline" onSubmit={submit}>
+        <input placeholder="Clave o dirección de emparejamiento" value={text} autocomplete="off" autocapitalize="off" spellcheck={false} aria-label="Clave o dirección de emparejamiento"
+          onInput={(e) => { setText(e.currentTarget.value); setBad(false); }} />
+        <button class="primary">Entrar</button>
+      </form>
+      {bad && <p class="bad-text" role="alert">Eso no parece una clave de Kioku (64 caracteres) ni una dirección con <code>?k=</code>.</p>}
+    </div>
+  );
+}
+
+/** Barra inferior (solo se ve en pantallas estrechas): lo más usado a un pulgar. */
+function BottomNav({ active, onSearch, onMore }: { active: string; onSearch(): void; onMore(): void }) {
+  const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/tareas", "Tareas", "tareas"], ["/notas", "Notas", "notas"]];
+  return (
+    <nav class="bottomnav" aria-label="Navegación">
+      {items.map(([route, label, icon]) => (
+        <a key={route} href={`#${route}`} class={active === route ? "active" : ""}><Icon name={icon} /><span>{label}</span></a>
+      ))}
+      <button onClick={onSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg><span>Buscar</span></button>
+      <button onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span></button>
+    </nav>
+  );
+}
+
+/** «Más»: el resto de pantallas en el móvil. */
+function MoreSheet({ counts, theme, setTheme, onClose, onCapture, onJournal }: { counts: TodayView | null; theme: string; setTheme(t: string): void; onClose(): void; onCapture(): void; onJournal(): void }) {
+  const rest = visibleNav().filter((n) => !["/hoy", "/tareas", "/notas"].includes(n.route));
+  return (
+    <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="modal sheet" role="dialog" aria-label="Más">
+        <ul class="sheet-list">
+          {rest.map((n) => (
+            <li key={n.route}>
+              <a href={`#${n.route}`} onClick={onClose}><Icon name={n.icon} /><span>{n.label}</span>
+                {n.route === "/bandeja" && counts && counts.inbox.count > 0 && <b class="badge">{counts.inbox.count}</b>}
+                {n.route === "/propuestas" && counts && counts.proposals > 0 && <b class="badge">{counts.proposals}</b>}
+              </a>
+            </li>
+          ))}
+          <li><a href="#/diario" onClick={(e) => { e.preventDefault(); onJournal(); }}><Icon name="diario" /><span>Diario de hoy</span></a></li>
+          <li><button onClick={onCapture}>Captura rápida</button></li>
+          <li><button onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}</button></li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 // ───────────────────────────── Overlays ─────────────────────────────
 
 function Modal({ title, onClose, children, wide }: { title: string; onClose(): void; children: preact.ComponentChildren; wide?: boolean }) {
@@ -709,11 +785,11 @@ function Palette(p: { go(r: string): void; onClose(): void; newNote(): void; new
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [sel, setSel] = useState(0);
   const cmds: PaletteItem[] = [
-    ...NAV.map((n) => ({ label: `Ir a ${n.label}`, hint: `g ${n.key}`, run: () => p.go(n.route) })),
+    ...visibleNav().map((n) => ({ label: `Ir a ${n.label}`, hint: `g ${n.key}`, run: () => p.go(n.route) })),
     { label: "Nueva nota", run: p.newNote },
-    { label: "Nuevo proyecto", run: p.newProject },
+    ...(isMobile() ? [] : [{ label: "Nuevo proyecto", run: p.newProject }]),
     { label: "Abrir diario de hoy", run: p.journal },
-    { label: p.focusActive ? "Terminar foco" : "Iniciar foco", hint: "f", run: p.toggleFocus },
+    ...(isMobile() ? [] : [{ label: p.focusActive ? "Terminar foco" : "Iniciar foco", hint: "f", run: p.toggleFocus }]),
   ];
   useEffect(() => {
     if (q.trim().length < 2) { setHits([]); return; }
