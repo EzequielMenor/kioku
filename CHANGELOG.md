@@ -12,12 +12,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 - Contraste revisado (texto ≥ 4.5:1 en ambos temas). Capturas del README renovadas.
 
 ### Corregido
-- **Móvil (iOS):** una barra negra bajo la navegación inferior obligaba a desplazar la página y «todo subía». La app ahora se ancla al viewport en pantallas estrechas y solo `main` hace scroll; el documento ya no se mueve, y su fondo es el de la barra inferior, de modo que una franja sobrante no se ve como una barra negra.
-- «Más» muestra una línea con las medidas de la pantalla (ventana, pantalla, área segura, app instalada o navegador) para diagnosticar problemas de altura en el iPhone.
+- **Móvil (iOS 26):** en la app instalada aparecía una franja negra bajo la navegación inferior. Es un fallo de WebKit (301108): con `viewport-fit=cover` y barra de estado translúcida, iOS da a la web una ventana más corta que la pantalla (el alto de la barra) mientras el documento sea más bajo que ella. Ahora, en modo instalada, el documento mide como la pantalla (`min-height: min(100lvh, 100% + safe-area-inset-top)`), el contenido reserva el área segura superior y el bloqueo del scroll del documento queda solo para el navegador. Requiere reinstalar el icono en la pantalla de inicio.
+- La barra inferior mide como una barra de pestañas de iOS (≈83 pt con el indicador de inicio) y el contenido y el botón «+» cuentan con esa medida.
 
 ### Desarrollo
 - Nueva dependencia de desarrollo `@fontsource/shippori-mincho` 5.3.0 (licencia OFL-1.1); el build copia solo los dos pesos usados.
-- `test/web-assets.test.ts`: sin recursos externos, fuente empaquetada, sello sin `<text>`, manifest/`theme-color`/fondo coherentes y colores del grafo en variables.
+- `test/web-assets.test.ts`: sin recursos externos, fuente empaquetada, sello sin `<text>`, manifest/`theme-color`/fondo coherentes, colores del grafo en variables y la maquetación móvil (viewport anclado, regla de WebKit 301108, barra de 83 pt).
 
 ## [0.5.0] — 2026-10-27
 
