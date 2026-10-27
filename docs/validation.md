@@ -1,4 +1,4 @@
-# Validación (2026-10-26)
+# Validación (2026-10-27)
 
 ## Verificado
 - `npm test`: 35/35. Incluye reindex incremental == desde cero, conflicto por hash, propuestas con precheck, seguridad Host/Origin/Content-Type, rutas no permitidas.
@@ -34,6 +34,19 @@
 - Las propuestas del modelo pueden ser imprecisas (en una prueba propuso mandar a la papelera una nota que tenía contenido): por eso todo lo destructivo pasa por tu aprobación.
 - **Limitación de seguridad conocida:** la jaula comparte la red del equipo (Hermes necesita llegar al proveedor) y la API local del daemon no tiene autenticación fuera de las herramientas del asistente. Hoy Hermes solo tiene las herramientas `clarify`, `memory` y `skills` (sin terminal ni ficheros), pero un Hermes comprometido podría llamar a rutas como `/api/note/delete`. Mitigación futura: secreto por daemon en las rutas de escritura o red aislada con proxy.
 - Servicio systemd: sigue sin instalarse (es tuyo: `jarvis service install`).
+
+## Bases de datos
+**Verificado**
+- `npm test`: 128/128 y `npm run typecheck` limpio; `npm run build:web` → app.js 625 KB. Cubre el motor puro (`test/database.test.ts`: tipos inferidos, cada operador, orden multi-clave estable con vacíos al final, agrupación, YAML roto sin lanzar), la integración (`test/databases.test.ts`: crear desde plantilla, filas, vistas guardadas/reemplazadas/borradas conservando vistas escritas a mano, y **borrar `index.db` y reindexar da exactamente el mismo resultado**), la API (errores 400/404, Origin, rutas con `..`) y el asistente (`test/assistant-databases.test.ts`).
+- Asistente y exclusiones: `query_database`/`list_databases` no devuelven filas excluidas, ni las cuentan, ni infieren tipos de columna a partir de ellas (comprobado quitando la protección: dos tests fallan); `create_row` no escribe en carpetas excluidas, y `Notas/Importado/`, enlaces web y el límite de 5 notas lo convierten en propuesta; `set_props` acepta propiedades de usuario pero rechaza `id`/`created`/`type`/`parked`, objetos y la definición de una base.
+- UI con daemon temporal + Chromium headless (CDP), 20 comprobaciones: lista de bases, tabla con columnas del esquema, editar una celda (escribe `Estado: Leído` en el `.md`), orden por clic, filtro desde el panel, **Guardar vista** (queda en el frontmatter, sobrevive a recargar), tablero con una columna por opción, arrastrar una tarjeta (cambia la propiedad), «Nueva fila» (crea la nota en la carpeta de origen), vista Lista en tema claro, panel de propiedades genérico en la nota (editar, añadir con tipo número, la definición de la base no se edita como texto suelto) y cero errores de consola.
+- E2E con **Hermes real** (suscripción Codex) sobre `JARVIS_HOME` temporal: «¿qué libros estoy leyendo?» consulta la base y responde bien; «añade estos dos libros» crea 2 filas con Deshacer (y `undo` las quita); con 7 libros aplica 5 y deja el resto como **propuestas** (reproducido en dos pruebas); la definición de la base queda intacta. Un intento aislado falló porque Hermes emitió llamadas sin nombre de herramienta (fallo del modelo, no hizo ningún cambio) y no se repitió.
+
+**No verificado**
+- Rendimiento con miles de filas (el motor filtra en memoria sobre `notes.fm_json`; está pensado para bóvedas de miles de notas, sin medir).
+- Edición inline de celdas `relation`/`url` más allá de texto; arrastrar tarjetas con el teclado (hay un selector «Mover» por tarjeta como alternativa).
+- Sin calendario, galería, relaciones entre bases, rollups, fórmulas ni plantillas de fila (siguientes pasos en `06-implementation-plan.md`); el asistente aún no crea bases nuevas, solo añade filas.
+- Varias propuestas del asistente por fila (una por llamada escalada) en vez de una sola en lote.
 
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `jarvis quick`, no la pulsación.

@@ -27,11 +27,11 @@ Archivo `.md`, frontmatter YAML opcional. Si no tiene `type`, es `note`.
 | Campo frontmatter | Tipo | Notas |
 |---|---|---|
 | `id` | string (ULID) | Se escribe al crear con JARVIS. Si falta (archivo externo), la identidad es la ruta |
-| `type` | `note` `task` `project` `journal` `resource` `capture` | |
+| `type` | `note` `task` `project` `journal` `resource` `capture` `database` | |
 | `title` | string | Si falta: primer `# H1`, si no, nombre de archivo |
 | `tags` | lista | También se extraen `#etiquetas` del cuerpo |
-| `aliases` | lista | Para resolver `[[alias]]` (compatible Obsidian) |
-| `created`, `updated` | ISO-8601 | `updated` lo escribe JARVIS al guardar |
+| `aliases` | lista | Para resolver `[[alias]]` (compatible Obsidian); alimenta la tabla `names` del índice |
+| `created` | ISO-8601 | Lo escribe JARVIS al crear. No hay `updated`: la fecha de modificación es la del fichero |
 
 Propiedades desconocidas **se conservan intactas** al reescribir el frontmatter (JARVIS no pisa lo que no entiende).
 
@@ -61,6 +61,22 @@ Cuerpo de un proyecto — secciones reconocidas por título (resto libre):
 ```
 Esto es **Markdown legible en Obsidian**, y es lo que alimenta la tarjeta de retomar (ver §Retomar).
 
+**database** (`Bases/<Nombre>.md`): una colección de notas con vistas, al estilo Notion. Es Markdown normal: la definición vive en el frontmatter y el cuerpo es libre.
+```yaml
+type: database
+source: { folder: "Libros/", type: null, tags: [] }   # qué notas son sus filas (todas las condiciones a la vez)
+properties:                                           # esquema opcional; lo no declarado se infiere del valor
+  Estado: { type: select, options: [Quiero leer, Leyendo, Leído] }
+views:
+  - { name: Tabla, kind: table, columns: [title, Estado, Autor, Nota], filter: [{prop: Estado, op: is, value: Leyendo}], sort: [{prop: Nota, dir: desc}], group: null }
+  - { name: Por estado, kind: board, group: Estado }
+```
+- **Filas:** las notas que cumplen `source` (carpeta sin distinguir mayúsculas, `type`, etiquetas); una base nunca es fila de sí misma ni de otra. Sin `source` no tiene filas. Cada celda es una propiedad del frontmatter de su nota (más `title`, `tags`, `path`, `type`, `mtime`).
+- **Tipos:** `text` `number` `date` (AAAA-MM-DD) `checkbox` `select` `multi` `url` `relation` (`[[enlace]]`). Se infieren del primer valor no vacío; `properties` puede fijar tipo y opciones.
+- **Filtros** (se combinan con Y): `is` `is_not` `contains` `empty` `not_empty` `gt` `lt` `before` `after` `checked`. **Orden** multi-clave estable con los vacíos siempre al final. **Agrupación** en el orden de las opciones del esquema.
+- **Tolerancia:** una vista o propiedad inválida se descarta con un aviso y la base sigue abriéndose; una vista escrita a mano con errores no se pierde al guardar otra.
+- Plantillas al crear: vacía, tareas (`source.type: task`), proyectos y libros. Fuera de V1: calendario, galería, relaciones entre bases, rollups, fórmulas.
+
 **journal**: `Diario/YYYY-MM-DD.md`, con `focus: ["[[Tarea]]", …]` opcional (foco elegido del día).
 
 **capture**: lo que crea Quick sin prefijo. Vive en `Bandeja/`. Se "procesa" convirtiéndolo (cambiar `type`, mover, enlazar a proyecto) — con propuesta de JARVIS.
@@ -70,15 +86,16 @@ Sintaxis Obsidian-compatible: `[[Destino]]`, `[[Destino|texto]]`, `[[Destino#Enc
 
 ## Índice SQLite (derivado)
 ```sql
-notes(path PK, id, type, title, mtime, size, hash, body, fm_json)
-links(src, dst_raw, dst_path NULL, kind, anchor)         -- dst_path NULL = sin resolver
+notes(rid PK, path UNIQUE, uid, type, title, mtime, size, hash, body, fm_json, fm_error, tags_json)
+links(src, dst_raw, dst_key, dst_path NULL, anchor, alias, embed)   -- dst_path NULL = sin resolver
+names(key, path, rank)                                             -- título / alias / nombre de fichero → nota
 tags(path, tag)
-aliases(path, alias)
-tasks(path PK, status, project_path, due, priority, done_at)  -- vista tipada de notes WHERE type='task'
+tasks(path PK, status, project_key, project_path, due, priority, done_at, focus)  -- vista tipada de type='task'
 notes_fts USING fts5(title, body, tags, tokenize='unicode61 remove_diacritics 2')
-events(ts, kind, path, data_json)                         -- carga del JSONL
-meta(key, value)                                          -- schema_version, last_full_scan
+events(id PK, ts, kind, path, data)                                -- carga del JSONL
+meta(key, value)                                                   -- schema_version
 ```
+Las bases de datos **no** tienen tabla propia: `notes.fm_json` ya guarda todo el frontmatter y las consultas filtran y ordenan en memoria (ver «Bases de datos»).
 - **Reconstrucción:** `jarvis reindex` borra y regenera desde disco. Test de invariantes: reindex ⇒ mismo resultado que el índice incremental.
 - **Incremental:** el watcher (`fs.watch`) compara `mtime+hash` por archivo; sólo reparsea lo cambiado.
 - **Coherencia con escrituras externas** (Obsidian/editor): si el hash en disco ≠ hash base al guardar desde JARVIS, se rechaza el guardado con conflicto (nunca sobreescribir silenciosamente).
