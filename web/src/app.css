@@ -342,7 +342,7 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   /* Anclada al viewport: solo `main` hace scroll. Con height:100% en iOS (PWA o Safari) sobran píxeles, el documento se desplaza y deja un hueco bajo la barra. */
   html, body { overflow: hidden; overscroll-behavior: none; }
   html { background: var(--side); } /* si iOS deja una franja bajo la barra inferior, se funde con ella en vez de verse como una barra negra */
-  .shell { position: fixed; inset: 0; height: auto; }
+  .shell { position: fixed; inset: 0; height: var(--app-h, auto); contain: layout; } /* contain: la barra, el FAB y los modales fijos se anclan a esta altura */
   main { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   #root { overflow-y: auto; }
   .sidebar { display: none; }
