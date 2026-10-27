@@ -7,6 +7,7 @@ import { RulesProvider, triageInput, type AIProvider } from "./ai.ts";
 import { buildPayload, LlmProvider, MAX_CAPTURES, parseLlmConfig, type LlmConfig, type LlmPayload } from "./llm.ts";
 import { parseCapture, type ParsedCapture } from "./capture.ts";
 import { addDays, diffDays, localDate, localTime } from "./dates.ts";
+import { matchesSource, parseDatabase, queryRows, type DatabaseDef, type QueryResult, type View } from "./database.ts";
 import { fuzzyScore, Index, relationTarget, type NoteRow, type NoteType, type TaskRow, type TaskStatus } from "./index.ts";
 import { ulid } from "./ids.ts";
 import { appendToSection, normKey, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
@@ -16,6 +17,18 @@ import { sanitizeFileName, Vault, VaultError } from "./vault.ts";
 export const FOLDERS: Record<NoteType, string> = {
   capture: "Bandeja", task: "Tareas", project: "Proyectos", note: "Notas", journal: "Diario", resource: "Recursos", database: "Bases",
 };
+
+/** Claves del sistema: ni las filas nuevas ni el asistente pueden fijarlas. */
+export const RESERVED_PROPS: ReadonlySet<string> = new Set(["id", "type", "created"]);
+
+/** Valor escalar o lista de escalares: lo único que una celda puede contener (nunca objetos, que son esquema o vistas). */
+export function isPlainValue(v: unknown): boolean {
+  const scalar = (x: unknown) => typeof x === "string" || typeof x === "number" || typeof x === "boolean";
+  return scalar(v) || (Array.isArray(v) && v.every(scalar));
+}
+
+const rawName = (v: unknown): string | null =>
+  typeof v === "object" && v !== null && typeof (v as { name?: unknown }).name === "string" ? (v as { name: string }).name.trim() : null;
 
 export interface CaptureResult {
   kind: ParsedCapture["kind"];
@@ -277,6 +290,123 @@ export class Jarvis {
     this.index.tx(() => { this.index.removeNote(rel); this.index.resolveAll(); });
     this.changed("delete", rel);
     return dest;
+  }
+
+  /* ---------------- bases de datos ---------------- */
+
+  /** Fila de la base: sus notas se leen siempre del índice, que es derivado (borrarlo y reindexar da lo mismo). */
+  private databaseDef(rel: string): DatabaseDef {
+    const n = this.index.getNote(rel);
+    if (!n) throw new VaultError("not-found", "Base de datos no encontrada");
+    if (n.type !== "database") throw new VaultError("invalid", "Esa nota no es una base de datos");
+    return parseDatabase({ path: n.path, title: n.title, fm: n.fm });
+  }
+
+  listDatabases(): { path: string; title: string; rows: number; views: View[]; warnings: string[] }[] {
+    const all = this.index.noteRows();
+    return all.filter((r) => r.type === "database").map((r) => {
+      const def = parseDatabase(r);
+      return { path: def.path, title: def.title, rows: all.filter((x) => matchesSource(def, x)).length, views: def.views, warnings: def.warnings };
+    });
+  }
+
+  /** `view`: nombre de una vista guardada, o una vista ad hoc (filtros del momento sin guardar). Sin `view`, la primera. */
+  queryDatabase(rel: string, view?: string | View): QueryResult & { database: { path: string; title: string; views: View[]; warnings: string[] } } {
+    const def = this.databaseDef(rel);
+    let v: View;
+    if (view === undefined) v = def.views[0];
+    else if (typeof view === "string") {
+      const found = def.views.find((x) => x.name === view);
+      if (!found) throw new VaultError("not-found", `Vista «${view}» no encontrada`);
+      v = found;
+    } else v = this.validView(view);
+    const rows = this.index.noteRows().filter((r) => matchesSource(def, r));
+    return { ...queryRows(def, v, rows), database: { path: def.path, title: def.title, views: def.views, warnings: def.warnings } };
+  }
+
+  /** Una vista llegada de fuera (API, asistente) se valida con el mismo parser tolerante: si algo se descartaría, se rechaza. */
+  private validView(raw: unknown): View {
+    const probe = parseDatabase({ path: "", title: "", fm: { views: [raw] } });
+    if (probe.warnings.length || probe.views.length !== 1) throw new VaultError("invalid", probe.warnings[0] ?? "Vista inválida");
+    return probe.views[0];
+  }
+
+  async createDatabase(opts: { name: string; template?: "vacía" | "tareas" | "proyectos" | "libros" }): Promise<NoteRow> {
+    const name = opts.name.trim();
+    if (!name) throw new VaultError("invalid", "Ponle un nombre a la base");
+    const t = opts.template ?? "vacía";
+    const table = (columns: string[]) => ({ name: "Tabla", kind: "table", columns, filter: [], sort: [], group: null });
+    const board = (name: string, group: string, columns: string[]) => ({ name, kind: "board", columns, filter: [], sort: [], group });
+    const spec: Record<string, unknown> =
+      t === "tareas" ? {
+        source: { type: "task" },
+        properties: { status: { type: "select", options: ["todo", "doing", "done", "dropped"] }, due: { type: "date" }, priority: { type: "number" } },
+        views: [table(["title", "status", "due", "priority"]), board("Tablero", "status", ["title", "due"])],
+      } : t === "proyectos" ? {
+        source: { type: "project" },
+        properties: { status: { type: "select", options: ["active", "paused", "done"] } },
+        views: [table(["title", "status"]), board("Por estado", "status", ["title"])],
+      } : t === "libros" ? {
+        source: { folder: "Libros/" },
+        properties: { Estado: { type: "select", options: ["Quiero leer", "Leyendo", "Leído"] }, Autor: { type: "text" }, Nota: { type: "number" } },
+        views: [table(["title", "Estado", "Autor", "Nota"]), board("Por estado", "Estado", ["title", "Autor"])],
+      } : {
+        source: { folder: `${sanitizeFileName(name)}/` },
+        properties: {},
+        views: [table(["title"])],
+      };
+    return this.createNote({ title: name, type: "database", fm: spec, body: `# ${name}\n\nBase de datos: las filas son notas Markdown; las vistas se guardan en las propiedades de este fichero.\n` });
+  }
+
+  /** Añade o reemplaza (por nombre) una vista. Lo demás del frontmatter —incluidas vistas escritas a mano— se conserva tal cual. */
+  async saveView(rel: string, view: View): Promise<NoteRow> {
+    this.databaseDef(rel);
+    const v = this.validView(view);
+    const raw = this.rawViews(rel);
+    const i = raw.findIndex((x) => rawName(x) === v.name);
+    if (i >= 0) raw[i] = v; else raw.push(v);
+    return this.setProps(rel, { views: raw });
+  }
+
+  async deleteView(rel: string, name: string): Promise<NoteRow> {
+    this.databaseDef(rel);
+    const raw = this.rawViews(rel);
+    const next = raw.filter((x) => rawName(x) !== name);
+    if (next.length === raw.length) throw new VaultError("not-found", `Vista «${name}» no encontrada`);
+    return this.setProps(rel, { views: next.length ? next : null });
+  }
+
+  private rawViews(rel: string): unknown[] {
+    const cur = this.index.getNote(rel)?.fm.views;
+    return Array.isArray(cur) ? [...cur] : [];
+  }
+
+  /** Nueva fila: una nota normal en la carpeta/tipo de origen. `id`, `type` y `created` son del sistema y nunca se aceptan. */
+  async createRow(rel: string, opts: { title: string; props?: Record<string, unknown> }): Promise<NoteRow> {
+    const { rel: p, text } = this.buildRow(rel, opts);
+    await this.vault.write(p, text, null);
+    const note = await this.reindexPath(p);
+    this.changed("note", p);
+    return note;
+  }
+
+  /** Ruta y texto de la fila sin escribirla (lo usa el asistente para decidir entre aplicar y proponer). */
+  buildRow(rel: string, opts: { title: string; props?: Record<string, unknown> }): { rel: string; text: string } {
+    const def = this.databaseDef(rel);
+    const s = def.source;
+    if (s.folder === null && s.type === null && s.tags.length === 0) throw new VaultError("invalid", "La base no tiene origen: no se pueden crear filas");
+    const fm: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(opts.props ?? {})) {
+      if (RESERVED_PROPS.has(k) || k === "title") continue;
+      if (!isPlainValue(val)) throw new VaultError("invalid", `El valor de «${k}» debe ser texto, número, fecha, casilla o lista`);
+      fm[k] = val;
+    }
+    if (s.tags.length && fm.tags === undefined) fm.tags = s.tags;
+    if (s.type === "task" && fm.status === undefined) fm.status = "todo";
+    return this.buildNote({
+      title: opts.title, type: s.type ?? "note", fm,
+      folder: s.folder !== null ? s.folder.replace(/^\.?\/+|\/+$/g, "") : FOLDERS[s.type ?? "note"],
+    });
   }
 
   /* ---------------- captura (Quick) ---------------- */

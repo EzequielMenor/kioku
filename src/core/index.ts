@@ -336,6 +336,15 @@ export class Index {
     }));
   }
 
+  /** Todas las notas con su frontmatter, en una sola consulta: la materia prima de las bases de datos. */
+  noteRows(): { path: string; title: string; type: NoteType; tags: string[]; mtime: number; fm: Frontmatter }[] {
+    const rows = this.db.prepare("SELECT path,type,title,mtime,tags_json,fm_json FROM notes ORDER BY path").all() as Record<string, unknown>[];
+    return rows.map((r) => ({
+      path: r.path as string, title: r.title as string, type: r.type as NoteType, mtime: r.mtime as number,
+      tags: JSON.parse(r.tags_json as string), fm: JSON.parse(r.fm_json as string),
+    }));
+  }
+
   count(): number {
     return (this.db.prepare("SELECT count(*) c FROM notes").get() as { c: number }).c;
   }
