@@ -7,7 +7,7 @@ import { RulesProvider, triageInput, type AIProvider } from "./ai.ts";
 import { buildPayload, LlmProvider, MAX_CAPTURES, parseLlmConfig, type LlmConfig, type LlmPayload } from "./llm.ts";
 import { parseCapture, type ParsedCapture } from "./capture.ts";
 import { addDays, diffDays, localDate, localTime } from "./dates.ts";
-import { matchesSource, parseDatabase, queryRows, type DatabaseDef, type QueryResult, type View } from "./database.ts";
+import { availableColumns, matchesSource, parseDatabase, queryRows, type Column, type DatabaseDef, type QueryResult, type View } from "./database.ts";
 import { fuzzyScore, Index, relationTarget, type NoteRow, type NoteType, type TaskRow, type TaskStatus } from "./index.ts";
 import { ulid } from "./ids.ts";
 import { appendToSection, normKey, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
@@ -311,7 +311,7 @@ export class Jarvis {
   }
 
   /** `view`: nombre de una vista guardada, o una vista ad hoc (filtros del momento sin guardar). Sin `view`, la primera. */
-  queryDatabase(rel: string, view?: string | View): QueryResult & { database: { path: string; title: string; views: View[]; warnings: string[] } } {
+  queryDatabase(rel: string, view?: string | View): QueryResult & { database: { path: string; title: string; views: View[]; warnings: string[]; available: Column[] } } {
     const def = this.databaseDef(rel);
     let v: View;
     if (view === undefined) v = def.views[0];
@@ -321,7 +321,7 @@ export class Jarvis {
       v = found;
     } else v = this.validView(view);
     const rows = this.index.noteRows().filter((r) => matchesSource(def, r));
-    return { ...queryRows(def, v, rows), database: { path: def.path, title: def.title, views: def.views, warnings: def.warnings } };
+    return { ...queryRows(def, v, rows), database: { path: def.path, title: def.title, views: def.views, warnings: def.warnings, available: availableColumns(def, rows) } };
   }
 
   /** Una vista llegada de fuera (API, asistente) se valida con el mismo parser tolerante: si algo se descartaría, se rechaza. */

@@ -122,3 +122,20 @@ test("bases: borrar el índice y reindexar da exactamente el mismo resultado", a
     j2.close();
   } finally { cleanup(); }
 });
+
+test("bases: queryDatabase expone las propiedades disponibles (esquema + las vistas en las filas) con tipo y opciones", async () => {
+  const { j, cleanup } = await setup();
+  try {
+    const db = await j.createDatabase({ name: "Libros", template: "libros" });
+    await j.createRow(db.path, { title: "Dune", props: { Estado: "Leyendo", Editorial: "Ace", Terminado: true } });
+    const keys = j.queryDatabase(db.path).database.available;
+    const byKey = Object.fromEntries(keys.map((c) => [c.key, c]));
+    for (const k of ["title", "Estado", "Autor", "Nota", "Editorial", "Terminado", "tags"]) assert.ok(byKey[k], `falta ${k}`);
+    assert.equal(byKey.Estado.type, "select");
+    assert.deepEqual(byKey.Estado.options, ["Quiero leer", "Leyendo", "Leído"]);
+    assert.equal(byKey.Terminado.type, "checkbox");
+    assert.equal(byKey.Editorial.type, "text");
+    assert.ok(!("id" in byKey) && !("created" in byKey) && !("type" in byKey), "las claves del sistema no son columnas");
+    j.close();
+  } finally { cleanup(); }
+});

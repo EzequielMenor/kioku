@@ -223,6 +223,26 @@ function compareValues(a: unknown, b: unknown): number {
   return collator.compare(text(a), text(b));
 }
 
+const SYSTEM_KEYS = new Set(["id", "type", "created", "title", "tags", "parked"]);
+
+/** Todas las propiedades que una vista puede usar: título, las del esquema, las que aparecen en las filas y las etiquetas. */
+export function availableColumns(def: DatabaseDef, rows: DbRow[]): Column[] {
+  const keys = ["title", ...Object.keys(def.properties).filter((k) => !SYSTEM_KEYS.has(k))];
+  for (const r of rows) {
+    for (const [k, v] of Object.entries(r.fm)) {
+      if (SYSTEM_KEYS.has(k) || keys.includes(k) || (typeof v === "object" && v !== null && !Array.isArray(v) && !(v instanceof Date))) continue;
+      keys.push(k);
+    }
+  }
+  keys.push("tags");
+  return keys.map((key) => {
+    const col: Column = { key, type: propType(def, key, rows) };
+    const options = def.properties[key]?.options;
+    if (options) col.options = options;
+    return col;
+  });
+}
+
 /** Aplica filtros, orden y agrupación de una vista a las filas (que ya cumplen el origen de la base). */
 export function queryRows(def: DatabaseDef, view: View, rows: DbRow[]): QueryResult {
   const kept = rows.filter((r) => view.filter.every((f) => passes(r, f)));
