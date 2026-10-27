@@ -19,9 +19,14 @@ await build({
   jsx: "automatic",
   jsxImportSource: "preact",
   legalComments: "none",
+  external: ["/fonts/*"], // las @font-face apuntan a /fonts/…, que se copia más abajo
   logLevel: "info",
 });
 for (const f of ["index.html", "quick.html", "manifest.webmanifest"]) copyFileSync(path.join(root, "web", f), path.join(out, f));
 cpSync(path.join(root, "web", "icons"), path.join(out, "icons"), { recursive: true });
+// Tipografía serif de los títulos: solo el subconjunto latino de los pesos que usa app.css, servida en local (sin Google Fonts).
+const fontsDir = path.join(root, "node_modules", "@fontsource", "shippori-mincho", "files");
+mkdirSync(path.join(out, "fonts"), { recursive: true });
+for (const w of [500, 600]) copyFileSync(path.join(fontsDir, `shippori-mincho-latin-${w}-normal.woff2`), path.join(out, "fonts", `shippori-mincho-latin-${w}-normal.woff2`));
 const size = (f) => (statSync(path.join(out, f)).size / 1024).toFixed(0) + " KB";
 console.log(`dist/web listo → app.js ${size("app.js")}, quick.js ${size("quick.js")}`);

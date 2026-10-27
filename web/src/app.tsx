@@ -8,6 +8,7 @@ import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
 import { extractKey } from "./pairing.ts";
+import { SEAL_PATH } from "./seal.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
 import { NoteView } from "./note-view.tsx";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
@@ -30,6 +31,7 @@ const ICONS: Record<string, string> = {
   asistente: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 11h6M9 14h3"/>',
   diario: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
 };
+const Seal = () => <svg class="seal" viewBox="12 12 76 76" aria-hidden="true"><rect x="12" y="12" width="76" height="76" rx="9" /><path d={SEAL_PATH} /></svg>;
 const Icon = ({ name }: { name: string }) => <svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: ICONS[name] }} />;
 
 const NAV: { route: string; label: string; key: string; icon: string }[] = [
@@ -202,7 +204,7 @@ function App() {
   return (
     <div class="shell">
       <nav class="sidebar" aria-label="Navegación">
-        <div class="brand">Kioku</div>
+        <div class="brand"><Seal />Kioku</div>
         {visibleNav().map((n) => (
           <a key={n.route} href={`#${n.route}`} class={activeRoute === n.route ? "active" : ""}>
             <Icon name={n.icon} /><span>{n.label}</span>

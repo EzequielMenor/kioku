@@ -26,6 +26,8 @@ async function setup(opts: { allowedHosts?: string[]; exclude?: string[] } = {})
   const web = mkdtempSync(path.join(tmpdir(), "kioku-web-"));
   writeFileSync(path.join(web, "index.html"), "<h1>hola</h1>");
   writeFileSync(path.join(web, "manifest.webmanifest"), "{}");
+  mkdirSync(path.join(web, "fonts"));
+  writeFileSync(path.join(web, "fonts", "a.woff2"), "x");
   mkdirSync(path.join(root, ".kioku"), { recursive: true });
   writeFileSync(path.join(root, ".kioku", "mobile.json"), JSON.stringify({ exclude: opts.exclude ?? ["Privado/"] }));
   const j = await Kioku.open({ root });
@@ -217,6 +219,17 @@ test("PWA: el manifiesto se sirve con su tipo MIME", async () => {
     const r = await s.call("GET", "/manifest.webmanifest", undefined, null);
     assert.equal(r.status, 200);
     assert.match(r.headers.get("content-type") ?? "", /application\/manifest\+json/);
+  } finally { await s.done(); }
+});
+
+test("las fuentes empaquetadas se sirven como font/woff2 y con caché larga (no se vuelven a bajar en cada apertura)", async () => {
+  const s = await setup();
+  try {
+    const r = await s.call("GET", "/fonts/a.woff2", undefined, null);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("content-type"), "font/woff2");
+    assert.match(r.headers.get("cache-control") ?? "", /max-age=\d{6,}/);
+    assert.equal((await s.call("GET", "/index.html", undefined, null)).headers.get("cache-control"), "no-cache", "el resto sigue sin caché");
   } finally { await s.done(); }
 });
 

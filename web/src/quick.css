@@ -1,5 +1,5 @@
 :root {
-  --bg: #121316; --fg: #ececee; --fg2: #b9bac2; --muted: #80818b; --line: #2a2b31; --accent: #f0b35c; --sel: #25262c; --bad: #ff7b72;
+  --bg: #0f0e0c; --fg: #ebe6dc; --fg2: #bdb6a8; --muted: #8b8478; --line: #2a2723; --accent: #7f9bd6; --sel: #292621; --bad: #e8786c;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -13,5 +13,5 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); f
 .qh .qt { color: var(--muted); font-size: 12px; }
 .qh .none { color: var(--muted); cursor: default; }
 .qf { margin-top: auto; white-space: pre-wrap; color: var(--muted); font-size: 12.5px; min-height: 18px; display: flex; gap: 8px; align-items: center; }
-.qf b { color: var(--accent); font-family: ui-monospace, "JetBrains Mono", monospace; font-weight: 600; background: rgba(240,179,92,.12); padding: 0 6px; border-radius: 5px; }
+.qf b { color: var(--accent); font-family: ui-monospace, "JetBrains Mono", monospace; font-weight: 600; background: rgba(127,155,214,.13); padding: 0 6px; border-radius: 5px; }
 .qf.err { color: var(--bad); }

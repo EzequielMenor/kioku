@@ -7,9 +7,7 @@ interface GNode { path: string; title: string; type: string; degree: number }
 interface GraphData { nodes: GNode[]; edges: [number, number][]; total: number; isolated: number }
 interface SimNode { n: GNode; x: number; y: number; vx: number; vy: number; r: number; pinned: boolean }
 
-const TYPE_COLOR: Record<string, string> = {
-  project: "#f0b35c", task: "#6fcf97", note: "#7aa2f7", capture: "#8a8b93", journal: "#b392f0", resource: "#56d4c4",
-};
+// Los colores por tipo son variables del tema (--t-*): en «papel» son más oscuros para que se lean sobre fondo claro.
 const TYPE_LABEL: Record<string, string> = {
   project: "Proyectos", task: "Tareas", note: "Notas", capture: "Capturas", journal: "Diario", resource: "Recursos",
 };
@@ -40,7 +38,7 @@ export function GraphView({ rev, go, focus }: { rev: number; go(route: string): 
       </header>
       <div class="chips graph-types">
         {types.map((t) => (
-          <button key={t} class={`chip btn ${hidden.has(t) ? "" : "on"}`} style={hidden.has(t) ? "" : `background:${TYPE_COLOR[t] ?? "#888"};border-color:${TYPE_COLOR[t] ?? "#888"};color:#101010`}
+          <button key={t} class={`chip btn ${hidden.has(t) ? "" : "on"}`} style={hidden.has(t) ? "" : `background:var(--t-${t}, var(--muted));border-color:var(--t-${t}, var(--muted));color:var(--bg)`}
             onClick={() => setHidden((h) => { const n = new Set(h); n.has(t) ? n.delete(t) : n.add(t); return n; })}>{TYPE_LABEL[t] ?? t}</button>
         ))}
       </div>
@@ -63,7 +61,9 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
     const dpr = devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, s.w, s.h);
-    const line = cssVar("--line2", "#444"), fg = cssVar("--fg", "#eee"), muted = cssVar("--muted", "#888"), accent = cssVar("--accent", "#f0b35c");
+    const line = cssVar("--line2", "#444"), fg = cssVar("--fg", "#eee"), muted = cssVar("--muted", "#888"), accent = cssVar("--accent", "#7f9bd6");
+    const tint: Record<string, string> = {};
+    const typeColor = (ty: string) => (tint[ty] ??= cssVar(`--t-${ty}`, muted));
     const q = s.query.trim().toLowerCase();
     const hv = s.hover;
     const near = hv >= 0 ? s.adj[hv] : null;
@@ -90,7 +90,7 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
       const match = !q || nd.n.title.toLowerCase().includes(q);
       const dim = (hv >= 0 && i !== hv && !near!.has(i)) || !match;
       ctx.globalAlpha = dim ? 0.18 : 1;
-      ctx.fillStyle = TYPE_COLOR[nd.n.type] ?? "#888";
+      ctx.fillStyle = typeColor(nd.n.type);
       ctx.beginPath();
       ctx.arc(nd.x, nd.y, nd.r, 0, Math.PI * 2);
       ctx.fill();

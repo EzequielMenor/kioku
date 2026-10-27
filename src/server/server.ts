@@ -28,7 +28,7 @@ class HttpError extends Error {
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml", ".json": "application/json", ".png": "image/png", ".ico": "image/x-icon",
-  ".webmanifest": "application/manifest+json",
+  ".webmanifest": "application/manifest+json", ".woff2": "font/woff2",
 };
 
 function userPath(p: unknown): string {
@@ -370,7 +370,9 @@ export async function startServer(
     if (!file.startsWith(opts.webDir + path.sep)) throw new HttpError(404, "No existe");
     try {
       const data = await fs.readFile(file);
-      res.writeHead(200, { "content-type": MIME[path.extname(file)] ?? "application/octet-stream", "cache-control": "no-cache" });
+      // Las fuentes no cambian (nombres con peso y subconjunto): una semana de caché; el resto se revalida siempre.
+      const cache = file.endsWith(".woff2") ? "public, max-age=604800" : "no-cache";
+      res.writeHead(200, { "content-type": MIME[path.extname(file)] ?? "application/octet-stream", "cache-control": cache });
       res.end(data);
     } catch {
       // SPA: rutas de cliente (#/…) no llegan aquí; cualquier otra → 404
