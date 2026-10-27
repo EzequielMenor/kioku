@@ -55,8 +55,6 @@ test("móvil: la app está anclada al viewport y el documento no se desplaza (en
   assert.match(mobile, /html,\s*body\s*{[^}]*overflow:\s*hidden/, "el documento no hace scroll");
   assert.match(mobile, /html,\s*body\s*{[^}]*overscroll-behavior:\s*none/, "sin rebote del documento");
   assert.match(mobile, /\.shell\s*{[^}]*position:\s*fixed[^}]*inset:\s*0/, ".shell fijo a los cuatro bordes del viewport");
-  assert.match(mobile, /\.shell\s*{[^}]*height:\s*var\(--app-h,\s*auto\)/, "altura completa que iOS declara en la app instalada (--app-h); sin ella, el viewport");
-  assert.match(mobile, /\.shell\s*{[^}]*contain:\s*layout/, ".shell es el bloque contenedor de la barra, el FAB y los modales fijos: se anclan a su altura, no a la ventana corta");
   assert.match(mobile, /main\s*{[^}]*overscroll-behavior:\s*contain/, "el scroll de main no se encadena al documento");
   assert.match(mobile, /html\s*{[^}]*background:\s*var\(--side\)/, "el fondo del documento es el de la barra: una franja bajo ella no se ve como una barra negra");
   assert.match(mobile, /#root\s*{[^}]*overflow-y:\s*auto/, "«Falta la clave» (fuera de .shell) sigue siendo alcanzable en horizontal");

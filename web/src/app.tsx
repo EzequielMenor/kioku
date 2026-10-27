@@ -9,7 +9,7 @@ import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
 import { extractKey } from "./pairing.ts";
 import { SEAL_PATH } from "./seal.ts";
-import { formatScreen, readScreen, watchAppHeight } from "./screen-info.ts";
+import { formatScreen, readScreen } from "./screen-info.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
 import { NoteView } from "./note-view.tsx";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
@@ -869,5 +869,4 @@ function ContextDialog({ path, onClose }: { path: string; onClose(): void }) {
   );
 }
 
-watchAppHeight();
 render(<App />, document.getElementById("root")!);
