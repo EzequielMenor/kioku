@@ -6,7 +6,7 @@ import type { NoteType, TaskStatus } from "../core/index.ts";
 import { normKey, setFrontmatter } from "../core/markdown.ts";
 import type { Op } from "../core/proposals.ts";
 import { VaultError } from "../core/vault.ts";
-import { AssistantError, MAX_NOTES_PER_QUERY, checkAssistantPath, filterProps, isExcludedPath, isProtectedPath } from "./policy.ts";
+import { AssistantError, MAX_NOTES_PER_QUERY, checkAssistantPath, filterProps, hideExcluded, isExcludedPath, isProtectedPath } from "./policy.ts";
 import type { AssistantSession } from "./session.ts";
 import type { UndoStore } from "./undo.ts";
 
@@ -55,14 +55,6 @@ const argInt = (args: Record<string, unknown>, k: string, d: number, max: number
 };
 
 const isExcluded = isExcludedPath;
-
-/** Quita de un resultado todo objeto cuya `path`/`projectPath` esté excluida (y lo anula si era una propiedad suelta). */
-function hideExcluded(v: unknown, exclude: string[]): unknown {
-  if (!exclude.length || v === null || typeof v !== "object") return v;
-  const bad = (o: object): boolean => ["path", "projectPath"].some((k) => { const x = (o as Record<string, unknown>)[k]; return typeof x === "string" && isExcluded(x, exclude); });
-  if (Array.isArray(v)) return v.filter((x) => !(x && typeof x === "object" && bad(x))).map((x) => hideExcluded(x, exclude));
-  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x && typeof x === "object" && !Array.isArray(x) && bad(x) ? null : hideExcluded(x, exclude)]));
-}
 
 const READ_DEFS: Def[] = [
   {

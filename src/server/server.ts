@@ -12,7 +12,8 @@ import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore } from "../assistant/undo.ts";
-import { keyMatches, newKey, presentedKey } from "./key.ts";
+import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
+import { mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
 export const DEFAULT_PORT = 47800;
 
@@ -27,6 +28,7 @@ class HttpError extends Error {
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml", ".json": "application/json", ".png": "image/png", ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json",
 };
 
 function userPath(p: unknown): string {
@@ -95,6 +97,8 @@ export async function startServer(
     port?: number;
     /** Clave del daemon; si falta se genera una efímera. */
     key?: string;
+    /** Hosts extra aceptados además de 127.0.0.1/localhost (p. ej. el nombre de Tailscale); lista cerrada y exacta. */
+    allowedHosts?: string[];
     webDir: string;
     onQuickHide?: () => void | Promise<void>;
     onOpenWorkspace?: (route: string) => void | Promise<void>;
@@ -113,12 +117,15 @@ export async function startServer(
     }
   };
 
-  const sseClients = new Set<http.ServerResponse>();
+  const allowedHosts = new Set((opts.allowedHosts ?? []).map((h) => h.trim().toLowerCase()).filter(Boolean));
+  let mobileExclude: string[] = []; // carpetas privadas del móvil; se refresca en cada petición del rol `mobile`
+  // Cada cliente SSE lleva su rol: el móvil solo recibe eventos de notas visibles.
+  const sseClients = new Map<http.ServerResponse, Role>();
   j.bus.on("change", (ev) => {
     const data = `data: ${JSON.stringify(ev)}\n\n`;
-    for (const c of sseClients) c.write(data);
+    for (const [c, role] of sseClients) if (role === "full" || mobileEvent(ev, mobileExclude)) c.write(data);
   });
-  const keepAlive = setInterval(() => { for (const c of sseClients) c.write(": ka\n\n"); }, 25_000);
+  const keepAlive = setInterval(() => { for (const c of sseClients.keys()) c.write(": ka\n\n"); }, 25_000);
   keepAlive.unref();
 
   let boundPort = 0;
@@ -126,7 +133,7 @@ export async function startServer(
   // Estas rutas se autentican con el token de sesión del asistente (la jaula comparte red y no conoce la clave).
   const BEARER_ROUTES = new Set(["/api/assistant/tools/list", "/api/assistant/tools/call"]);
 
-  const send = (res: http.ServerResponse, status: number, body: unknown) => {
+  const sendJson = (res: http.ServerResponse, status: number, body: unknown) => {
     const text = JSON.stringify(body);
     res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
     res.end(text);
@@ -140,15 +147,33 @@ export async function startServer(
     return sess;
   }
 
-  async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+  /** Quién es el que llama: la clave completa, la del móvil (releída del disco: revocar es inmediato) o nadie. */
+  function roleOf(req: http.IncomingMessage): Role | null {
+    const given = presentedKey(req.headers);
+    if (keyMatches(key, given)) return "full";
+    const mk = readMobileKey(j.vault.root);
+    return mk && keyMatches(mk, given) ? "mobile" : null;
+  }
+
+  async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL, role: Role): Promise<void> {
     const m = req.method ?? "GET";
     const p = url.pathname;
     const q = url.searchParams;
+    if (role === "mobile" && !mobileAllowed(m, p)) throw new HttpError(403, "Eso no se puede hacer desde el móvil: hazlo en el portátil");
+    if (role === "mobile") {
+      try { mobileExclude = parseMobileConfig(await j.vault.readInternal("mobile.json")); }
+      catch (e) { throw new HttpError(503, (e as Error).message); }
+    }
     const body = m === "GET" ? {} : await readJson(req);
+    // Lo privado no existe para el móvil: al leerlo, 404; al escribirlo, 403. Y lo que sale de cualquier lectura va filtrado.
+    if (role === "mobile" && touchesPrivate([q, body], mobileExclude)) throw new HttpError(m === "GET" ? 404 : 403, m === "GET" ? "No existe" : "Esa carpeta es privada y no se toca desde el móvil");
+    const send = role === "mobile" ? (r: http.ServerResponse, status: number, b: unknown) => sendJson(r, status, mobileView(p, b, mobileExclude)) : sendJson;
+    const skip = role === "mobile" ? (x: string) => isPrivate(x, mobileExclude) : undefined;
 
     if (m === "GET") {
       switch (p) {
         case "/api/health": return send(res, 200, { ok: true });
+        case "/api/session": return send(res, 200, { role });
         case "/api/today": return send(res, 200, await j.today());
         case "/api/focus": return send(res, 200, j.focusState());
         case "/api/inbox": return send(res, 200, j.inbox().map((n) => ({ path: n.path, title: n.title, mtime: n.mtime, excerpt: n.body.trim().slice(0, 200) })));
@@ -175,10 +200,10 @@ export async function startServer(
           const type = q.get("type") as NoteType | null;
           return send(res, 200, j.index.listNotes({ type: type ?? undefined, limit: Number(q.get("limit") ?? 2000) }));
         }
-        case "/api/databases": return send(res, 200, j.listDatabases());
+        case "/api/databases": return send(res, 200, j.listDatabases({ skip }));
         case "/api/database": {
           const view = q.get("view");
-          return send(res, 200, j.queryDatabase(userPath(q.get("path")), view ?? undefined));
+          return send(res, 200, j.queryDatabase(userPath(q.get("path")), view ?? undefined, { skip }));
         }
         case "/api/tasks": {
           const st = q.get("status");
@@ -225,7 +250,7 @@ export async function startServer(
         case "/api/events": {
           res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
           res.write(": ok\n\n");
-          sseClients.add(res);
+          sseClients.set(res, role);
           req.on("close", () => sseClients.delete(res));
           return;
         }
@@ -259,7 +284,7 @@ export async function startServer(
           const n = await j.createDatabase({ name: str(body.name, "name"), template: body.template as never });
           return send(res, 200, { path: n.path });
         }
-        case "/api/database/query": return send(res, 200, j.queryDatabase(userPath(body.path), body.view as never));
+        case "/api/database/query": return send(res, 200, j.queryDatabase(userPath(body.path), body.view as never, { skip }));
         case "/api/database/view": { await j.saveView(userPath(body.path), body.view as never); return send(res, 200, { ok: true }); }
         case "/api/database/view/delete": { await j.deleteView(userPath(body.path), str(body.name, "name")); return send(res, 200, { ok: true }); }
         case "/api/database/row": {
@@ -353,28 +378,35 @@ export async function startServer(
     }
   }
 
+  const isLocalHost = (host: string) => host === `127.0.0.1:${boundPort}` || host === `localhost:${boundPort}`;
+
   const server = http.createServer(async (req, res) => {
     try {
-      // Anti DNS-rebinding / CSRF: solo aceptamos nuestro propio origen.
+      // Anti DNS-rebinding / CSRF: solo aceptamos nuestro propio origen (o un host de la lista cerrada, p. ej. Tailscale).
       const host = (req.headers.host ?? "").toLowerCase();
-      if (host !== `127.0.0.1:${boundPort}` && host !== `localhost:${boundPort}`) throw new HttpError(403, "Host no permitido");
+      const local = isLocalHost(host);
+      if (!local && !allowedHosts.has(host)) throw new HttpError(403, "Host no permitido");
       const origin = req.headers.origin;
-      if (origin && origin !== `http://127.0.0.1:${boundPort}` && origin !== `http://localhost:${boundPort}`) {
-        throw new HttpError(403, "Origen no permitido");
+      if (origin) {
+        const okOrigin = origin === `http://127.0.0.1:${boundPort}` || origin === `http://localhost:${boundPort}` || [...allowedHosts].some((h) => origin === `https://${h}`);
+        if (!okOrigin) throw new HttpError(403, "Origen no permitido");
       }
       const url = new URL(req.url ?? "/", `http://${host}`);
       if (url.pathname.startsWith("/api/")) {
         const open = url.pathname === "/api/health" || BEARER_ROUTES.has(url.pathname);
-        if (!open && !keyMatches(key, presentedKey(req.headers))) {
-          throw new HttpError(401, "Falta la clave de Kioku: abre la interfaz con `kioku open` (o `kioku url`)");
-        }
-        await api(req, res, url);
+        const role = roleOf(req);
+        if (!open && !role) throw new HttpError(401, "Falta la clave de Kioku: abre la interfaz con `kioku open` (o `kioku url`)");
+        await api(req, res, url, role ?? "full");
       } else if (req.method === "GET") {
         // Intercambio de clave: /…?k=<clave> deja la cookie y redirige a la ruta limpia (el fragmento #… lo conserva el navegador).
-        if (keyMatches(key, url.searchParams.get("k") ?? undefined)) {
+        const given = url.searchParams.get("k") ?? undefined;
+        const mk = readMobileKey(j.vault.root);
+        const valid = keyMatches(key, given) ? key : mk && keyMatches(mk, given) ? mk : null;
+        if (valid) {
           url.searchParams.delete("k");
           res.writeHead(302, {
-            "set-cookie": `kioku_key=${key}; HttpOnly; SameSite=Strict; Path=/`,
+            // Un año: el móvil no debe volver a pedir la clave. `Secure` en cuanto el acceso no es local (HTTPS de Tailscale).
+            "set-cookie": `kioku_key=${valid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${local ? "" : "; Secure"}`,
             location: url.pathname + url.search, "cache-control": "no-store",
           });
           return res.end();
@@ -383,13 +415,13 @@ export async function startServer(
       } else throw new HttpError(405, "Método no permitido");
     } catch (e) {
       if (res.headersSent) return res.end();
-      if (e instanceof HttpError) return send(res, e.status, { error: e.message });
+      if (e instanceof HttpError) return sendJson(res, e.status, { error: e.message });
       if (e instanceof VaultError) {
         const status = e.code === "not-found" ? 404 : e.code === "conflict" || e.code === "exists" ? 409 : 400;
-        return send(res, status, { error: e.message, code: e.code });
+        return sendJson(res, status, { error: e.message, code: e.code });
       }
       console.error(e);
-      send(res, 500, { error: (e as Error).message });
+      sendJson(res, 500, { error: (e as Error).message });
     }
   });
 
@@ -413,7 +445,7 @@ export async function startServer(
     port, url: `http://127.0.0.1:${port}`, sessions, assistantTools, key,
     close: () => new Promise((resolve) => {
       clearInterval(keepAlive);
-      for (const c of sseClients) c.end();
+      for (const c of sseClients.keys()) c.end();
       server.close(() => resolve());
       server.closeAllConnections();
     }),

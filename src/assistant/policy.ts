@@ -45,6 +45,14 @@ export function isExcludedPath(rel: string, exclude: string[]): boolean {
   return exclude.some((x) => { const e = exclusionKey(x); return e !== "" && k.startsWith(e); });
 }
 
+/** Quita de un resultado todo objeto cuya `path`/`projectPath` esté excluida (y lo anula si era una propiedad suelta). */
+export function hideExcluded(v: unknown, exclude: string[]): unknown {
+  if (!exclude.length || v === null || typeof v !== "object") return v;
+  const bad = (o: object): boolean => ["path", "projectPath"].some((k) => { const x = (o as Record<string, unknown>)[k]; return typeof x === "string" && isExcludedPath(x, exclude); });
+  if (Array.isArray(v)) return v.filter((x) => !(x && typeof x === "object" && bad(x))).map((x) => hideExcluded(x, exclude));
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x && typeof x === "object" && !Array.isArray(x) && bad(x) ? null : hideExcluded(x, exclude)]));
+}
+
 export function isProtectedPath(rel: string): boolean {
   return PROTECTED_PREFIXES.some((p) => rel.startsWith(p));
 }
