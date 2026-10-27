@@ -10,7 +10,7 @@ import { addDays, diffDays, localDate, localTime } from "./dates.ts";
 import { availableColumns, matchesSource, parseDatabase, queryRows, type Column, type DatabaseDef, type QueryResult, type View } from "./database.ts";
 import { fuzzyScore, Index, relationTarget, type NoteRow, type NoteType, type TaskRow, type TaskStatus } from "./index.ts";
 import { ulid } from "./ids.ts";
-import { appendToSection, normKey, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
+import { appendToSection, normKey, parseNote, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
 import { ProposalStore, type Op, type Proposal, type ProposalDraft } from "./proposals.ts";
 import { sanitizeFileName, Vault, VaultError } from "./vault.ts";
 
@@ -25,6 +25,14 @@ export const RESERVED_PROPS: ReadonlySet<string> = new Set(["id", "type", "creat
 export function isPlainValue(v: unknown): boolean {
   const scalar = (x: unknown) => typeof x === "string" || typeof x === "number" || typeof x === "boolean";
   return scalar(v) || (Array.isArray(v) && v.every(scalar));
+}
+
+/** Carpeta donde se crean las filas: sin `..`, segmentos vacíos ni ocultos (`.jarvis`, `.obsidian`…). */
+function rowFolder(folder: string): string {
+  const clean = folder.replace(/^\.?\/+|\/+$/g, "");
+  const segs = clean.split(/[\\/]/);
+  if (!clean || segs.some((x) => x === "" || x.startsWith("."))) throw new VaultError("invalid", `La carpeta de origen «${folder}» no es válida para crear filas`);
+  return clean;
 }
 
 const rawName = (v: unknown): string | null =>
@@ -364,24 +372,43 @@ export class Jarvis {
   async saveView(rel: string, view: View): Promise<NoteRow> {
     this.databaseDef(rel);
     const v = this.validView(view);
-    const raw = this.rawViews(rel);
-    const i = raw.findIndex((x) => rawName(x) === v.name);
-    if (i >= 0) raw[i] = v; else raw.push(v);
-    return this.setProps(rel, { views: raw });
+    return this.mutateViews(rel, (raw) => {
+      const i = raw.findIndex((x) => rawName(x) === v.name);
+      if (i >= 0) raw[i] = v; else raw.push(v);
+      return raw;
+    });
   }
 
   async deleteView(rel: string, name: string): Promise<NoteRow> {
     this.databaseDef(rel);
-    const raw = this.rawViews(rel);
-    const next = raw.filter((x) => rawName(x) !== name);
-    if (next.length === raw.length) throw new VaultError("not-found", `Vista «${name}» no encontrada`);
-    return this.setProps(rel, { views: next.length ? next : null });
+    return this.mutateViews(rel, (raw) => {
+      const next = raw.filter((x) => rawName(x) !== name);
+      if (next.length === raw.length) throw new VaultError("not-found", `Vista «${name}» no encontrada`);
+      return next;
+    });
   }
 
-  private rawViews(rel: string): unknown[] {
-    const cur = this.index.getNote(rel)?.fm.views;
-    return Array.isArray(cur) ? [...cur] : [];
+  /**
+   * Cambia `views` partiendo del texto del fichero (no del índice, que puede ir por detrás de una edición externa)
+   * y en serie, para que dos guardados simultáneos no se pisen.
+   */
+  private mutateViews(rel: string, fn: (raw: unknown[]) => unknown[]): Promise<NoteRow> {
+    const run = async () => {
+      const cur = await this.vault.read(rel);
+      const views = parseNote(cur.text, rel).frontmatter.views;
+      const next = fn(Array.isArray(views) ? [...views] : []);
+      const text = setFrontmatter(cur.text, { views: next.length ? next : null });
+      await this.vault.write(rel, text, cur.hash);
+      const note = await this.reindexPath(rel);
+      this.changed("note", rel);
+      return note;
+    };
+    const result = this.viewsQueue.then(run, run);
+    this.viewsQueue = result.catch(() => undefined);
+    return result;
   }
+
+  private viewsQueue: Promise<unknown> = Promise.resolve();
 
   /** Nueva fila: una nota normal en la carpeta/tipo de origen. `id`, `type` y `created` son del sistema y nunca se aceptan. */
   async createRow(rel: string, opts: { title: string; props?: Record<string, unknown> }): Promise<NoteRow> {
@@ -407,7 +434,7 @@ export class Jarvis {
     if (s.type === "task" && fm.status === undefined) fm.status = "todo";
     return this.buildNote({
       title: opts.title, type: s.type ?? "note", fm,
-      folder: s.folder !== null ? s.folder.replace(/^\.?\/+|\/+$/g, "") : FOLDERS[s.type ?? "note"],
+      folder: s.folder !== null ? rowFolder(s.folder) : FOLDERS[s.type ?? "note"],
     });
   }
 

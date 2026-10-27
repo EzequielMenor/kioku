@@ -5,6 +5,7 @@ import { api, lsGet, lsSet } from "./api.ts";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi } from "./hooks.ts";
 import type { Column, Filter, FilterOp, QueryResult, ResultRow, View } from "./types.ts";
+import { laneValue, relationValue, safeHref } from "./cell-values.ts";
 
 type Guard = <T>(fn: () => Promise<T>) => Promise<T | undefined>;
 type Go = (route: string) => void;
@@ -280,13 +281,17 @@ function Cell({ col, row, setCell }: { col: Column; row: ResultRow; setCell(r: R
     case "multi":
       return <input class="cell-input" defaultValue={text(v)} key={text(v)} placeholder="a, b, c" aria-label={aria}
         onBlur={(e) => { const next = e.currentTarget.value.split(",").map((s) => s.trim()).filter(Boolean); if (next.join(", ") !== text(v)) setCell(row, col.key, next); }} />;
+    case "relation":
+      return <input class="cell-input" defaultValue={text(v)} key={text(v)} placeholder="[[Nota]], [[Otra]]" aria-label={aria}
+        onBlur={(e) => { if (e.currentTarget.value !== text(v)) setCell(row, col.key, relationValue(e.currentTarget.value, v)); }}
+        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />;
     default:
       return (
         <span class="cell-text">
           <input class="cell-input" defaultValue={text(v)} key={text(v)} aria-label={aria}
             onBlur={(e) => { if (e.currentTarget.value !== text(v)) setCell(row, col.key, e.currentTarget.value); }}
             onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-          {col.type === "url" && text(v) && <a href={text(v)} target="_blank" rel="noreferrer noopener" aria-label="Abrir enlace">↗</a>}
+          {col.type === "url" && safeHref(text(v)) && <a href={safeHref(text(v))!} target="_blank" rel="noreferrer noopener" aria-label="Abrir enlace">↗</a>}
         </span>
       );
   }
@@ -369,7 +374,7 @@ function Board({ res, view, available, edit, setCell }: { res: Result; view: Vie
     setOver(null);
     const path = e.dataTransfer?.getData("text/plain");
     const row = res.rows.find((r) => r.path === path);
-    if (row && movable && String(row.cells[group] ?? "") !== lane) setCell(row, group, lane);
+    if (row && movable && String(row.cells[group] ?? "") !== lane) setCell(row, group, laneValue(col?.type, lane));
   };
   const rest = res.columns.filter((c) => c.key !== "title" && c.key !== group);
   return (
@@ -390,7 +395,7 @@ function Board({ res, view, available, edit, setCell }: { res: Result; view: Vie
                     return v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length) ? null : <span class="chip" key={c.key} title={label(c.key)}>{text(v)}</span>;
                   })}
                   {movable && (
-                    <select class="cell-select kmove" value={lane} aria-label={`Mover «${r.title}»`} onChange={(e) => setCell(r, group, e.currentTarget.value)}>
+                    <select class="cell-select kmove" value={lane} aria-label={`Mover «${r.title}»`} onChange={(e) => setCell(r, group, laneValue(col?.type, e.currentTarget.value))}>
                       {lanes.filter((l) => l !== "" || lane === "").map((l) => <option key={l} value={l}>{l || "Sin valor"}</option>)}
                     </select>
                   )}

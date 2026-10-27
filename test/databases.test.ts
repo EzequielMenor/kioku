@@ -139,3 +139,47 @@ test("bases: queryDatabase expone las propiedades disponibles (esquema + las vis
     j.close();
   } finally { cleanup(); }
 });
+
+test("bases: una carpeta de origen con .. o segmentos ocultos no deja a createRow escribir en .jarvis", async () => {
+  const { j, root, cleanup } = await setup();
+  try {
+    for (const folder of ["Notas/../.jarvis", ".jarvis/x", "../fuera", "a//b"]) {
+      const db = await j.createNote({ title: `Hostil ${folder.length}`, type: "database", fm: { source: { folder } } });
+      await assert.rejects(() => j.createRow(db.path, { title: "pwn" }), /origen|carpeta|fuera|invalid|no válid/i, folder);
+    }
+    const { existsSync } = await import("node:fs");
+    assert.ok(!existsSync(path.join(root, ".jarvis", "pwn.md")));
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("bases: saveView parte de lo que hay en disco, no del índice (una vista añadida a mano antes del reindexado no se pierde)", async () => {
+  const { j, root, cleanup } = await setup();
+  try {
+    const db = await j.createDatabase({ name: "Libros", template: "libros" });
+    const file = path.join(root, db.path);
+    const { writeFileSync } = await import("node:fs");
+    const { setFrontmatter } = await import("../src/core/markdown.ts");
+    const views = [...(j.index.getNote(db.path)!.fm.views as object[]), { name: "Manual", kind: "list" }];
+    // edición externa: el índice aún no la conoce
+    writeFileSync(file, setFrontmatter(readFileSync(file, "utf8"), { views }));
+    await j.saveView(db.path, { name: "Nueva", kind: "table", columns: [], filter: [], sort: [], group: null });
+    const text = readFileSync(file, "utf8");
+    assert.match(text, /Manual/);
+    assert.match(text, /Nueva/);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("bases: dos saveView simultáneos conservan ambas vistas y ninguno falla", async () => {
+  const { j, root, cleanup } = await setup();
+  try {
+    const db = await j.createDatabase({ name: "Libros", template: "libros" });
+    const v = (name: string) => ({ name, kind: "table" as const, columns: [], filter: [], sort: [], group: null });
+    await Promise.all([j.saveView(db.path, v("A")), j.saveView(db.path, v("B"))]);
+    const text = readFileSync(path.join(root, db.path), "utf8");
+    assert.match(text, /name: A/);
+    assert.match(text, /name: B/);
+    j.close();
+  } finally { cleanup(); }
+});

@@ -5,6 +5,7 @@ import { api, ApiError } from "./api.ts";
 import { createEditor, splitNote, type EditorHandle } from "./editor.ts";
 import { useApi } from "./hooks.ts";
 import type { NoteInfo } from "./types.ts";
+import { parseValue } from "./cell-values.ts";
 
 type SaveState = "saved" | "dirty" | "saving" | "conflict" | "error";
 
@@ -18,15 +19,6 @@ const TYPED_PROPS: Record<string, string[]> = { task: ["status", "due", "priorit
 
 const isScalar = (v: unknown) => ["string", "number", "boolean"].includes(typeof v) || v instanceof Date;
 const asText = (v: unknown) => (Array.isArray(v) ? v.join(", ") : v === null || v === undefined ? "" : String(v));
-/** Texto escrito por el usuario → valor YAML: números y true/false con su tipo, el resto texto; vacío = quitar la propiedad. */
-function parseValue(raw: string): unknown {
-  const t = raw.trim();
-  if (t === "") return null;
-  if (t === "true" || t === "false") return t === "true";
-  if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
-  return t;
-}
-
 function ExtraProps({ fm, type, setProp }: { fm: Record<string, unknown>; type: string; setProp(p: Record<string, unknown>): Promise<void> }) {
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
