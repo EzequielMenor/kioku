@@ -2,6 +2,19 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## [0.4.0] — 2026-10-27
+
+### Seguridad
+- **La API local exige una clave por daemon** (JARV-1). Antes, cualquier proceso que alcanzase `127.0.0.1` —incluida la jaula del asistente, que comparte la red— podía llamar a rutas como `/api/note/delete`. Ahora todas las rutas `/api` (lecturas incluidas) piden la clave guardada en `.kioku/secret` (0600), por cookie `HttpOnly; SameSite=Strict` o cabecera `x-kioku-key`. Las herramientas del asistente siguen usando su token de sesión y `/api/health` solo devuelve `{ok:true}`.
+- El secreto no entra en las copias de seguridad (`kioku export`).
+
+### Añadido
+- `kioku url`: imprime la URL de acceso (lleva la clave en `?k=`; el daemon la cambia por una cookie y redirige). `kioku open` y `kioku quick` la usan solos.
+- La interfaz muestra «Falta la clave de Kioku» si se abre sin ella.
+
+### Migrar desde 0.3.0
+- Reinicia el daemon (`systemctl --user restart kioku`) y cierra las ventanas de Kioku abiertas: se reabren con `kioku open` / `kioku quick`. Si tenías la interfaz abierta en otro navegador, usa `kioku url`.
+
 ## [0.3.0] — 2026-10-27
 
 ### Cambiado

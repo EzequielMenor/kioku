@@ -1,7 +1,7 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import "./app.css";
-import { api, lsGet, lsSet } from "./api.ts";
+import { UNAUTHORIZED_EVENT, api, lsGet, lsSet } from "./api.ts";
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
 import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { askConfirm, askText } from "./dialogs.tsx";
@@ -88,6 +88,12 @@ function App() {
   const focus = useApi<FocusState>("/api/focus", rev).data;
   const counts = useApi<TodayView>("/api/today", rev).data;
   const toastTimer = useRef(0);
+  const [locked, setLocked] = useState(false);
+  useEffect(() => {
+    const on = () => setLocked(true);
+    addEventListener(UNAUTHORIZED_EVENT, on);
+    return () => removeEventListener(UNAUTHORIZED_EVENT, on);
+  }, []);
 
   const say = (text: string, error = false) => {
     setToast({ text, error });
@@ -160,6 +166,15 @@ function App() {
     const r = await api<{ path: string }>("POST", "/api/journal", {});
     setRoute(`/nota/${r.path}`);
   });
+
+  if (locked) {
+    return (
+      <div class="empty" style="margin:20vh auto;max-width:34rem;text-align:center">
+        <h2>Falta la clave de Kioku</h2>
+        <p>Esta página no se abrió con la clave del daemon. Ábrela con <code>kioku open</code> (o copia la URL de <code>kioku url</code>).</p>
+      </div>
+    );
+  }
 
   let view;
   const [head, ...rest] = route.split("/").filter(Boolean);

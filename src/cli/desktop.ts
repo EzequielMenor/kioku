@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { readKey } from "../server/key.ts";
 
 export const QUICK_TITLE = "Kioku Quick";
 export const WORKSPACE_TITLE = "Kioku";
@@ -24,6 +25,14 @@ export function readRuntime(home: string): Runtime | null {
   } catch {
     return null;
   }
+}
+
+/** URL de acceso: la clave viaja en `?k=` (el daemon la cambia por una cookie y redirige); `route` puede llevar `#/…`. */
+export function loginUrl(base: string, key: string | null, route: string): string {
+  if (!key) return `${base}${route}`;
+  const hash = route.indexOf("#");
+  const pathPart = hash < 0 ? route : route.slice(0, hash);
+  return `${base}${pathPart}?k=${key}${hash < 0 ? "" : route.slice(hash)}`;
 }
 
 export const daemonAlive = (port: number) => healthy(port);
@@ -100,7 +109,7 @@ const toggleSpecial = () => lua(`hl.dispatch(hl.dsp.workspace.toggle_special(${l
 
 /** Abre/alterna la ventana Quick. En Hyprland se mantiene "caliente" en un workspace especial. */
 export async function toggleQuick(base: string): Promise<string> {
-  const url = `${base}/quick`;
+  const url = loginUrl(base, readKey(kiokuHome()), "/quick");
   if (!inHyprland()) {
     spawn(browser(), [...browserArgs(url, QUICK_TITLE, "browser-quick"), "--window-size=680,160"], { detached: true, stdio: "ignore" }).unref();
     return "ventana abierta";
@@ -143,7 +152,7 @@ export function openWorkspace(base: string, route: string): void {
     const c = findClient(WORKSPACE_TITLE);
     if (c) { lua(`hl.dispatch(hl.dsp.focus({ window = ${luaStr("address:" + c.address)} }))`); return; }
   }
-  spawn(browser(), [...browserArgs(`${base}/#${route}`, WORKSPACE_TITLE, "browser"), "--window-size=1280,820"], { detached: true, stdio: "ignore" }).unref();
+  spawn(browser(), [...browserArgs(loginUrl(base, readKey(kiokuHome()), `/#${route}`), WORKSPACE_TITLE, "browser"), "--window-size=1280,820"], { detached: true, stdio: "ignore" }).unref();
 }
 
 export const hasBrowserProfile = () => existsSync(path.join(os.homedir(), ".cache", "kioku", "browser"));

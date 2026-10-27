@@ -32,7 +32,7 @@
 - Comportamiento a largo plazo de la herramienta `memory` de Hermes (qué decide recordar con el uso).
 - Límites/cuota de la suscripción de Codex ante uso intensivo.
 - Las propuestas del modelo pueden ser imprecisas (en una prueba propuso mandar a la papelera una nota que tenía contenido): por eso todo lo destructivo pasa por tu aprobación.
-- **Limitación de seguridad conocida:** la jaula comparte la red del equipo (Hermes necesita llegar al proveedor) y la API local del daemon no tiene autenticación fuera de las herramientas del asistente. Hoy Hermes solo tiene las herramientas `clarify`, `memory` y `skills` (sin terminal ni ficheros), pero un Hermes comprometido podría llamar a rutas como `/api/note/delete`. Mitigación futura: secreto por daemon en las rutas de escritura o red aislada con proxy.
+- **Red y API (resuelto en 0.4.0, JARV-1):** la jaula sigue compartiendo la red del equipo, pero el daemon exige una clave por daemon (`.kioku/secret`, cookie o cabecera `x-kioku-key`) en todas las rutas `/api` salvo `tools/list`/`tools/call` (token de sesión) y un `/api/health` mínimo. Pruebas en `test/security.test.ts`: sin clave o con clave incorrecta → 401 en lecturas, escrituras y SSE; `?k=` intercambia la clave por una cookie `HttpOnly; SameSite=Strict`; el secreto es 0600, estable y no entra en las exportaciones. Límite: un proceso del mismo usuario que lea `.kioku/secret` puede usar la API.
 - Servicio systemd: sigue sin instalarse (es tuyo: `kioku service install`).
 
 ## Bases de datos

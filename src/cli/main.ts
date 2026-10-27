@@ -9,7 +9,8 @@ import { HermesEngine } from "../assistant/engine.ts";
 import { FakeEngine } from "../assistant/fake-engine.ts";
 import type { UndoRecord } from "../assistant/undo.ts";
 import { installService, serviceStatus, uninstallService } from "./service.ts";
-import { daemonAlive, ensureDaemon, hideQuick, kiokuHome, openWorkspace, readRuntime, toggleQuick, webDir } from "./desktop.ts";
+import { loadOrCreateKey, readKey } from "../server/key.ts";
+import { daemonAlive, ensureDaemon, hideQuick, kiokuHome, loginUrl, openWorkspace, readRuntime, toggleQuick, webDir } from "./desktop.ts";
 
 const HELP = `kioku — segundo cerebro local-first
 
@@ -17,6 +18,7 @@ Uso: kioku <comando> [args]
 
   quick                    Abre/oculta la ventana de captura rápida (asigna esto a un atajo de Hyprland)
   open                     Abre el Workspace
+  url                      Imprime la URL de acceso (lleva la clave del daemon: no la compartas)
   add <texto>              Captura rápida sin abrir ventana:  t tarea !mañana @proyecto · d decisión · n nota
   today                    Qué hacer hoy y a qué volver
   resume [proyecto]        Dónde lo dejaste, qué se decidió, qué falta
@@ -53,8 +55,12 @@ function guardHome(home: string): void {
 }
 
 async function api<T>(base: string, method: string, p: string, body?: unknown): Promise<T> {
+  const key = readKey(kiokuHome());
+  const headers: Record<string, string> = {};
+  if (key) headers["x-kioku-key"] = key;
+  if (body !== undefined) headers["content-type"] = "application/json";
   const r = await fetch(base + p, {
-    method, headers: body === undefined ? undefined : { "content-type": "application/json" },
+    method, headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const j = (await r.json()) as T & { error?: string };
@@ -100,7 +106,7 @@ async function main(): Promise<void> {
       }
       const j = await Kioku.open({ root: home });
       j.watch();
-      const srv = await startServer(j, { port: Number(process.env.KIOKU_PORT) || undefined, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const srv = await startServer(j, { port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
       const rtFile = path.join(home, ".kioku", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`Kioku escuchando en ${srv.url}  (datos: ${home})`);
@@ -111,6 +117,7 @@ async function main(): Promise<void> {
     }
     case "quick": { guardHome(home); const base = await ensureDaemon(home); console.log(await toggleQuick(base)); return; }
     case "open": { guardHome(home); openWorkspace(await ensureDaemon(home), "/hoy"); return; }
+    case "url": { guardHome(home); console.log(loginUrl(await ensureDaemon(home), readKey(home), "/#/hoy")); return; }
     case "service": {
       guardHome(home);
       const sub = args[0];

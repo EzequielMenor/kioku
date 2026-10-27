@@ -30,7 +30,7 @@ async function setup(onAsk?: (i: AskFn, tool: (name: string, args?: unknown) => 
   const srv = await startServer(j, { port: 0, webDir: web, assistant: engine ? { engine } : undefined });
   const call = async (method: string, p: string, body?: unknown, headers: Record<string, string> = {}) => {
     const r = await fetch(srv.url + p, {
-      method, headers: body === undefined ? headers : { "content-type": "application/json", ...headers },
+      method, headers: { "x-kioku-key": srv.key, ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     return { status: r.status, json: await r.json().catch(() => null) as any };

@@ -16,7 +16,7 @@ async function setup() {
   const srv = await startServer(j, { port: 0, webDir: web });
   const call = async (method: string, p: string, body?: unknown, headers: Record<string, string> = {}) => {
     const r = await fetch(srv.url + p, {
-      method, headers: body === undefined ? headers : { "content-type": "application/json", ...headers },
+      method, headers: { "x-kioku-key": srv.key, ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     return { status: r.status, json: await r.json().catch(() => null) as any };
@@ -77,7 +77,7 @@ test("Seguridad: rutas internas/traversal, Host, Origin y content-type", async (
     });
     assert.equal(res, 403);
     // POST "simple" sin application/json (CSRF por formulario)
-    const r = await fetch(s.srv.url + "/api/capture", { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ text: "x" }) });
+    const r = await fetch(s.srv.url + "/api/capture", { method: "POST", headers: { "content-type": "text/plain", "x-kioku-key": s.srv.key }, body: JSON.stringify({ text: "x" }) });
     assert.equal(r.status, 415);
     assert.equal((await s.call("GET", "/")).status, 200);
   } finally { await s.done(); }

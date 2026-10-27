@@ -8,6 +8,9 @@ export class ApiError extends Error {
   }
 }
 
+/** Se dispara cuando el daemon rechaza la petición por falta de clave (la página no se abrió con `kioku open`). */
+export const UNAUTHORIZED_EVENT = "kioku:unauthorized";
+
 export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
   const r = await fetch(path, {
     method,
@@ -15,7 +18,10 @@ export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new ApiError(r.status, data.error ?? `Error ${r.status}`, data.code);
+  if (!r.ok) {
+    if (r.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    throw new ApiError(r.status, data.error ?? `Error ${r.status}`, data.code);
+  }
   return data as T;
 }
 

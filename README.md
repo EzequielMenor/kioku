@@ -5,7 +5,7 @@
 **Tu segundo cerebro, local y tuyo.**
 Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un asistente que propone y tú apruebas.
 
-[![Versión](https://img.shields.io/badge/versión-0.3.0-e0a458)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versión-0.4.0-e0a458)](CHANGELOG.md)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
@@ -78,6 +78,7 @@ ln -s "$PWD/bin/kioku" ~/.local/bin/kioku      # asegúrate de que ~/.local/bin 
 kioku add "t Probar Kioku !hoy"
 kioku today
 kioku open                                       # abre el Workspace
+kioku url                                        # URL de acceso con la clave (para abrirla en otro navegador)
 ```
 
 Si no haces el paso 3, usa `bin/kioku` desde la carpeta del proyecto.
@@ -253,12 +254,12 @@ Diseño completo en [`docs/design`](docs/design) (PRD, arquitectura y decisiones
 - El servidor solo escucha en `127.0.0.1`; las peticiones con `Host` u `Origin` ajenos se rechazan.
 - Las escrituras de la IA pasan por propuestas, o por acciones reversibles con Deshacer, y quedan auditadas.
 - Tu bóveda de Obsidian nunca se modifica: la importación es una copia.
-- **Limitación conocida:** la jaula del asistente comparte la red del equipo (Hermes necesita llegar a su proveedor) y la API local del daemon no tiene autenticación fuera de las herramientas del asistente. Hoy Hermes solo tiene las herramientas `clarify`, `memory` y `skills`. Detalles y mitigación prevista en [`docs/validation.md`](docs/validation.md).
+- **La API del daemon exige una clave.** Al arrancar crea `.kioku/secret` (0600, no se incluye en las copias de seguridad) y toda ruta `/api` la pide, lecturas incluidas, por cookie (`HttpOnly`, `SameSite=Strict`) o cabecera `x-kioku-key`. `kioku open`, `kioku quick` y los atajos la llevan solos; `kioku url` imprime una URL de acceso para abrirla a mano. Así, aunque la jaula del asistente comparta la red del equipo (Hermes necesita llegar a su proveedor), no puede leer ni cambiar tus notas saltándose las herramientas con token de sesión. Límite: otro proceso de tu mismo usuario que pueda leer `.kioku/secret` sí puede usar la API (es el mismo nivel de acceso que ya tiene a tus ficheros).
 
 ## Desarrollo
 
 ```bash
-npm test               # 135 pruebas (node:test), todas sobre bóvedas temporales
+npm test               # 144 pruebas (node:test), todas sobre bóvedas temporales
 npm run typecheck      # tsc --noEmit
 npm run build:web      # empaqueta la interfaz con esbuild en dist/web
 npm run dev            # daemon en primer plano
@@ -279,7 +280,7 @@ Ideas siguientes, sin orden de compromiso:
 
 ## Versiones
 
-Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.3.0**.
+Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.4.0**.
 
 ## Licencia
 

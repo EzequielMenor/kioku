@@ -12,6 +12,7 @@ import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore } from "../assistant/undo.ts";
+import { keyMatches, newKey, presentedKey } from "./key.ts";
 
 export const DEFAULT_PORT = 47800;
 
@@ -83,6 +84,8 @@ export interface ServerHandle {
   url: string;
   sessions: SessionRegistry;
   assistantTools: AssistantTools;
+  /** Clave que exige toda ruta /api salvo las del asistente (token de sesión) y /api/health. */
+  key: string;
   close(): Promise<void>;
 }
 
@@ -90,6 +93,8 @@ export async function startServer(
   j: Kioku,
   opts: {
     port?: number;
+    /** Clave del daemon; si falta se genera una efímera. */
+    key?: string;
     webDir: string;
     onQuickHide?: () => void | Promise<void>;
     onOpenWorkspace?: (route: string) => void | Promise<void>;
@@ -117,6 +122,9 @@ export async function startServer(
   keepAlive.unref();
 
   let boundPort = 0;
+  const key = opts.key ?? newKey();
+  // Estas rutas se autentican con el token de sesión del asistente (la jaula comparte red y no conoce la clave).
+  const BEARER_ROUTES = new Set(["/api/assistant/tools/list", "/api/assistant/tools/call"]);
 
   const send = (res: http.ServerResponse, status: number, body: unknown) => {
     const text = JSON.stringify(body);
@@ -140,7 +148,7 @@ export async function startServer(
 
     if (m === "GET") {
       switch (p) {
-        case "/api/health": return send(res, 200, { ok: true, root: j.vault.root, notes: j.index.count() });
+        case "/api/health": return send(res, 200, { ok: true });
         case "/api/today": return send(res, 200, await j.today());
         case "/api/focus": return send(res, 200, j.focusState());
         case "/api/inbox": return send(res, 200, j.inbox().map((n) => ({ path: n.path, title: n.title, mtime: n.mtime, excerpt: n.body.trim().slice(0, 200) })));
@@ -355,9 +363,24 @@ export async function startServer(
         throw new HttpError(403, "Origen no permitido");
       }
       const url = new URL(req.url ?? "/", `http://${host}`);
-      if (url.pathname.startsWith("/api/")) await api(req, res, url);
-      else if (req.method === "GET") await serveStatic(res, url.pathname);
-      else throw new HttpError(405, "Método no permitido");
+      if (url.pathname.startsWith("/api/")) {
+        const open = url.pathname === "/api/health" || BEARER_ROUTES.has(url.pathname);
+        if (!open && !keyMatches(key, presentedKey(req.headers))) {
+          throw new HttpError(401, "Falta la clave de Kioku: abre la interfaz con `kioku open` (o `kioku url`)");
+        }
+        await api(req, res, url);
+      } else if (req.method === "GET") {
+        // Intercambio de clave: /…?k=<clave> deja la cookie y redirige a la ruta limpia (el fragmento #… lo conserva el navegador).
+        if (keyMatches(key, url.searchParams.get("k") ?? undefined)) {
+          url.searchParams.delete("k");
+          res.writeHead(302, {
+            "set-cookie": `kioku_key=${key}; HttpOnly; SameSite=Strict; Path=/`,
+            location: url.pathname + url.search, "cache-control": "no-store",
+          });
+          return res.end();
+        }
+        await serveStatic(res, url.pathname);
+      } else throw new HttpError(405, "Método no permitido");
     } catch (e) {
       if (res.headersSent) return res.end();
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });
@@ -387,7 +410,7 @@ export async function startServer(
   boundPort = (server.address() as AddressInfo).port;
   port = boundPort;
   return {
-    port, url: `http://127.0.0.1:${port}`, sessions, assistantTools,
+    port, url: `http://127.0.0.1:${port}`, sessions, assistantTools, key,
     close: () => new Promise((resolve) => {
       clearInterval(keepAlive);
       for (const c of sseClients) c.end();
