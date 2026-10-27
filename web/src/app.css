@@ -346,12 +346,13 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   main { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: env(safe-area-inset-top); } /* barra de estado translúcida: el contenido no queda bajo la hora */
   #root { overflow-y: auto; }
   .sidebar { display: none; }
-  .content { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
-  .bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; background: var(--side); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
-  .bottomnav a, .bottomnav button { flex: 1; min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: none; border: 0; border-radius: 0; color: var(--muted); font-size: 11px; padding: 6px 0; }
+  :root { --nav-pad: max(calc(env(safe-area-inset-bottom) - 6px), 0px); } /* el indicador de inicio ocupa ~13 pt: sobra espacio recortando 6 */
+  .content { padding-bottom: calc(54px + var(--nav-pad)); }
+  .bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; background: var(--side); border-top: 1px solid var(--line); padding-bottom: var(--nav-pad); }
+  .bottomnav a, .bottomnav button { flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: none; border: 0; border-radius: 0; color: var(--muted); font-size: 11px; padding: 6px 0; }
   .bottomnav .active { color: var(--accent); }
   .bottomnav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-  .fab { display: flex; align-items: center; justify-content: center; position: fixed; right: 16px; bottom: calc(74px + env(safe-area-inset-bottom)); z-index: 41; width: 54px; height: 54px; padding: 0; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-fg); font-size: 30px; line-height: 1; box-shadow: var(--shadow); }
+  .fab { display: flex; align-items: center; justify-content: center; position: fixed; right: 16px; bottom: calc(70px + var(--nav-pad)); z-index: 41; width: 54px; height: 54px; padding: 0; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-fg); font-size: 30px; line-height: 1; box-shadow: var(--shadow); }
   .page, .page.narrow, .page.wide { padding: 16px 16px 96px; }
   .page-head { flex-wrap: wrap; }
   .page-head .row { flex-wrap: wrap; }
