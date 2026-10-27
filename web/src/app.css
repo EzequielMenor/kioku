@@ -340,10 +340,10 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 
 @media (max-width: 720px) {
   /* Anclada al viewport: solo `main` hace scroll. Con height:100% en iOS (PWA o Safari) sobran píxeles, el documento se desplaza y deja un hueco bajo la barra. */
-  html, body { overflow: hidden; overscroll-behavior: none; }
+  html, body { overscroll-behavior: none; }
   html { background: var(--side); } /* si iOS deja una franja bajo la barra inferior, se funde con ella en vez de verse como una barra negra */
   .shell { position: fixed; inset: 0; height: auto; }
-  main { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  main { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: env(safe-area-inset-top); } /* barra de estado translúcida: el contenido no queda bajo la hora */
   #root { overflow-y: auto; }
   .sidebar { display: none; }
   .content { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
@@ -381,4 +381,16 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .cards .row.small { flex-wrap: wrap; gap: 8px; }
   .rows li { flex-wrap: wrap; }
   .rows .path { display: none; }
+}
+
+/* En el navegador el documento no se desplaza: solo lo hace `main`. */
+@media (max-width: 720px) and (not (display-mode: standalone)) {
+  html, body { overflow: hidden; }
+}
+
+/* iOS 26 (WebKit 301108): en la app instalada, con viewport-fit=cover y barra de estado translúcida, la ventana sale más corta
+   que la pantalla (el alto de la barra) mientras el documento sea más bajo que ella y deja una franja bajo la barra inferior.
+   Con el documento tan alto como la pantalla, iOS da la ventana completa. El tope de min() evita desplazamiento si el área superior es 0. */
+@media (display-mode: standalone) {
+  html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); }
 }

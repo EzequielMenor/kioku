@@ -52,7 +52,6 @@ test("móvil: la app está anclada al viewport y el documento no se desplaza (en
   const start = css.indexOf("@media (max-width: 720px) {");
   assert.ok(start > 0, "bloque móvil");
   const mobile = css.slice(start);
-  assert.match(mobile, /html,\s*body\s*{[^}]*overflow:\s*hidden/, "el documento no hace scroll");
   assert.match(mobile, /html,\s*body\s*{[^}]*overscroll-behavior:\s*none/, "sin rebote del documento");
   assert.match(mobile, /\.shell\s*{[^}]*position:\s*fixed[^}]*inset:\s*0/, ".shell fijo a los cuatro bordes del viewport");
   assert.match(mobile, /main\s*{[^}]*overscroll-behavior:\s*contain/, "el scroll de main no se encadena al documento");
@@ -60,8 +59,15 @@ test("móvil: la app está anclada al viewport y el documento no se desplaza (en
   assert.match(mobile, /#root\s*{[^}]*overflow-y:\s*auto/, "«Falta la clave» (fuera de .shell) sigue siendo alcanzable en horizontal");
 });
 
-test("PWA iOS: la barra de estado no es translúcida (el CSS no reserva el área segura superior y, con iOS 26, la ventana sale 62 px más corta que la pantalla)", () => {
-  const html = read("index.html");
-  assert.match(html, /name="apple-mobile-web-app-status-bar-style" content="black"/);
-  assert.ok(/black-translucent/.test(html) === /safe-area-inset-top/.test(css), "translúcida solo si el CSS compensa safe-area-inset-top");
+test("PWA iOS: barra de estado translúcida con el área segura superior reservada en el CSS", () => {
+  assert.match(read("index.html"), /name="apple-mobile-web-app-status-bar-style" content="black-translucent"/);
+  const mobile = css.slice(css.indexOf("@media (max-width: 720px) {"));
+  assert.match(mobile, /main\s*{[^}]*padding-top:\s*env\(safe-area-inset-top\)/, "el contenido no queda bajo la hora");
+});
+
+test("PWA iOS 26 (WebKit 301108): en la app instalada el documento mide como la pantalla, o iOS da una ventana más corta y deja una franja bajo la barra", () => {
+  assert.match(css, /@media \(display-mode: standalone\)\s*{\s*html\s*{[^}]*min-height:\s*min\(100lvh,\s*calc\(100%\s*\+\s*env\(safe-area-inset-top\)\)\)/);
+  const mobile = css.slice(css.indexOf("@media (max-width: 720px) {"));
+  assert.doesNotMatch(mobile.slice(0, mobile.indexOf("}") + 1), /overflow:\s*hidden/, "bloquear el desbordamiento del documento no debe aplicarse en la app instalada");
+  assert.match(css, /@media \(max-width: 720px\) and \(not \(display-mode: standalone\)\)\s*{[^}]*html,\s*body\s*{[^}]*overflow:\s*hidden/, "el bloqueo se queda para el navegador");
 });
