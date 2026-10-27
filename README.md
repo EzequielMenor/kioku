@@ -5,11 +5,11 @@
 **Tu segundo cerebro, local y tuyo.**
 Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un asistente que propone y tú apruebas.
 
-[![Versión](https://img.shields.io/badge/versión-0.5.0-e0a458)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versión-0.5.1-7f9bd6)](CHANGELOG.md)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
-[![Tests](https://img.shields.io/badge/tests-135%20OK-brightgreen)](#desarrollo)
+[![Tests](https://img.shields.io/badge/tests-180%20OK-brightgreen)](#desarrollo)
 
 <img src="docs/img/hoy.png" alt="Pantalla Hoy: siguiente paso, capturas sin procesar y proyectos para retomar" width="860">
 
@@ -295,8 +295,10 @@ Ideas siguientes, sin orden de compromiso:
 
 ## Versiones
 
-Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.5.0**.
+Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.5.1**.
 
 ## Licencia
 
 [MIT](LICENSE) © 2026 Ezequiel
+
+Tipografías y marca: los títulos usan [Shippori Mincho](https://fonts.google.com/specimen/Shippori+Mincho) y el sello 記 está dibujado a partir de [Noto Serif CJK](https://github.com/notofonts/noto-cjk); ambas bajo licencia [SIL OFL 1.1](https://openfontlicense.org).

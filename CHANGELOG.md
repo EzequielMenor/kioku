@@ -2,6 +2,19 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## [0.5.1] — 2026-10-27
+
+### Cambiado
+- **Rediseño «tinta y papel»** (JARV-16): paleta cálida para el tema oscuro («tinta») y un tema claro «papel» cuidado, con **índigo (藍)** como único acento; esquinas más suaves, líneas finas y más aire. Los títulos pasan a serif (**Shippori Mincho**, empaquetada: subconjunto latino, sin cargar nada de Internet) y el texto sigue en sans.
+- **Nueva marca: sello 記** (hanko) en la barra lateral, el icono de la PWA y el favicon; el kanji va como trazos, sin depender de ninguna fuente.
+- Los colores por tipo del grafo salen de variables del tema (`--t-*`) y se ven bien también sobre papel. La ventana Quick usa la misma paleta.
+- Las fuentes se sirven como `font/woff2` con caché de una semana; el resto sigue sin caché.
+- Contraste revisado (texto ≥ 4.5:1 en ambos temas). Capturas del README renovadas.
+
+### Desarrollo
+- Nueva dependencia de desarrollo `@fontsource/shippori-mincho` 5.3.0 (licencia OFL-1.1); el build copia solo los dos pesos usados.
+- `test/web-assets.test.ts`: sin recursos externos, fuente empaquetada, sello sin `<text>`, manifest/`theme-color`/fondo coherentes y colores del grafo en variables.
+
 ## [0.5.0] — 2026-10-27
 
 ### Añadido

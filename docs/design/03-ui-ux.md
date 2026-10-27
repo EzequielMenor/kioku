@@ -2,7 +2,8 @@
 
 ## Principios visuales
 - Minimalista, denso en información útil, silencioso. Una sola acción primaria por pantalla.
-- Tema oscuro por defecto con soporte claro (`prefers-color-scheme`); tokens en `:root`. Tipografía del sistema + monoespaciada para el editor. Sin animaciones decorativas (solo transiciones ≤120 ms de estado).
+- Tema oscuro por defecto con soporte claro (`prefers-color-scheme`); tokens en `:root`. Sin animaciones decorativas (solo transiciones ≤120 ms de estado).
+- **Sistema visual «tinta y papel» (0.5.1, D-20):** tinta cálida (oscuro) y papel crema (claro), un solo acento índigo (藍), esquinas de 4–8 px, líneas finas y espacio generoso. Títulos en serif (Shippori Mincho, empaquetada), texto en sans, monoespaciada para código. Marca: sello 記 (hanko). Sin decoración «de postal»: lo japonés se nota en el vacío y el ritmo, no en adornos. Contraste mínimo 4.5:1 en texto.
 - Mouse opcional: todo es alcanzable por teclado y se anuncia en un pie de atajos contextual.
 
 ## Estructura del Workspace
