@@ -1,4 +1,5 @@
 import { askConfirm } from "./dialogs.tsx";
+import { Fragment } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, ApiError } from "./api.ts";
 import { createEditor, splitNote, type EditorHandle } from "./editor.ts";
@@ -10,6 +11,73 @@ type SaveState = "saved" | "dirty" | "saving" | "conflict" | "error";
 const SAVE_LABEL: Record<SaveState, string> = {
   saved: "Guardado", dirty: "Sin guardar…", saving: "Guardando…", conflict: "Conflicto", error: "Error al guardar",
 };
+
+// Claves que el panel nunca ofrece como propiedades libres: son del sistema o ya tienen su control propio.
+const SYSTEM_PROPS = new Set(["id", "type", "created", "title", "tags", "parked", "done_at"]);
+const TYPED_PROPS: Record<string, string[]> = { task: ["status", "due", "priority", "project"], project: ["status"] };
+
+const isScalar = (v: unknown) => ["string", "number", "boolean"].includes(typeof v) || v instanceof Date;
+const asText = (v: unknown) => (Array.isArray(v) ? v.join(", ") : v === null || v === undefined ? "" : String(v));
+/** Texto escrito por el usuario → valor YAML: números y true/false con su tipo, el resto texto; vacío = quitar la propiedad. */
+function parseValue(raw: string): unknown {
+  const t = raw.trim();
+  if (t === "") return null;
+  if (t === "true" || t === "false") return t === "true";
+  if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+  return t;
+}
+
+function ExtraProps({ fm, type, setProp }: { fm: Record<string, unknown>; type: string; setProp(p: Record<string, unknown>): Promise<void> }) {
+  const [name, setName] = useState("");
+  const [value, setValue] = useState("");
+  const skip = new Set(TYPED_PROPS[type] ?? []);
+  const keys = Object.keys(fm).filter((k) => !SYSTEM_PROPS.has(k) && !skip.has(k));
+  const structured = keys.filter((k) => typeof fm[k] === "object" && fm[k] !== null && !Array.isArray(fm[k]) && !(fm[k] instanceof Date));
+  const editable = keys.filter((k) => !structured.includes(k));
+  const add = () => {
+    const k = name.trim();
+    if (!k || SYSTEM_PROPS.has(k) || value.trim() === "") return;
+    void setProp({ [k]: parseValue(value) }).then(() => { setName(""); setValue(""); });
+  };
+  return (
+    <>
+      {editable.map((k) => {
+        const v = fm[k];
+        const aria = `Propiedad ${k}`;
+        return (
+          <Fragment key={k}>
+            <dt title={k}>{k}</dt>
+            <dd>
+              {typeof v === "boolean"
+                ? <input type="checkbox" checked={v} aria-label={aria} onChange={(e) => void setProp({ [k]: e.currentTarget.checked })} />
+                : typeof v === "number"
+                  ? <input type="number" defaultValue={String(v)} key={String(v)} aria-label={aria} onChange={(e) => void setProp({ [k]: e.currentTarget.value === "" ? null : Number(e.currentTarget.value) })} />
+                  : typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
+                    ? <input type="date" value={v} aria-label={aria} onChange={(e) => void setProp({ [k]: e.currentTarget.value || null })} />
+                    : Array.isArray(v) && !v.every(isScalar)
+                      ? <span class="muted">{asText(v)}</span>
+                      : <input defaultValue={asText(v)} key={asText(v)} aria-label={aria} placeholder={Array.isArray(v) ? "a, b, c" : ""}
+                          onBlur={(e) => {
+                            const raw = e.currentTarget.value;
+                            if (raw === asText(v)) return;
+                            void setProp({ [k]: Array.isArray(v) ? raw.split(",").map((x) => x.trim()).filter(Boolean) : parseValue(raw) });
+                          }}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />}
+            </dd>
+          </Fragment>
+        );
+      })}
+      {structured.length > 0 && <><dt>Definición</dt><dd class="muted small">{structured.join(", ")} (edita el texto de la nota)</dd></>}
+      <dt class="addprop-t">Nueva</dt>
+      <dd class="addprop">
+        <input placeholder="nombre" value={name} onInput={(e) => setName(e.currentTarget.value)} aria-label="Nombre de la nueva propiedad" />
+        <input placeholder="valor" value={value} onInput={(e) => setValue(e.currentTarget.value)} aria-label="Valor de la nueva propiedad"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+        <button disabled={!name.trim() || !value.trim()} onClick={add} aria-label="Añadir propiedad">+</button>
+      </dd>
+    </>
+  );
+}
 
 const TASK_STATUS = ["todo", "doing", "done", "dropped"];
 const PROJECT_STATUS = ["active", "paused", "done", "someday"];
@@ -186,6 +254,7 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
                   </select></dd>
                 </>
               )}
+              <ExtraProps fm={fm} type={n.type} setProp={setProp} />
               {n.tags.length > 0 && (<><dt>Etiquetas</dt><dd class="tagrow">{n.tags.map((t) => <span class="chip" key={t}>#{t}</span>)}</dd></>)}
             </dl>
             {n.type === "project" && !embedded && <button class="link" onClick={() => go(`/proyecto/${path}`)}>Abrir panel del proyecto →</button>}

@@ -314,3 +314,6 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 .dblist li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 9px 16px; border-bottom: 1px solid var(--line); }
 .dblist li:last-child { border-bottom: 0; }
 .dblist li > a { margin-right: 6px; }
+.props dt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
+.props .addprop { display: grid; grid-template-columns: 1fr 1fr auto; gap: 4px; } .props .addprop button { padding: 2px 9px; }
+.props .addprop-t { opacity: .7; }
