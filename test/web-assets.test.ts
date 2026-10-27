@@ -47,3 +47,14 @@ test("los colores por tipo del grafo salen de variables del tema (también legib
   }
   assert.ok(css.split("--t-project:").length >= 3, "definido en oscuro y en claro");
 });
+
+test("móvil: la app está anclada al viewport y el documento no se desplaza (en iOS, un 100% de más deja un hueco bajo la barra y todo sube)", () => {
+  const start = css.indexOf("@media (max-width: 720px) {");
+  assert.ok(start > 0, "bloque móvil");
+  const mobile = css.slice(start);
+  assert.match(mobile, /html,\s*body\s*{[^}]*overflow:\s*hidden/, "el documento no hace scroll");
+  assert.match(mobile, /html,\s*body\s*{[^}]*overscroll-behavior:\s*none/, "sin rebote del documento");
+  assert.match(mobile, /\.shell\s*{[^}]*position:\s*fixed[^}]*inset:\s*0/, ".shell fijo a los cuatro bordes del viewport");
+  assert.match(mobile, /main\s*{[^}]*overscroll-behavior:\s*contain/, "el scroll de main no se encadena al documento");
+  assert.match(mobile, /#root\s*{[^}]*overflow-y:\s*auto/, "«Falta la clave» (fuera de .shell) sigue siendo alcanzable en horizontal");
+});

@@ -338,6 +338,11 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 @media (hover: none) { .kcard .kmove { opacity: 1; } }
 
 @media (max-width: 720px) {
+  /* Anclada al viewport: solo `main` hace scroll. Con height:100% en iOS (PWA o Safari) sobran píxeles, el documento se desplaza y deja un hueco bajo la barra. */
+  html, body { overflow: hidden; overscroll-behavior: none; }
+  .shell { position: fixed; inset: 0; height: auto; }
+  main { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  #root { overflow-y: auto; }
   .sidebar { display: none; }
   .content { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
   .bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; background: var(--side); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }

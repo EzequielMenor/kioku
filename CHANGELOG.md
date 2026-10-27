@@ -11,6 +11,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 - Las fuentes se sirven como `font/woff2` con caché de una semana; el resto sigue sin caché.
 - Contraste revisado (texto ≥ 4.5:1 en ambos temas). Capturas del README renovadas.
 
+### Corregido
+- **Móvil (iOS):** una barra negra bajo la navegación inferior obligaba a desplazar la página y «todo subía». La app ahora se ancla al viewport en pantallas estrechas y solo `main` hace scroll; el documento ya no se mueve.
+
 ### Desarrollo
 - Nueva dependencia de desarrollo `@fontsource/shippori-mincho` 5.3.0 (licencia OFL-1.1); el build copia solo los dos pesos usados.
 - `test/web-assets.test.ts`: sin recursos externos, fuente empaquetada, sello sin `<text>`, manifest/`theme-color`/fondo coherentes y colores del grafo en variables.
