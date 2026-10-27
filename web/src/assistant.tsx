@@ -4,14 +4,18 @@ import { api, lsGet, lsSet, onChange } from "./api.ts";
 import { useApi } from "./hooks.ts";
 import { askConfirm } from "./dialogs.tsx";
 import type { Proposal, UndoRecord } from "./types.ts";
+import { createChat, type Msg } from "./assistant-chat.ts";
 
 type Say = (text: string, error?: boolean) => void;
-type Msg = { role: "user" | "assistant"; text: string; error?: boolean; reads?: string[]; actions?: UndoRecord[]; proposals?: Proposal[] };
 
-// El historial vive en memoria del cliente (sobrevive a cambiar de pantalla, no a recargar).
-let history: Msg[] = [];
-let conversation = newId();
-function newId(): string { return `ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`; }
+// La conversación vive en memoria del cliente, fuera de la vista: sobrevive a cambiar de pantalla (también
+// con una consulta en curso) y no a recargar.
+const chat = createChat({
+  ask: (message, conversation) => api("POST", "/api/assistant/ask", { message, conversation }),
+  pendingProposals: () => api<Proposal[]>("GET", "/api/proposals?status=pending"),
+  actionsSince: (ts) => api<UndoRecord[]>("GET", "/api/assistant/actions").then((l) => l.filter((a) => a.ts >= ts && !a.undone)),
+});
+onChange((e) => { if (e.kind === "assistant.tool" && e.tool) chat.setLive(liveLabel(e.tool, e.path)); });
 
 const SUGGESTIONS = ["¿Qué hago hoy?", "Clasifica mi Bandeja", "Revisa mi espacio: Bandeja, proyectos parados, enlaces rotos y duplicados. Propón lo necesario."];
 
@@ -37,46 +41,23 @@ export function liveLabel(tool: string, path?: string | null): string {
 }
 
 export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: string): void }) {
-  const [msgs, setMsgs] = useState<Msg[]>(history);
-  const [busy, setBusy] = useState(false);
-  const [live, setLive] = useState<string | null>(null);
+  const [{ msgs, busy, live }, setChat] = useState(chat.getState());
+  useEffect(() => { setChat(chat.getState()); return chat.subscribe(setChat); }, []);
   const [text, setText] = useState("");
   const [ack, setAck] = useState(lsGet("assistant.privacy") === "1");
   const status = useApi<{ ok: boolean; reason?: string }>("/api/assistant/status", rev).data;
   const bottom = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
 
-  const push = (m: Msg) => { history = [...history, m]; setMsgs(history); };
   useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [msgs, live]);
   useEffect(() => { input.current?.focus(); }, [ack]);
-  useEffect(() => onChange((e) => { if (e.kind === "assistant.tool" && e.tool) setLive(liveLabel(e.tool, e.path)); }), []);
 
-  const pendingIds = async () => new Set((await api<Proposal[]>("GET", "/api/proposals?status=pending")).map((p) => p.id));
-
-  const send = async (message: string) => {
-    const m = message.trim();
-    if (!m || busy) return;
+  const send = (message: string) => {
+    if (!message.trim() || chat.getState().busy) return Promise.resolve();
     setText("");
-    push({ role: "user", text: m });
-    setBusy(true);
-    setLive("Pensando…");
-    const startedAt = new Date().toISOString();
-    try {
-      const before = await pendingIds().catch(() => new Set<string>());
-      const r = await api<{ answer: string; reads: string[]; actions: UndoRecord[] }>("POST", "/api/assistant/ask", { message: m, conversation });
-      const after = await api<Proposal[]>("GET", "/api/proposals?status=pending").catch(() => [] as Proposal[]);
-      push({ role: "assistant", text: r.answer, reads: r.reads, actions: r.actions, proposals: after.filter((p) => !before.has(p.id) && p.source === "assistant") });
-    } catch (e) {
-      // Si falló a medias, lo que ya cambió sigue siendo deshacible: se muestra igualmente.
-      const actions = await api<UndoRecord[]>("GET", "/api/assistant/actions").then((l) => l.filter((a) => a.ts >= startedAt && !a.undone), () => []);
-      push({ role: "assistant", text: (e as Error).message, error: true, actions });
-    } finally {
-      setBusy(false);
-      setLive(null);
-    }
+    return chat.send(message);
   };
-
-  const reset = () => { history = []; conversation = newId(); setMsgs([]); };
+  const reset = () => chat.reset();
 
   return (
     <div class="page narrow assistant-page">
