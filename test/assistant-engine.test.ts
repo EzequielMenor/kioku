@@ -54,6 +54,14 @@ test("SOUL: español, datos≠instrucciones, niveles y propose", () => {
   assert.match(t, /memoria/i);
 });
 
+test("SOUL: explica las bases de datos (consultar antes de contar, filas con create_row, definición intocable)", () => {
+  const t = soulText();
+  assert.match(t, /list_databases/);
+  assert.match(t, /query_database/);
+  assert.match(t, /create_row/);
+  assert.match(t, /definición de una base/i);
+});
+
 test("parseHermesOutput descarta el aviso de tirith aunque venga sangrado (primera ejecución)", () => {
   const warn = "  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only\r\n";
   assert.deepEqual(parseHermesOutput(`${warn}hola\n`), { sessionId: null, answer: "hola" });

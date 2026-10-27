@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import "./app.css";
 import { api, lsGet, lsSet } from "./api.ts";
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
+import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
@@ -22,6 +23,7 @@ const ICONS: Record<string, string> = {
   tareas: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   notas: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M8 13h8M8 17h8M8 9h2"/>',
   propuestas: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  bases: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>',
   grafo: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2l7.6.4M7.4 8.2l3.6 7.9M16.6 10.1l-3.4 5.9"/>',
   asistente: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 11h6M9 14h3"/>',
   diario: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
@@ -34,6 +36,7 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/proyectos", label: "Proyectos", key: "p", icon: "proyectos" },
   { route: "/tareas", label: "Tareas", key: "t", icon: "tareas" },
   { route: "/notas", label: "Notas", key: "n", icon: "notas" },
+  { route: "/bases", label: "Bases", key: "d", icon: "bases" },
   { route: "/grafo", label: "Grafo", key: "g", icon: "grafo" },
   { route: "/asistente", label: "Asistente", key: "a", icon: "asistente" },
   { route: "/propuestas", label: "Propuestas", key: "r", icon: "propuestas" },
@@ -167,6 +170,7 @@ function App() {
     case "proyecto": view = <ProjectView key={arg} path={arg} rev={rev} go={setRoute} say={say} guard={guard} focus={focus} onContext={openContext} />; break;
     case "tareas": view = <TasksView rev={rev} go={setRoute} guard={guard} today={counts?.date} />; break;
     case "notas": view = <NotesView rev={rev} go={setRoute} onNew={() => newNote("note")} />; break;
+    case "bases": view = arg ? <DatabaseView key={arg} path={arg} rev={rev} go={setRoute} guard={guard} say={say} /> : <DatabasesList rev={rev} go={setRoute} guard={guard} />; break;
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
     case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : arg === "memoria" ? <AssistantMemory rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
@@ -748,7 +752,7 @@ function snippetHtml(s: string): string {
 function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
     ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
-    ["g h · b · p · t · n · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Notas · Grafo · Asistente · Propuestas"],
+    ["g h · b · p · t · n · d · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Notas · Bases · Grafo · Asistente · Propuestas"],
     ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (

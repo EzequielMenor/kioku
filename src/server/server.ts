@@ -167,6 +167,11 @@ export async function startServer(
           const type = q.get("type") as NoteType | null;
           return send(res, 200, j.index.listNotes({ type: type ?? undefined, limit: Number(q.get("limit") ?? 2000) }));
         }
+        case "/api/databases": return send(res, 200, j.listDatabases());
+        case "/api/database": {
+          const view = q.get("view");
+          return send(res, 200, j.queryDatabase(userPath(q.get("path")), view ?? undefined));
+        }
         case "/api/tasks": {
           const st = q.get("status");
           const status = st ? (st.split(",") as TaskStatus[]) : undefined;
@@ -241,6 +246,19 @@ export async function startServer(
           if (!["todo", "doing", "done", "dropped"].includes(st)) throw new HttpError(400, "Estado inválido");
           await j.setTaskStatus(userPath(body.path), st);
           return send(res, 200, { ok: true });
+        }
+        case "/api/database/create": {
+          const n = await j.createDatabase({ name: str(body.name, "name"), template: body.template as never });
+          return send(res, 200, { path: n.path });
+        }
+        case "/api/database/query": return send(res, 200, j.queryDatabase(userPath(body.path), body.view as never));
+        case "/api/database/view": { await j.saveView(userPath(body.path), body.view as never); return send(res, 200, { ok: true }); }
+        case "/api/database/view/delete": { await j.deleteView(userPath(body.path), str(body.name, "name")); return send(res, 200, { ok: true }); }
+        case "/api/database/row": {
+          const props = body.props ?? {};
+          if (typeof props !== "object" || Array.isArray(props)) throw new HttpError(400, "«props» debe ser un objeto");
+          const n = await j.createRow(userPath(body.path), { title: str(body.title, "title"), props: props as Record<string, unknown> });
+          return send(res, 200, { path: n.path });
         }
         case "/api/project/create": { const n = await j.createProject(str(body.title, "title")); return send(res, 200, { path: n.path }); }
         case "/api/project/checkpoint": { await j.addCheckpoint(userPath(body.path), str(body.text, "text")); return send(res, 200, { ok: true }); }

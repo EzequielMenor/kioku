@@ -1,6 +1,6 @@
 // Acceso al disco. Única puerta de escritura: todo pasa por aquí.
 // Garantías: nunca se sale de la raíz, escritura atómica, detección de conflictos, borrado = papelera.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs, statSync } from "node:fs";
 import path from "node:path";
 
@@ -104,7 +104,7 @@ export class Vault {
 
   private async writeRaw(full: string, text: string): Promise<void> {
     await fs.mkdir(path.dirname(full), { recursive: true });
-    const tmp = `${full}.${process.pid}.${Date.now()}.tmp`;
+    const tmp = `${full}.${process.pid}.${Date.now()}.${randomUUID().slice(0, 8)}.tmp`;
     await fs.writeFile(tmp, text, "utf8");
     await fs.rename(tmp, full);
   }

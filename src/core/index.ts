@@ -7,8 +7,8 @@ import { normKey, parseNote, type Frontmatter } from "./markdown.ts";
 
 const SCHEMA_VERSION = 2;
 
-export type NoteType = "note" | "task" | "project" | "journal" | "resource" | "capture";
-const NOTE_TYPES = new Set<string>(["note", "task", "project", "journal", "resource", "capture"]);
+export type NoteType = "note" | "task" | "project" | "journal" | "resource" | "capture" | "database";
+const NOTE_TYPES = new Set<string>(["note", "task", "project", "journal", "resource", "capture", "database"]);
 export type TaskStatus = "todo" | "doing" | "done" | "dropped";
 export const OPEN_STATUSES: TaskStatus[] = ["todo", "doing"];
 
@@ -333,6 +333,15 @@ export class Index {
       path: r.path as string, uid: (r.uid as string) ?? null, type: r.type as NoteType, title: r.title as string,
       mtime: r.mtime as number, size: r.size as number, hash: r.hash as string, fmError: !!r.fm_error,
       tags: JSON.parse(r.tags_json as string),
+    }));
+  }
+
+  /** Todas las notas con su frontmatter, en una sola consulta: la materia prima de las bases de datos. */
+  noteRows(): { path: string; title: string; type: NoteType; tags: string[]; mtime: number; fm: Frontmatter }[] {
+    const rows = this.db.prepare("SELECT path,type,title,mtime,tags_json,fm_json FROM notes ORDER BY path").all() as Record<string, unknown>[];
+    return rows.map((r) => ({
+      path: r.path as string, title: r.title as string, type: r.type as NoteType, mtime: r.mtime as number,
+      tags: JSON.parse(r.tags_json as string), fm: JSON.parse(r.fm_json as string),
     }));
   }
 
