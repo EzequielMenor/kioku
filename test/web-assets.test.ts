@@ -59,3 +59,9 @@ test("móvil: la app está anclada al viewport y el documento no se desplaza (en
   assert.match(mobile, /html\s*{[^}]*background:\s*var\(--side\)/, "el fondo del documento es el de la barra: una franja bajo ella no se ve como una barra negra");
   assert.match(mobile, /#root\s*{[^}]*overflow-y:\s*auto/, "«Falta la clave» (fuera de .shell) sigue siendo alcanzable en horizontal");
 });
+
+test("PWA iOS: la barra de estado no es translúcida (el CSS no reserva el área segura superior y, con iOS 26, la ventana sale 62 px más corta que la pantalla)", () => {
+  const html = read("index.html");
+  assert.match(html, /name="apple-mobile-web-app-status-bar-style" content="black"/);
+  assert.ok(/black-translucent/.test(html) === /safe-area-inset-top/.test(css), "translúcida solo si el CSS compensa safe-area-inset-top");
+});
