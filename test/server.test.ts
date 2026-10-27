@@ -96,3 +96,49 @@ test("API: propuestas con diff y aplicar/rechazar", async () => {
     assert.equal((await s.call("GET", "/api/tasks?status=todo")).json[0].title, "Comprar leche");
   } finally { await s.done(); }
 });
+
+test("API bases: crear, listar, añadir fila, consultar, guardar vista y editar celda", async () => {
+  const s = await setup();
+  try {
+    const created = await s.call("POST", "/api/database/create", { name: "Libros", template: "libros" });
+    assert.equal(created.status, 200);
+    assert.equal(created.json.path, "Bases/Libros.md");
+    assert.equal((await s.call("GET", "/api/databases")).json[0].title, "Libros");
+
+    const row = await s.call("POST", "/api/database/row", { path: created.json.path, title: "Dune", props: { Estado: "Leyendo", Nota: 9 } });
+    assert.equal(row.json.path, "Libros/Dune.md");
+    const edit = await s.call("POST", "/api/note/props", { path: row.json.path, props: { Estado: "Leído" } });
+    assert.equal(edit.json.fm.Estado, "Leído");
+
+    const q = (await s.call("GET", "/api/database?path=" + encodeURIComponent(created.json.path) + "&view=" + encodeURIComponent("Por estado"))).json;
+    assert.deepEqual(q.groups.map((g: any) => g.key), ["Leído"]);
+    assert.equal(q.database.views.length, 2);
+
+    const adhoc = (await s.call("POST", "/api/database/query", { path: created.json.path, view: { name: "x", kind: "table", columns: ["title"], filter: [{ prop: "Estado", op: "is", value: "Leyendo" }], sort: [], group: null } })).json;
+    assert.equal(adhoc.total, 0);
+
+    const saved = await s.call("POST", "/api/database/view", { path: created.json.path, view: { name: "Leídos", kind: "list", columns: ["title"], filter: [{ prop: "Estado", op: "is", value: "Leído" }], sort: [], group: null } });
+    assert.equal(saved.status, 200);
+    assert.equal((await s.call("GET", "/api/databases")).json[0].views.length, 3);
+    const del = await s.call("POST", "/api/database/view/delete", { path: created.json.path, name: "Leídos" });
+    assert.equal(del.status, 200);
+    assert.equal((await s.call("GET", "/api/databases")).json[0].views.length, 2);
+  } finally { await s.done(); }
+});
+
+test("API bases: errores claros y las mismas protecciones que el resto de la API", async () => {
+  const s = await setup();
+  try {
+    const db = (await s.call("POST", "/api/database/create", { name: "Libros", template: "libros" })).json;
+    assert.equal((await s.call("GET", "/api/database?path=Bases/Nada.md")).status, 404);
+    assert.equal((await s.call("GET", "/api/database?path=" + encodeURIComponent(db.path) + "&view=Nope")).status, 404);
+    const n = (await s.call("POST", "/api/note/create", { title: "Normal" })).json;
+    assert.equal((await s.call("GET", "/api/database?path=" + encodeURIComponent(n.path))).status, 400);
+    assert.equal((await s.call("POST", "/api/database/view", { path: db.path, view: { name: "Mala", kind: "galaxia" } })).status, 400);
+    assert.equal((await s.call("POST", "/api/database/row", { path: db.path, title: "X", props: { a: { b: 1 } } })).status, 400);
+    assert.equal((await s.call("GET", "/api/database?path=../../etc/passwd")).status, 400);
+    assert.equal((await s.call("POST", "/api/database/create", { name: "" })).status, 400);
+    assert.equal((await s.call("POST", "/api/database/create", { name: "X", template: "rara" })).status, 400);
+    assert.equal((await s.call("POST", "/api/database/row", { path: db.path, title: "Z" }, { origin: "http://evil.example" })).status, 403);
+  } finally { await s.done(); }
+});

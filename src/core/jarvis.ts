@@ -335,6 +335,7 @@ export class Jarvis {
     const name = opts.name.trim();
     if (!name) throw new VaultError("invalid", "Ponle un nombre a la base");
     const t = opts.template ?? "vacía";
+    if (!["vacía", "tareas", "proyectos", "libros"].includes(t)) throw new VaultError("invalid", `Plantilla desconocida: ${String(t)}`);
     const table = (columns: string[]) => ({ name: "Tabla", kind: "table", columns, filter: [], sort: [], group: null });
     const board = (name: string, group: string, columns: string[]) => ({ name, kind: "board", columns, filter: [], sort: [], group });
     const spec: Record<string, unknown> =
