@@ -2,6 +2,13 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## [0.4.1] — 2026-10-27
+
+### Corregido
+- **Propuestas desde la interfaz web:** «Aplicar», «Descartar» y «Revisar bandeja» fallaban con «Se requiere application/json», porque la web enviaba esos POST sin cuerpo. Solo funcionaban desde la CLI. El cliente ahora envía siempre JSON; el daemon sigue siendo estricto.
+- **Asistente:** si cambiabas de pantalla mientras respondía y volvías antes de que terminase, la vista no mostraba ni el indicador ni la respuesta hasta salir y entrar otra vez. La conversación vive ahora fuera de la vista.
+- Pulsar Enter en el chat mientras el asistente responde ya no borra lo que habías escrito.
+
 ## [0.4.0] — 2026-10-27
 
 ### Seguridad
