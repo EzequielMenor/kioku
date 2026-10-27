@@ -12,10 +12,12 @@ export class ApiError extends Error {
 export const UNAUTHORIZED_EVENT = "kioku:unauthorized";
 
 export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
+  // El daemon exige JSON en toda escritura: un POST sin datos (aplicar propuesta…) envía `{}`.
+  const payload = method === "GET" ? undefined : JSON.stringify(body ?? {});
   const r = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: payload === undefined ? undefined : { "content-type": "application/json" },
+    body: payload,
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
