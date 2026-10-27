@@ -1,4 +1,5 @@
 // CLI de Kioku. Si el daemon corre, delega en él; si no, opera directamente sobre el vault.
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { Kioku, type ResumeCard, type TodayView } from "../core/kioku.ts";
@@ -10,6 +11,7 @@ import { FakeEngine } from "../assistant/fake-engine.ts";
 import type { UndoRecord } from "../assistant/undo.ts";
 import { installService, serviceStatus, uninstallService } from "./service.ts";
 import { loadOrCreateKey, readKey } from "../server/key.ts";
+import { allowedHostsFrom, pairReport, publicHost } from "./pair.ts";
 import { daemonAlive, ensureDaemon, hideQuick, kiokuHome, loginUrl, openWorkspace, readRuntime, toggleQuick, webDir } from "./desktop.ts";
 
 const HELP = `kioku — segundo cerebro local-first
@@ -19,6 +21,7 @@ Uso: kioku <comando> [args]
   quick                    Abre/oculta la ventana de captura rápida (asigna esto a un atajo de Hyprland)
   open                     Abre el Workspace
   url                      Imprime la URL de acceso (lleva la clave del daemon: no la compartas)
+  pair [--revoke]          Empareja el móvil/iPad (Tailscale): da la URL con su clave limitada · --revoke lo desempareja
   add <texto>              Captura rápida sin abrir ventana:  t tarea !mañana @proyecto · d decisión · n nota
   today                    Qué hacer hoy y a qué volver
   resume [proyecto]        Dónde lo dejaste, qué se decidió, qué falta
@@ -106,7 +109,7 @@ async function main(): Promise<void> {
       }
       const j = await Kioku.open({ root: home });
       j.watch();
-      const srv = await startServer(j, { port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const srv = await startServer(j, { port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts: allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS), webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
       const rtFile = path.join(home, ".kioku", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`Kioku escuchando en ${srv.url}  (datos: ${home})`);
@@ -118,6 +121,14 @@ async function main(): Promise<void> {
     case "quick": { guardHome(home); const base = await ensureDaemon(home); console.log(await toggleQuick(base)); return; }
     case "open": { guardHome(home); openWorkspace(await ensureDaemon(home), "/hoy"); return; }
     case "url": { guardHome(home); console.log(loginUrl(await ensureDaemon(home), readKey(home), "/#/hoy")); return; }
+    case "pair": {
+      guardHome(home);
+      const r = pairReport({ home, host: args.includes("--revoke") ? null : publicHost(), revoke: args.includes("--revoke") });
+      r.lines.forEach((l) => console.log(l));
+      if (r.url && spawnSync("sh", ["-c", "command -v qrencode"]).status === 0) spawnSync("qrencode", ["-t", "ANSIUTF8", r.url], { stdio: "inherit" });
+      if (!r.url && !args.includes("--revoke")) process.exitCode = 1;
+      return;
+    }
     case "service": {
       guardHome(home);
       const sub = args[0];

@@ -8,7 +8,9 @@ import { readRuntime, repoRoot } from "./desktop.ts";
 
 const UNIT = path.join(os.homedir(), ".config", "systemd", "user", "kioku.service");
 
-export function unitText(home: string): string {
+/** `allowedHosts` (de KIOKU_ALLOWED_HOSTS) se escribe tal cual solo si son nombres de host: nada que pueda añadir líneas al unit. */
+export function unitText(home: string, allowedHosts: string | undefined = process.env.KIOKU_ALLOWED_HOSTS): string {
+  const hosts = allowedHosts && /^[A-Za-z0-9.,:\-]+$/.test(allowedHosts) ? `Environment=KIOKU_ALLOWED_HOSTS=${allowedHosts}\n` : "";
   const main = path.join(repoRoot, "src", "cli", "main.ts");
   return `[Unit]
 Description=Kioku (daemon local, solo 127.0.0.1)
@@ -18,7 +20,7 @@ After=graphical-session.target
 Type=simple
 ExecStart=${process.execPath} --no-warnings ${main} daemon
 Environment=KIOKU_HOME=${home}
-Restart=on-failure
+${hosts}Restart=on-failure
 RestartSec=2
 
 [Install]
