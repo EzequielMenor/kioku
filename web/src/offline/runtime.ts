@@ -151,6 +151,11 @@ export function startOffline(): void {
   started = true;
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   void navigator.storage?.persist?.().catch(() => {});
+  // El worker sirve la copia cuando no hay servidor y la página no ve el fallo: él nos avisa (ver sw.ts).
+  navigator.serviceWorker?.addEventListener("message", (e: MessageEvent) => {
+    if (e.data?.kioku === "net") set({ online: !!e.data.online });
+  });
+  navigator.serviceWorker?.startMessages?.();
   void ensure().then(async ({ store }) => {
     setOfflineReader(makeOfflineReader(store));
     await refresh();

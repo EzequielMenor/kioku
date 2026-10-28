@@ -11,7 +11,7 @@ interface FetchEv { request: Request; respondWith(r: Promise<Response>): void }
 interface SwScope {
   addEventListener(type: string, fn: (e: never) => void): void;
   skipWaiting(): Promise<void>;
-  clients: { claim(): Promise<void> };
+  clients: { claim(): Promise<void>; matchAll(o: { type: "window" }): Promise<{ postMessage(m: unknown): void }[]> };
   location: { origin: string };
 }
 const sw = self as unknown as SwScope;
@@ -32,6 +32,14 @@ sw.addEventListener("activate", ((e: ExtEvent) => {
   })());
 }) as (e: never) => void);
 
+/**
+ * Cuando el servidor no contesta la página no ve ningún fallo (el worker le sirve la copia), así que se lo decimos:
+ * `online: false` si se respondió con una copia, `true` si el servidor contestó.
+ */
+async function tell(online: boolean): Promise<void> {
+  for (const c of await sw.clients.matchAll({ type: "window" })) c.postMessage({ kioku: "net", online });
+}
+
 /** `fetch` con plazo: si el servidor no contesta a tiempo se corta y se recurre a la copia. */
 async function fetchWithin(req: Request): Promise<Response> {
   const ctl = new AbortController();
@@ -43,10 +51,12 @@ async function readFirstNetwork(req: Request): Promise<Response> {
   const cache = await caches.open(API_CACHE);
   try {
     const res = await fetchWithin(req);
+    await tell(true);
     if (res.status === 401) await caches.delete(API_CACHE); // clave revocada o inválida: no se conserva nada
     else if (res.ok) await cache.put(req, res.clone());
     return res;
   } catch (e) {
+    await tell(false);
     const hit = await cache.match(req);
     if (hit) return hit;
     throw e;
@@ -56,6 +66,7 @@ async function readFirstNetwork(req: Request): Promise<Response> {
 async function navigation(req: Request): Promise<Response> {
   try { return await fetchWithin(req); }
   catch (e) {
+    await tell(false);
     const hit = await caches.match("/", { cacheName: SHELL });
     if (hit) return hit;
     throw e;

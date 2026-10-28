@@ -115,3 +115,9 @@ test("el CSS móvil define la franja de sin conexión y la insignia de pendiente
   assert.match(mobile, /\.offline-bar/);
   assert.match(mobile, /\.nav-badge/);
 });
+
+test("la página escucha los avisos de red del service worker", () => {
+  const rt = read("src/offline/runtime.ts");
+  assert.match(rt, /startMessages/);
+  assert.match(rt, /kioku: "net"|\.kioku === "net"/);
+});

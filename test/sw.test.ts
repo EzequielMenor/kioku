@@ -24,8 +24,9 @@ const fakeCaches = {
   },
 };
 let skipped = false, claimed = false;
+const messages: unknown[] = [];
 Object.assign(globalThis, {
-  self: { addEventListener: (t: string, h: Handler) => { handlers[t] = h; }, skipWaiting: async () => { skipped = true; }, clients: { claim: async () => { claimed = true; } }, location: { origin: "https://x" } },
+  self: { addEventListener: (t: string, h: Handler) => { handlers[t] = h; }, skipWaiting: async () => { skipped = true; }, clients: { claim: async () => { claimed = true; }, matchAll: async () => [{ postMessage: (m: unknown) => { messages.push(m); } }] }, location: { origin: "https://x" } },
   caches: fakeCaches,
   __BUILD_ID__: "nuevo",
   __PRECACHE__: ["/", "/app.js"],
@@ -33,7 +34,7 @@ Object.assign(globalThis, {
 await import("../web/src/sw.ts");
 
 const realFetch = globalThis.fetch;
-beforeEach(() => { store.clear(); skipped = claimed = false; globalThis.fetch = realFetch; });
+beforeEach(() => { store.clear(); messages.length = 0; skipped = claimed = false; globalThis.fetch = realFetch; });
 
 const run = async (type: string, e: Record<string, unknown> = {}) => {
   let p: Promise<unknown> | undefined;
@@ -93,4 +94,13 @@ test("shell: se sirve de la caché del build y, sin red, la navegación devuelve
   let out: Promise<Response> | undefined;
   handlers.fetch({ request: nav, respondWith: (x: Promise<Response>) => { out = x; } });
   assert.equal(await (await out!).text(), "shell:/");
+});
+
+test("avisa a la página de si el servidor contesta o si se sirvió la copia (la copia le oculta el fallo de red)", async () => {
+  globalThis.fetch = (async () => new Response("{}", { status: 200 })) as typeof fetch;
+  await (await doFetch("/api/today"))!.text();
+  assert.deepEqual(messages.at(-1), { kioku: "net", online: true });
+  globalThis.fetch = (async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
+  await (await doFetch("/api/today"))!.text();
+  assert.deepEqual(messages.at(-1), { kioku: "net", online: false });
 });
