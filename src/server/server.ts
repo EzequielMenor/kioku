@@ -16,6 +16,9 @@ import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
 import { mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
 export const DEFAULT_PORT = 47800;
+/** Sincronización móvil: tope de rutas por petición y de texto por respuesta (lo que no cabe vuelve en `pending`). */
+const SYNC_MAX_PATHS = 50;
+const SYNC_MAX_BYTES = 1_048_576;
 
 class HttpError extends Error {
   status: number;
@@ -199,6 +202,32 @@ export async function startServer(
         case "/api/notes": {
           const type = q.get("type") as NoteType | null;
           return send(res, 200, j.index.listNotes({ type: type ?? undefined, limit: Number(q.get("limit") ?? 2000) }));
+        }
+        case "/api/sync/manifest": return send(res, 200, j.index.listNotes({ limit: 1_000_000 }).map((n) => ({ path: n.path, mtime: n.mtime, hash: n.hash })));
+        case "/api/sync/notes": {
+          let want: unknown;
+          try { want = JSON.parse(q.get("paths") ?? ""); } catch { throw new HttpError(400, "paths debe ser un array JSON"); }
+          if (!Array.isArray(want) || want.some((x) => typeof x !== "string")) throw new HttpError(400, "paths debe ser una lista de rutas");
+          if (want.length > SYNC_MAX_PATHS) throw new HttpError(400, `Máximo ${SYNC_MAX_PATHS} rutas por petición`);
+          const paths = want as string[];
+          // Antes de leer nada: una sola ruta privada hace que toda la petición «no exista».
+          if (skip) for (const x of paths) if (skip(x)) throw new HttpError(404, "No existe");
+          const notes: { path: string; mtime: number; hash: string; text: string }[] = [];
+          const pending: string[] = [];
+          const gone: string[] = [];
+          let bytes = 0;
+          for (const x of paths) {
+            if (pending.length) { pending.push(x); continue; } // lo que sigue a un lote lleno espera al siguiente
+            const rel = userPath(x);
+            let r;
+            try { r = await j.vault.read(rel); }
+            catch (e) { if (e instanceof VaultError && e.code === "not-found") { gone.push(x); continue; } throw e; }
+            const size = Buffer.byteLength(r.text);
+            if (notes.length && bytes + size > SYNC_MAX_BYTES) { pending.push(x); continue; } // la primera siempre cabe, aunque supere el tope
+            bytes += size;
+            notes.push({ path: rel, mtime: r.mtimeMs, hash: r.hash, text: r.text });
+          }
+          return send(res, 200, { notes, pending, gone });
         }
         case "/api/databases": return send(res, 200, j.listDatabases({ skip }));
         case "/api/database": {
