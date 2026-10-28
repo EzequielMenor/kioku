@@ -334,6 +334,10 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 .sheet-list a svg { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--accent); }
 .sheet-list a span { flex: 1; }
 .sheet-list li:last-child a, .sheet-list li:last-child button { border-bottom: 0; }
+.offline-info { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.offline-info p { margin: 0; font-size: 13px; }
+.offline-info .failed-capture { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.offline-info button { min-height: 44px; }
 
 @media (hover: none) { .kcard .kmove { opacity: 1; } }
 
@@ -351,6 +355,9 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .bottomnav a, .bottomnav button { flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: none; border: 0; border-radius: 0; color: var(--muted); font-size: 11px; padding: 6px 0; }
   .bottomnav .active { color: var(--accent); }
   .bottomnav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .bottomnav button { position: relative; }
+  .nav-badge { position: absolute; top: 5px; left: calc(50% + 6px); min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--accent-fg); font-size: 10px; font-weight: 650; line-height: 16px; text-align: center; }
+  .offline-bar { position: sticky; top: env(safe-area-inset-top); z-index: 5; padding: 6px 16px; background: var(--side); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
   .fab { display: flex; align-items: center; justify-content: center; position: fixed; right: 16px; bottom: calc(70px + var(--nav-pad)); z-index: 41; width: 54px; height: 54px; padding: 0; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-fg); font-size: 30px; line-height: 1; box-shadow: var(--shadow); }
   .page, .page.narrow, .page.wide { padding: 16px 16px 96px; }
   .page-head { flex-wrap: wrap; }

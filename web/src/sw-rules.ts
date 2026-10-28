@@ -1,8 +1,9 @@
 export const READ_TIMEOUT_MS = 3000;
 export const API_CACHE = "kioku-api";
 
-// Lo que nunca se guarda: flujos en vivo, salud y todo lo del asistente, propuestas e IA (cambian o son sensibles).
-const NEVER = /^\/api\/(?:events|health|assistant|proposals|ai)(?:\/|$)/;
+// Lo que nunca se guarda: flujos en vivo, salud, asistente, propuestas e IA (cambian o son sensibles) y los lotes de texto de
+// sincronización (ya viven en la réplica; guardarlos aquí duplicaría el vault en la caché).
+const NEVER = /^\/api\/(?:events|health|assistant|proposals|ai|sync\/notes)(?:\/|$)/;
 
 /** Lecturas de datos cuya última respuesta puede servirse sin red. */
 export function cacheableRead(method: string, pathname: string): boolean {

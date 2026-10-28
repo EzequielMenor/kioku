@@ -10,6 +10,8 @@ import { GraphView } from "./graph.tsx";
 import { extractKey } from "./pairing.ts";
 import { SEAL_PATH } from "./seal.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
+import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submit, syncNow, useOffline, wipeOffline, type OfflineState } from "./offline/runtime.ts";
+import type { QueuedCapture } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
 import type {
@@ -97,14 +99,16 @@ function App() {
   const toastTimer = useRef(0);
   const [locked, setLocked] = useState(false);
   useEffect(() => {
-    const on = () => setLocked(true);
+    const on = () => { setLocked(true); void wipeOffline(); };
     addEventListener(UNAUTHORIZED_EVENT, on);
     return () => removeEventListener(UNAUTHORIZED_EVENT, on);
   }, []);
   const [, setRoleTick] = useState(0);
   useEffect(() => {
-    api<{ role: "full" | "mobile" }>("GET", "/api/session").then((r) => { const changed = r.role !== getRole(); setRole(r.role); if (changed) setRoleTick((n) => n + 1); }, () => {});
+    startOffline(); // sin red el rol sale de lo último visto; startOffline solo actúa en el móvil
+    api<{ role: "full" | "mobile" }>("GET", "/api/session").then((r) => { const changed = r.role !== getRole(); setRole(r.role); startOffline(); if (changed) setRoleTick((n) => n + 1); }, () => {});
   }, []);
+  const off = useOffline();
   const mobile = isMobile();
 
   const say = (text: string, error = false) => {
@@ -223,12 +227,12 @@ function App() {
       </nav>
       <div class="content">
         {focus?.active && !mobile && <FocusBar focus={focus} onEnd={() => setOverlay("endfocus")} go={setRoute} />}
-        <main>{view}</main>
+        <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{view}</main>
       </div>
 
-      <BottomNav active={activeRoute} onSearch={() => setOverlay("palette")} onMore={() => setOverlay("more")} />
+      <BottomNav active={activeRoute} pending={off.pending + off.failed} onSearch={() => setOverlay("palette")} onMore={() => setOverlay("more")} />
       <button class="fab" aria-label="Capturar" onClick={() => setOverlay("capture")}>+</button>
-      {overlay === "more" && <MoreSheet counts={counts} theme={theme} setTheme={setTheme} onClose={() => setOverlay(null)} onCapture={() => setOverlay("capture")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
+      {overlay === "more" && <MoreSheet off={off} counts={counts} theme={theme} setTheme={setTheme} onClose={() => setOverlay(null)} onCapture={() => setOverlay("capture")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
       {overlay === "palette" && <Palette go={(r) => { setOverlay(null); setRoute(r); }} onClose={() => setOverlay(null)} newNote={() => { setOverlay(null); void newNote("note"); }}
         newProject={() => { setOverlay(null); void newNote("project"); }} journal={() => { setOverlay(null); void openJournal(); }} toggleFocus={() => { setOverlay(null); void toggleFocus(); }}
         focusActive={!!focus?.active} />}
@@ -709,7 +713,7 @@ function LockedScreen() {
 }
 
 /** Barra inferior (solo se ve en pantallas estrechas): lo más usado a un pulgar. */
-function BottomNav({ active, onSearch, onMore }: { active: string; onSearch(): void; onMore(): void }) {
+function BottomNav({ active, pending, onSearch, onMore }: { active: string; pending: number; onSearch(): void; onMore(): void }) {
   const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/tareas", "Tareas", "tareas"], ["/notas", "Notas", "notas"]];
   return (
     <nav class="bottomnav" aria-label="Navegación">
@@ -717,13 +721,13 @@ function BottomNav({ active, onSearch, onMore }: { active: string; onSearch(): v
         <a key={route} href={`#${route}`} class={active === route ? "active" : ""}><Icon name={icon} /><span>{label}</span></a>
       ))}
       <button onClick={onSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg><span>Buscar</span></button>
-      <button onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span></button>
+      <button onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span>{pending > 0 && <b class="nav-badge" aria-label={`${pending} capturas sin enviar`}>{pending}</b>}</button>
     </nav>
   );
 }
 
 /** «Más»: el resto de pantallas en el móvil. */
-function MoreSheet({ counts, theme, setTheme, onClose, onCapture, onJournal }: { counts: TodayView | null; theme: string; setTheme(t: string): void; onClose(): void; onCapture(): void; onJournal(): void }) {
+function MoreSheet({ off, counts, theme, setTheme, onClose, onCapture, onJournal }: { off: OfflineState; counts: TodayView | null; theme: string; setTheme(t: string): void; onClose(): void; onCapture(): void; onJournal(): void }) {
   const rest = visibleNav().filter((n) => !["/hoy", "/tareas", "/notas"].includes(n.route));
   return (
     <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -741,7 +745,32 @@ function MoreSheet({ counts, theme, setTheme, onClose, onCapture, onJournal }: {
           <li><button onClick={onCapture}>Captura rápida</button></li>
           <li><button onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}</button></li>
         </ul>
+        <OfflineSection off={off} />
       </div>
+    </div>
+  );
+}
+
+/** Estado de la copia sin conexión: capturas sin enviar, última sincronización y espacio usado. */
+function OfflineSection({ off }: { off: OfflineState }) {
+  const [queue, setQueue] = useState<QueuedCapture[]>([]);
+  const [used, setUsed] = useState<string | null>(null);
+  useEffect(() => { void loadQueue().then(setQueue); }, [off.pending, off.failed]);
+  useEffect(() => {
+    navigator.storage?.estimate?.().then((e) => { if (e.usage != null) setUsed(e.usage < 1_048_576 ? `${Math.max(1, Math.round(e.usage / 1024))} KB` : `${(e.usage / 1_048_576).toFixed(1)} MB`); }, () => {});
+  }, [off.lastSync]);
+  const failed = queue.filter((c) => c.state === "failed");
+  return (
+    <div class="offline-info">
+      {off.pending > 0 && <p>{off.pending === 1 ? "1 captura sin enviar" : `${off.pending} capturas sin enviar`}: se enviará{off.pending === 1 ? "" : "n"} al abrir con red.</p>}
+      {failed.map((c) => (
+        <div class="failed-capture" key={c.opId}>
+          <p><b>No se pudo enviar:</b> {c.text}<br /><span class="muted small">{c.error}</span></p>
+          <div class="row"><button onClick={() => void retryCapture(c.opId)}>Reenviar</button><button onClick={() => void discardCapture(c.opId)}>Descartar</button></div>
+        </div>
+      ))}
+      <p class="muted small">Última sincronización: {off.lastSync ? formatAgo(off.lastSync, Date.now()) : "todavía ninguna"}{used ? ` · ${used} en este dispositivo` : ""}</p>
+      <button disabled={off.syncing} onClick={() => void syncNow()}>{off.syncing ? "Sincronizando…" : "Sincronizar ahora"}</button>
     </div>
   );
 }
@@ -766,8 +795,10 @@ function CaptureOverlay({ onClose, say }: { onClose(): void; say: Say }) {
     if (!text.trim() || busy) return;
     setBusy(true);
     try {
-      const r = await api<CaptureResult>("POST", "/api/capture", { text });
-      say(r.message + (r.warnings.length ? ` (${r.warnings.join("; ")})` : ""));
+      // En el móvil la captura pasa por la cola: sin red se guarda y se envía al abrir con red.
+      const r = isMobile() ? await submit(text) : { sent: true as const, result: await api<CaptureResult>("POST", "/api/capture", { text }) };
+      if (r.sent) say(r.result.message + (r.result.warnings.length ? ` (${r.result.warnings.join("; ")})` : ""));
+      else say("Guardada sin conexión; se enviará al abrir con red");
       onClose();
     } catch (e) { say(errText(e), true); setBusy(false); }
   };

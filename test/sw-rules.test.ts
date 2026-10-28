@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { cacheableRead, isShell, shellCacheName, API_CACHE, READ_TIMEOUT_MS } from "../web/src/sw-rules.ts";
 
 test("cacheableRead: lecturas de datos sí; eventos, salud, asistente, propuestas, IA y escrituras no", () => {
-  for (const p of ["/api/today", "/api/note", "/api/sync/manifest", "/api/sync/notes", "/api/tasks"]) assert.equal(cacheableRead("GET", p), true, p);
-  for (const p of ["/api/events", "/api/health", "/api/assistant/status", "/api/assistant", "/api/proposals", "/api/proposals/ABC/apply", "/api/ai", "/api/ai/models"]) assert.equal(cacheableRead("GET", p), false, p);
+  for (const p of ["/api/today", "/api/note", "/api/sync/manifest", "/api/tasks"]) assert.equal(cacheableRead("GET", p), true, p);
+  for (const p of ["/api/events", "/api/health", "/api/assistant/status", "/api/assistant", "/api/proposals", "/api/proposals/ABC/apply", "/api/ai", "/api/ai/models", "/api/sync/notes"]) assert.equal(cacheableRead("GET", p), false, p);
   assert.equal(cacheableRead("POST", "/api/capture"), false);
   assert.equal(cacheableRead("PUT", "/api/note"), false);
   assert.equal(cacheableRead("GET", "/app.js"), false);

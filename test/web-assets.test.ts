@@ -97,3 +97,21 @@ test("sw.ts limpia las cachés de shell antiguas y vacía la de la API ante un 4
   assert.match(sw, /401/);
   assert.match(sw, /API_CACHE/);
 });
+
+test("la app arranca la capa offline y la captura móvil pasa por la cola", () => {
+  const app = read("src/app.tsx");
+  assert.match(app, /startOffline\(\)/);
+  assert.match(app, /\bsubmit\(/);
+  assert.match(app, /Guardada sin conexión; se enviará al abrir con red/);
+  assert.match(app, /wipeOffline\(\)/);
+  assert.match(app, /offline-bar/);
+  assert.match(app, /Sincronizar ahora/);
+  // sin cambios para el rol full: sigue enviando directo
+  assert.match(app, /isMobile\(\)[^;]*submit\(/s);
+});
+
+test("el CSS móvil define la franja de sin conexión y la insignia de pendientes", () => {
+  const mobile = css.slice(css.indexOf("@media (max-width: 720px)"));
+  assert.match(mobile, /\.offline-bar/);
+  assert.match(mobile, /\.nav-badge/);
+});
