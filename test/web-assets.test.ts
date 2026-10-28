@@ -119,5 +119,6 @@ test("el CSS móvil define la franja de sin conexión y la insignia de pendiente
 test("la página escucha los avisos de red del service worker", () => {
   const rt = read("src/offline/runtime.ts");
   assert.match(rt, /startMessages/);
+  assert.match(rt, /controllerchange/); // el precalentado espera a que el worker controle la página
   assert.match(rt, /kioku: "net"|\.kioku === "net"/);
 });

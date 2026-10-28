@@ -105,9 +105,21 @@ export async function submit(text: string) {
 
 const WARM = ["/api/focus", "/api/today", "/api/tasks", "/api/projects", "/api/inbox", "/api/notes", "/api/graph?max=400"];
 
+/** En la primera visita el worker se activa después de cargar la página: hasta que la controla no guarda nada. */
+async function swControlsPage(): Promise<void> {
+  const container = navigator.serviceWorker;
+  if (!container) return;
+  await container.ready.catch(() => undefined);
+  if (container.controller) return;
+  await new Promise<void>((done) => {
+    const timer = window.setTimeout(done, 3000);
+    container.addEventListener("controllerchange", () => { clearTimeout(timer); done(); }, { once: true });
+  });
+}
+
 /** Recorre las pantallas principales para que el service worker tenga su última respuesta guardada. */
 async function warm(): Promise<void> {
-  await navigator.serviceWorker?.ready.catch(() => undefined); // la primera vez, esperar a que el service worker pueda guardarlas
+  await swControlsPage(); // la primera vez, esperar a que el service worker pueda guardarlas
   const ok = (p: string) => api<unknown>("GET", p).catch(() => undefined);
   const results = await Promise.all(WARM.map(ok));
   const projects = results[WARM.indexOf("/api/projects")] as ResumeCard[] | undefined;
