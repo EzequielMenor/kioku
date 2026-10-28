@@ -129,3 +129,8 @@ test("al retirarse notas de la réplica se purga la caché de lecturas, y wipeOf
   assert.match(rt, /clearReplica\(\)/);
   assert.ok(!/store\.clear\(\)/.test(rt));
 });
+
+test("la franja de sin conexión ocupa su sitio en el flujo: ni fija ni pegada arriba (taparía los títulos)", () => {
+  const rule = /\.offline-bar\s*\{([^}]*)\}/.exec(css.slice(css.indexOf("@media (max-width: 720px)")))![1];
+  assert.ok(!/position:\s*(sticky|fixed|absolute)/.test(rule), rule);
+});
