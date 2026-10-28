@@ -47,6 +47,7 @@ export async function openIdbStore(name = "kioku-offline"): Promise<Store> {
     queue: async () => (await tx(["queue"], "readonly", (t) => wrap<QueuedCapture[]>(t.objectStore("queue").getAll()))).sort((a, b) => a.createdAt - b.createdAt),
     putCapture: (c) => tx(["queue"], "readwrite", (t) => { t.objectStore("queue").put(c); }),
     deleteCapture: (opId) => tx(["queue"], "readwrite", (t) => { t.objectStore("queue").delete(opId); }),
+    clearReplica: () => tx(["notes", "meta"], "readwrite", (t) => { for (const n of ["notes", "meta"]) t.objectStore(n).clear(); }),
     clear: () => tx(["notes", "meta", "queue"], "readwrite", (t) => { for (const n of ["notes", "meta", "queue"]) t.objectStore(n).clear(); }),
   };
 }

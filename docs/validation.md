@@ -62,7 +62,7 @@
 
 ## Móvil sin conexión (0.6.0, JARV-14)
 **Verificado**
-- `npm test`: 259/259, `npm run typecheck` y `npm run build:web` en verde. Sincronización y privacidad de `/api/sync/*` (comas, `#`, `&`, acentos, trucos de ruta, topes), idempotencia de `x-kioku-op` (secuencial, en paralelo, caducidad, tope, 0600), réplica, búsqueda, cola (orden, 4xx/5xx, respuesta perdida), lector offline y comportamiento del service worker.
+- `npm test`: 264/264, `npm run typecheck` y `npm run build:web` en verde. Sincronización y privacidad de `/api/sync/*` (comas, `#`, `&`, acentos, trucos de ruta, topes), idempotencia de `x-kioku-op` (secuencial, en paralelo, caducidad, tope, 0600), réplica, búsqueda, cola (orden, 4xx/5xx, respuesta perdida), lector offline y comportamiento del service worker.
 - E2E en Chromium headless (390 px, bóveda temporal, daemon detenido = «sin red»): 18/18. Encontrado y corregido con él: el precalentado corría antes de que el worker controlase la página, y servir la copia ocultaba el corte (ahora el worker avisa a la página).
 
 **No verificado**

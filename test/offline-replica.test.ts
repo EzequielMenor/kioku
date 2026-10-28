@@ -132,3 +132,12 @@ test("putNotes lanza (cuota): syncReplica rechaza, lastSync no cambia y lo anter
   assert.equal(await base.getMeta("lastSync"), 5);
   assert.equal((await base.getNote("A.md"))!.text, "texto de A.md");
 });
+
+test("clearReplica vacía notas y metadatos pero conserva la cola de capturas", async () => {
+  const s = new MemoryStore();
+  await s.putNotes([note("A.md")]); await s.setMeta("lastSync", 1);
+  await s.putCapture({ opId: "op-12345678", text: "pendiente", createdAt: 1, state: "pending" });
+  await s.clearReplica();
+  assert.deepEqual([await s.allNotes(), await s.getMeta("lastSync")], [[], undefined]);
+  assert.equal((await s.queue()).length, 1);
+});

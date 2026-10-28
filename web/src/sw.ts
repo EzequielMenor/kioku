@@ -54,6 +54,7 @@ async function readFirstNetwork(req: Request): Promise<Response> {
     await tell(true);
     if (res.status === 401) await caches.delete(API_CACHE); // clave revocada o inválida: no se conserva nada
     else if (res.ok) await cache.put(req, res.clone());
+    else await cache.delete(req); // 404/403: ya no existe o es privada; no se conserva la copia vieja
     return res;
   } catch (e) {
     await tell(false);

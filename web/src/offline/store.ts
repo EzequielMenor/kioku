@@ -14,6 +14,8 @@ export interface Store {
   putCapture(c: QueuedCapture): Promise<void>;
   deleteCapture(opId: string): Promise<void>;
   clear(): Promise<void>;
+  /** Vacía notas y metadatos en una sola operación, sin tocar la cola de capturas. */
+  clearReplica(): Promise<void>;
 }
 
 /** Implementación en memoria: la usan los tests y sirve de referencia del contrato. */
@@ -31,5 +33,6 @@ export class MemoryStore implements Store {
   async queue(): Promise<QueuedCapture[]> { return [...this.captures.values()].sort((a, b) => a.createdAt - b.createdAt); }
   async putCapture(c: QueuedCapture): Promise<void> { this.captures.set(c.opId, c); }
   async deleteCapture(opId: string): Promise<void> { this.captures.delete(opId); }
+  async clearReplica(): Promise<void> { this.notes.clear(); this.meta.clear(); }
   async clear(): Promise<void> { this.notes.clear(); this.meta.clear(); this.captures.clear(); }
 }

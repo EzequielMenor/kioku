@@ -9,7 +9,7 @@ Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un a
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
-[![Tests](https://img.shields.io/badge/tests-259%20OK-brightgreen)](#desarrollo)
+[![Tests](https://img.shields.io/badge/tests-264%20OK-brightgreen)](#desarrollo)
 
 <img src="docs/img/hoy.png" alt="Pantalla Hoy: siguiente paso, capturas sin procesar y proyectos para retomar" width="860">
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import { ApiError, UNAUTHORIZED_EVENT, api, onChange, setOfflineReader } from "../api.ts";
 import { isMobile } from "../role.ts";
 import type { CaptureResult, ResumeCard } from "../types.ts";
-import { isRetryable, submitCapture } from "./capture.ts";
+import { isNetworkError, isRetryable, submitCapture } from "./capture.ts";
 import { openIdbStore } from "./idb-store.ts";
 import { CaptureQueue, SendError, backoffMs } from "./queue.ts";
 import { makeOfflineReader } from "./reader.ts";
@@ -84,7 +84,7 @@ async function flushQueue(): Promise<void> {
   const r = await queue.flush(async (c) => {
     try { await postCapture(c.text, c.opId); set({ online: true }); }
     catch (e) {
-      if (!(e instanceof ApiError)) set({ online: false });
+      if (isNetworkError(e)) set({ online: false });
       throw new SendError(e instanceof Error ? e.message : String(e), isRetryable(e));
     }
   });
@@ -133,9 +133,11 @@ export async function syncNow(): Promise<void> {
   try {
     const r = await syncReplica(store, (p) => api("GET", p));
     set({ lastSync: r.at, online: true });
+    // Si algo dejó de estar visible (borrado o hecho privado), las lecturas guardadas podrían seguir mostrándolo.
+    if (r.removed) await caches.delete("kioku-api").catch(() => false);
     await warm();
   } catch (e) {
-    if (!(e instanceof ApiError)) set({ online: false });
+    if (isNetworkError(e)) set({ online: false });
   } finally {
     set({ syncing: false });
   }
@@ -148,10 +150,8 @@ export async function wipeOffline(): Promise<void> {
   clearTimeout(retryTimer);
   await caches.delete("kioku-api").catch(() => false);
   if (!ready && !isMobile()) return;
-  const { store, queue } = await ensure();
-  const pending = await queue.list();
-  await store.clear();
-  for (const c of pending) await store.putCapture(c);
+  const { store } = await ensure();
+  await store.clearReplica();
   await refresh();
 }
 

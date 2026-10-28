@@ -9,6 +9,9 @@ export function isRetryable(e: unknown): boolean {
   return e.status === 401 || e.status === 408 || e.status === 429 || e.status >= 500;
 }
 
+/** Fallo de red de `fetch` (no hubo respuesta): distinto de un rechazo HTTP o de un error local de almacenamiento. */
+export const isNetworkError = (e: unknown): boolean => e instanceof TypeError;
+
 export interface SubmitDeps {
   post(text: string, opId: string): Promise<CaptureResult>;
   queue: CaptureQueue;

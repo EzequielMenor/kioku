@@ -122,3 +122,10 @@ test("la página escucha los avisos de red del service worker", () => {
   assert.match(rt, /controllerchange/); // el precalentado espera a que el worker controle la página
   assert.match(rt, /kioku: "net"|\.kioku === "net"/);
 });
+
+test("al retirarse notas de la réplica se purga la caché de lecturas, y wipeOffline conserva la cola", () => {
+  const rt = read("src/offline/runtime.ts");
+  assert.match(rt, /r\.removed[\s\S]{0,80}caches\.delete\("kioku-api"\)/);
+  assert.match(rt, /clearReplica\(\)/);
+  assert.ok(!/store\.clear\(\)/.test(rt));
+});

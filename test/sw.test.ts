@@ -15,6 +15,7 @@ const fakeCaches = {
     return {
       async addAll(urls: string[]) { for (const u of urls) m.set(key(u), new Response("shell:" + u)); },
       async put(r: Request, res: Response) { m.set(key(r), res); },
+      async delete(r: Request) { return m.delete(key(r)); },
       async match(r: Request | string) { return m.get(key(r))?.clone(); },
     };
   },
@@ -103,4 +104,13 @@ test("avisa a la página de si el servidor contesta o si se sirvió la copia (la
   globalThis.fetch = (async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
   await (await doFetch("/api/today"))!.text();
   assert.deepEqual(messages.at(-1), { kioku: "net", online: false });
+});
+
+test("una lectura que pasa a 404 (nota hecha privada) borra su copia y no se sirve sin red", async () => {
+  globalThis.fetch = (async () => new Response("MARCASECRETA", { status: 200 })) as typeof fetch;
+  await (await doFetch("/api/note?path=X.md"))!.text();
+  globalThis.fetch = (async () => new Response("{}", { status: 404 })) as typeof fetch;
+  assert.equal((await (await doFetch("/api/note?path=X.md"))!).status, 404);
+  globalThis.fetch = (async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
+  await assert.rejects(Promise.resolve(doFetch("/api/note?path=X.md")).then((p) => p), TypeError);
 });

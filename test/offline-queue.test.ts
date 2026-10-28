@@ -131,3 +131,10 @@ test("respuesta perdida: el servidor aplica, el cliente no recibe respuesta; flu
   assert.equal(notes.size, 1);
   assert.deepEqual(await q.list(), []);
 });
+
+test("isNetworkError: solo el fallo de red (TypeError), no ApiError ni errores de almacenamiento", async () => {
+  const { isNetworkError } = await import("../web/src/offline/capture.ts");
+  assert.equal(isNetworkError(new TypeError("Failed to fetch")), true);
+  assert.equal(isNetworkError(new ApiError(503, "x")), false);
+  assert.equal(isNetworkError(new DOMException("cuota", "QuotaExceededError")), false);
+});

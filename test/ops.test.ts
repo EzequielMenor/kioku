@@ -88,3 +88,14 @@ test("ops: .kioku/ops.json queda con permisos 0600", () => withLedger(async (v, 
   const { statSync } = await import("node:fs");
   assert.equal(statSync(`${v.root}/.kioku/ops.json`).mode & 0o777, 0o600);
 }));
+
+test("ops: si falla escribir ops.json, la captura ya hecha no se repite en el reintento", () => withLedger(async (v, mk) => {
+  const l = mk();
+  const real = v.writeInternal.bind(v);
+  v.writeInternal = async () => { throw new Error("ENOSPC"); };
+  let n = 0;
+  assert.equal(await l.run(UUID, async () => ++n), 1);
+  v.writeInternal = real;
+  assert.equal(await l.run(UUID, async () => ++n), 1);
+  assert.equal(n, 1);
+}));

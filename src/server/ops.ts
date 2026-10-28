@@ -18,6 +18,7 @@ export function validOp(v: string): string {
  */
 export class OpsLedger {
   private inflight = new Map<string, Promise<unknown>>();
+  private recent = new Map<string, Entry>(); // lo aplicado en este proceso, aunque falle escribir ops.json
   private writes: Promise<void> = Promise.resolve();
   private vault: Vault;
   private now: () => number;
@@ -35,14 +36,21 @@ export class OpsLedger {
     const running = this.inflight.get(opId);
     if (running) return running as Promise<T>;
     const p = (async () => {
-      const hit = (await this.load())[opId];
+      const hit = this.recent.get(opId) ?? (await this.load())[opId];
       if (hit && this.now() - hit.at <= this.ttlMs) return hit.result as T;
       const result = await fn();
-      await this.record(opId, result);
+      this.remember(opId, result);
+      // La nota ya existe: si no se puede anotar en disco, el reintento sigue deduplicándose en memoria.
+      await this.record(opId, result).catch(() => {});
       return result;
     })().finally(() => this.inflight.delete(opId));
     this.inflight.set(opId, p);
     return p;
+  }
+
+  private remember(opId: string, result: unknown): void {
+    this.recent.set(opId, { at: this.now(), result });
+    while (this.recent.size > this.max) this.recent.delete(this.recent.keys().next().value as string);
   }
 
   private async load(): Promise<Record<string, Entry>> {

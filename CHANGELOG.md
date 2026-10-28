@@ -12,7 +12,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 - «Más» muestra pendientes, última sincronización, espacio usado y «Sincronizar ahora».
 
 ### Seguridad
-- Lo privado nunca entra en la réplica ni en las cachés; si una carpeta pasa a privada se purga de la copia. Con la clave revocada (401) se vacían la réplica y las lecturas guardadas (las capturas aún sin enviar se conservan). **Límite conocido (D-21):** revocar el móvil no puede borrar a distancia la copia de un teléfono sin conexión; la protege el bloqueo del iPhone.
+- Lo privado nunca entra en la réplica ni en las cachés; si una carpeta pasa a privada se purga de la copia **en la siguiente sincronización con red** (sin red el teléfono no puede saberlo) y un 404 en una lectura borra su copia guardada. Con la clave revocada (401) se vacían la réplica y las lecturas guardadas (las capturas aún sin enviar se conservan). **Límite conocido (D-21):** revocar el móvil no puede borrar a distancia la copia de un teléfono sin conexión; la protege el bloqueo del iPhone.
 - Ventana residual: si el daemon cae justo entre guardar la nota y anotar la operación, puede aparecer **un duplicado** en la Bandeja, nunca una captura perdida.
 
 ### Desarrollo
