@@ -82,3 +82,9 @@ test("validOp rechaza rutas, vacío y más de 64 caracteres; acepta un UUID", ()
   for (const bad of ["../x", "", "a".repeat(65), "abc", "gggggggg"]) assert.throws(() => validOp(bad), (e: Error & { status?: number }) => e.status === 400, bad);
   assert.equal(validOp(UUID), UUID);
 });
+
+test("ops: .kioku/ops.json queda con permisos 0600", () => withLedger(async (v, mk) => {
+  await mk().run(UUID, async () => 1);
+  const { statSync } = await import("node:fs");
+  assert.equal(statSync(`${v.root}/.kioku/ops.json`).mode & 0o777, 0o600);
+}));

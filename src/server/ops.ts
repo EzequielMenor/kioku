@@ -1,4 +1,6 @@
-import type { Vault } from "../core/vault.ts";
+import { chmod } from "node:fs/promises";
+import path from "node:path";
+import { INTERNAL_DIR, type Vault } from "../core/vault.ts";
 
 const FILE = "ops.json";
 const DAY = 86_400_000;
@@ -65,6 +67,7 @@ export class OpsLedger {
         .sort((a, b) => b[1].at - a[1].at)
         .slice(0, this.max);
       await this.vault.writeInternal(FILE, JSON.stringify(Object.fromEntries(live)));
+      await chmod(path.join(this.vault.root, INTERNAL_DIR, FILE), 0o600);
     });
     this.writes = step.catch(() => {});
     return step;
