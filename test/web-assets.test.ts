@@ -80,3 +80,20 @@ test("móvil: la barra inferior mide como una barra de pestañas de iOS (≈83 p
   assert.match(mobile, /\.content\s*{[^}]*padding-bottom:\s*calc\(54px\s*\+\s*var\(--nav-pad\)\)/, "el contenido no queda bajo la barra");
   assert.match(mobile, /\.fab\s*{[^}]*bottom:\s*calc\(70px\s*\+\s*var\(--nav-pad\)\)/, "el FAB sigue justo encima de la barra");
 });
+
+test("el build genera sw.js con el id del build y la lista de precarga", () => {
+  const b = readFileSync(path.join(web, "..", "scripts", "build-web.mjs"), "utf8");
+  assert.match(b, /sw\.ts/);
+  assert.match(b, /sw\.js/);
+  assert.match(b, /__BUILD_ID__/);
+  assert.match(b, /__PRECACHE__/);
+  assert.match(b, /"iife"/);
+});
+
+test("sw.ts limpia las cachés de shell antiguas y vacía la de la API ante un 401", () => {
+  const sw = read("src/sw.ts");
+  assert.match(sw, /kioku-shell-/);
+  assert.match(sw, /caches\.delete/);
+  assert.match(sw, /401/);
+  assert.match(sw, /API_CACHE/);
+});
