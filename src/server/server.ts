@@ -12,6 +12,7 @@ import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore } from "../assistant/undo.ts";
+import { OpsLedger, validOp } from "./ops.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
 import { mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
@@ -110,6 +111,7 @@ export async function startServer(
 ): Promise<ServerHandle> {
   const sessions = new SessionRegistry();
   const undo = new UndoStore(j);
+  const ops = new OpsLedger(j.vault);
   const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .kioku/assistant.json
   const assistantTools = new AssistantTools(j, undo, { exclude });
   const loadExclude = async () => {
@@ -286,7 +288,14 @@ export async function startServer(
       }
     } else if (m === "POST" || m === "PUT") {
       switch (p) {
-        case "/api/capture": return send(res, 200, await j.capture(str(body.text, "text")));
+        case "/api/capture": {
+          const text = str(body.text, "text");
+          const op = req.headers["x-kioku-op"];
+          if (op === undefined) return send(res, 200, await j.capture(text));
+          let id: string;
+          try { id = validOp(Array.isArray(op) ? op[0] : op); } catch (e) { throw new HttpError(400, (e as Error).message); }
+          return send(res, 200, await ops.run(id, () => j.capture(text)));
+        }
         case "/api/note/create": {
           const n = await j.createNote({ title: str(body.title, "title"), type: (body.type as NoteType) ?? "note", body: (body.body as string) ?? "" });
           return send(res, 200, { path: n.path, title: n.title });

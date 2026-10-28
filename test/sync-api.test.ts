@@ -112,3 +112,33 @@ test("notes: una nota borrada tras el manifest sale en gone", async () => {
     assert.equal(r.json.notes.length, 1);
   } finally { await s.done(); }
 });
+
+test("capture: el mismo x-kioku-op dos veces crea una sola nota y devuelve el mismo cuerpo", async () => {
+  const s = await setup();
+  try {
+    const before = s.j.inbox().length;
+    const h = { "x-kioku-op": "3f2a9c1e-5b7d-4e8a-9c01-0a1b2c3d4e5f" };
+    const a = await s.call("POST", "/api/capture", { text: "idea suelta offline" }, undefined, h);
+    const b = await s.call("POST", "/api/capture", { text: "idea suelta offline" }, undefined, h);
+    assert.equal(a.status, 200);
+    assert.equal(b.status, 200);
+    assert.equal(b.text, a.text);
+    assert.equal(s.j.inbox().length, before + 1);
+    const c = await s.call("POST", "/api/capture", { text: "otra idea" }, undefined, { "x-kioku-op": "3f2a9c1e-5b7d-4e8a-9c01-0a1b2c3d4e60" });
+    assert.equal(c.status, 200);
+    assert.equal(s.j.inbox().length, before + 2);
+  } finally { await s.done(); }
+});
+
+test("capture: x-kioku-op inválido → 400 y no captura; sin cabecera funciona como antes", async () => {
+  const s = await setup();
+  try {
+    const before = s.j.inbox().length;
+    const bad = await s.call("POST", "/api/capture", { text: "no debe entrar" }, undefined, { "x-kioku-op": "../x" });
+    assert.equal(bad.status, 400);
+    assert.equal(s.j.inbox().length, before);
+    const ok = await s.call("POST", "/api/capture", { text: "sin cabecera" });
+    assert.equal(ok.status, 200);
+    assert.equal(s.j.inbox().length, before + 1);
+  } finally { await s.done(); }
+});
