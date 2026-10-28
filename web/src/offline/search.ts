@@ -43,6 +43,12 @@ function snippetAround(body: string, needles: string[]): string {
   return (from > 0 ? "…" : "") + chunk;
 }
 
+/** Título (primera cabecera o nombre del fichero) y tipo de una nota a partir de su texto. */
+export function describeNote(path: string, text: string): { title: string; type: NoteType } {
+  const { fm, body } = splitNote(text);
+  return { title: titleOf(path, body), type: noteType(fm) };
+}
+
 /** Búsqueda sencilla sobre la réplica: todas las palabras (AND), título > cabecera > cuerpo. */
 export function searchNotes(notes: StoredNote[], query: string, limit = 12): SearchHit[] {
   const words = fold(query.trim()).text.split(/\s+/).filter(Boolean);

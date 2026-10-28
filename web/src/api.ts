@@ -11,14 +11,30 @@ export class ApiError extends Error {
 /** Se dispara cuando el daemon rechaza la petición por falta de clave (la página no se abrió con `kioku open`). */
 export const UNAUTHORIZED_EVENT = "kioku:unauthorized";
 
-export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
+type OfflineReader = (path: string) => Promise<unknown | undefined>;
+let offlineReader: OfflineReader | null = null;
+
+/** Lector de respaldo para GET cuando no hay red (réplica local). `null` lo quita. */
+export function setOfflineReader(fn: OfflineReader | null): void { offlineReader = fn; }
+
+export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
   // El daemon exige JSON en toda escritura: un POST sin datos (aplicar propuesta…) envía `{}`.
   const payload = method === "GET" ? undefined : JSON.stringify(body ?? {});
-  const r = await fetch(path, {
-    method,
-    headers: payload === undefined ? undefined : { "content-type": "application/json" },
-    body: payload,
-  });
+  let r: Response;
+  try {
+    r = await fetch(path, {
+      method,
+      headers: payload === undefined && !headers ? undefined : { ...(payload === undefined ? {} : { "content-type": "application/json" }), ...headers },
+      body: payload,
+    });
+  } catch (e) {
+    // Sin red: las lecturas pueden salir de la réplica local; las escrituras nunca.
+    if (method === "GET" && offlineReader) {
+      const local = await offlineReader(path).catch(() => undefined);
+      if (local !== undefined) return local as T;
+    }
+    throw e;
+  }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
     if (r.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
