@@ -2,6 +2,23 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## [0.6.0] — 2026-10-28
+
+### Añadido
+- **Móvil sin conexión: lectura y captura** (JARV-14, fase 2 de 3). La PWA guarda una copia de las notas en IndexedDB (todo el vault salvo las carpetas de `.kioku/mobile.json`) y un **service worker** guarda el shell y la última respuesta de cada pantalla. Sin red se abren Hoy, Tareas, Proyectos, Bandeja y Notas con la franja «Sin conexión · datos de hace X», se abre cualquier nota y se busca en ella (búsqueda local).
+- **Captura sin conexión:** si no hay red queda en una cola (insignia en «Más» y en la barra) y se envía por orden al abrir la app con red, al volver la conexión y tras cada sincronización, con espera creciente. Un rechazo definitivo (4xx) queda como «no se pudo enviar» con *Reenviar* / *Descartar*.
+- **Sin duplicados:** `POST /api/capture` acepta `x-kioku-op` y deduplica por operación (`.kioku/ops.json`, 0600, 30 días, 5000 entradas), también con peticiones simultáneas o si se perdió la respuesta.
+- `GET /api/sync/manifest` y `GET /api/sync/notes` (lotes de 50 notas / 1 MiB), filtrados por privacidad como el resto de lecturas del móvil.
+- «Más» muestra pendientes, última sincronización, espacio usado y «Sincronizar ahora».
+
+### Seguridad
+- Lo privado nunca entra en la réplica ni en las cachés; si una carpeta pasa a privada se purga de la copia. Con la clave revocada (401) se vacían la réplica y las lecturas guardadas (las capturas aún sin enviar se conservan). **Límite conocido (D-21):** revocar el móvil no puede borrar a distancia la copia de un teléfono sin conexión; la protege el bloqueo del iPhone.
+- Ventana residual: si el daemon cae justo entre guardar la nota y anotar la operación, puede aparecer **un duplicado** en la Bandeja, nunca una captura perdida.
+
+### Desarrollo
+- `web/src/offline/` (réplica, búsqueda, cola, IndexedDB, runtime) y `web/src/sw.ts` con `sw-rules.ts`; `scripts/build-web.mjs` compila `sw.js` con un id de build que nombra la caché del shell (cada despliegue borra la anterior).
+- Tests: sincronización, ops, réplica, búsqueda, cola, lector, reglas del service worker y comportamiento del worker. E2E en Chromium con el daemon detenido: 18 comprobaciones (lectura y búsqueda sin red, captura pendiente y envío único, respuesta perdida, privacidad en IndexedDB y cachés, cambio de build, purga por 401, sin errores de consola ni dominios externos).
+
 ## [0.5.1] — 2026-10-27
 
 ### Cambiado

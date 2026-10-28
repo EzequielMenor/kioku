@@ -5,11 +5,11 @@
 **Tu segundo cerebro, local y tuyo.**
 Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un asistente que propone y tú apruebas.
 
-[![Versión](https://img.shields.io/badge/versión-0.5.1-7f9bd6)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versión-0.6.0-7f9bd6)](CHANGELOG.md)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
-[![Tests](https://img.shields.io/badge/tests-184%20OK-brightgreen)](#desarrollo)
+[![Tests](https://img.shields.io/badge/tests-259%20OK-brightgreen)](#desarrollo)
 
 <img src="docs/img/hoy.png" alt="Pantalla Hoy: siguiente paso, capturas sin procesar y proyectos para retomar" width="860">
 
@@ -211,7 +211,7 @@ La clave nunca se guarda en disco: solo el nombre de la variable de entorno que 
 
 ## Kioku en el móvil (iPhone / iPad)
 
-Kioku es una app web: el móvil la abre desde tu portátil a través de [Tailscale](https://tailscale.com) (una VPN privada entre tus dispositivos; no se abre ningún puerto a Internet). Sirve para **leer, repasar y apuntar** fuera de casa; lo demás (asistente, propuestas, foco, borrar, bases) sigue siendo cosa del portátil. De momento **necesita conexión** con el portátil: el modo sin conexión llegará en las versiones 0.6 y 0.7.
+Kioku es una app web: el móvil la abre desde tu portátil a través de [Tailscale](https://tailscale.com) (una VPN privada entre tus dispositivos; no se abre ningún puerto a Internet). Sirve para **leer, repasar y apuntar** fuera de casa; lo demás (asistente, propuestas, foco, borrar, bases) sigue siendo cosa del portátil. **Sin conexión (0.6):** la app instalada guarda una copia de tus notas (todo menos las carpetas privadas): Hoy, Tareas, Proyectos, Bandeja y Notas se abren sin red con la marca «sincronizado hace X», se puede abrir y buscar una nota, y lo que captures queda pendiente y se envía solo, **una vez**, al abrir la app con red (iOS no deja sincronizar en segundo plano). Editar y completar tareas sin conexión llegará en la 0.7.
 
 1. Instala Tailscale en el portátil y en el móvil (misma cuenta) y activa HTTPS en tu tailnet.
 2. En el portátil: `tailscale serve --bg 47800` (publica `https://<equipo>.<tu-tailnet>.ts.net` hacia el daemon; sigue ligado a `127.0.0.1`).
@@ -295,7 +295,7 @@ Ideas siguientes, sin orden de compromiso:
 
 ## Versiones
 
-Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.5.1**.
+Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.6.0**.
 
 ## Licencia
 

@@ -60,6 +60,15 @@
 - Sin service worker ni copia local: **sin conexión no funciona** (fases 2 y 3, v0.6.0 y v0.7.0).
 - El contador de tareas vencidas de Hoy incluye las de carpetas privadas (solo el número).
 
+## Móvil sin conexión (0.6.0, JARV-14)
+**Verificado**
+- `npm test`: 259/259, `npm run typecheck` y `npm run build:web` en verde. Sincronización y privacidad de `/api/sync/*` (comas, `#`, `&`, acentos, trucos de ruta, topes), idempotencia de `x-kioku-op` (secuencial, en paralelo, caducidad, tope, 0600), réplica, búsqueda, cola (orden, 4xx/5xx, respuesta perdida), lector offline y comportamiento del service worker.
+- E2E en Chromium headless (390 px, bóveda temporal, daemon detenido = «sin red»): 18/18. Encontrado y corregido con él: el precalentado corría antes de que el worker controlase la página, y servir la copia ocultaba el corte (ahora el worker avisa a la página).
+
+**No verificado**
+- **iPhone real:** que iOS no expulse el almacenamiento (se pide `storage.persist()`; si lo hace, se vuelve a sincronizar al abrir), que el envío ocurra al abrir la PWA con red (iOS no sincroniza en segundo plano) y «Sin conexión» real en modo avión. Cerrar y abrir la PWA basta; no hace falta reinstalar.
+- Evicción de almacenamiento y bloqueo de pestañas de IndexedDB: no reproducibles en Chromium.
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.

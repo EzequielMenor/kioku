@@ -23,9 +23,9 @@ Réplica de notas en IndexedDB más caché de lecturas en el service worker. Se 
 ## 1. Servidor
 
 - `GET /api/sync/manifest` → `[{ path, mtime, hash }]` de todas las notas, ya filtrado con el mismo criterio que el resto de lecturas del rol `mobile` (`isPrivate`, rutas normalizadas).
-- `GET /api/sync/notes?paths=a,b` → `[{ path, mtime, hash, text }]`. Lotes con tope de cantidad (50) y de bytes (1 MiB de texto); lo que no cabe se pide en otro lote. Si alguna ruta es privada, 404 como en el resto de lecturas.
+- `GET /api/sync/notes?paths=<array JSON codificado>` (las rutas pueden llevar comas, `#` o `&`) → `[{ path, mtime, hash, text }]`. Lotes con tope de cantidad (50) y de bytes (1 MiB de texto); lo que no cabe se pide en otro lote. Si alguna ruta es privada, 404 como en el resto de lecturas.
 - `hash` = SHA-256 hexadecimal del texto, para comparar sin depender de relojes.
-- `POST /api/capture` acepta `x-kioku-op: <uuid>`. El servidor mantiene `.kioku/ops.json` (escritura atómica, fuera del vault de notas, 0600) con `{ opId → resultado, fecha }`, caducidad de 30 días y tope de 5000 entradas. Repetir un `opId` devuelve el resultado guardado y **no** crea otra nota. Peticiones concurrentes con el mismo `opId` se serializan en el proceso.
+- `POST /api/capture` acepta `x-kioku-op: <uuid>`. El servidor mantiene `.kioku/ops.json` (escritura atómica con `writeInternal` y `chmod 0600`, dentro del área interna `.kioku/`, fuera de las notas) con `{ opId → resultado, fecha }`, caducidad de 30 días y tope de 5000 entradas. Repetir un `opId` devuelve el resultado guardado y **no** crea otra nota. Peticiones concurrentes con el mismo `opId` se serializan en el proceso.
 - Ventana residual documentada: si el daemon cae entre escribir la nota y anotar la operación, puede aparecer **un duplicado en Bandeja, nunca una captura perdida**.
 - Los endpoints `sync` entran en la lista blanca de lecturas del rol `mobile` y existen también para `full`.
 
