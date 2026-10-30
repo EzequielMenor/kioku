@@ -31,6 +31,23 @@ export function addMinutes(minute: string, n: number): string {
 export const weekdayName = (day: string): string => WEEKDAYS[calendarDay(day).getDay()];
 const dayMonth = (day: string) => `${Number(day.slice(8))} de ${MONTHS[Number(day.slice(5, 7)) - 1]}`;
 
+export interface EditFields { title: string; kind: "block" | "event"; start: string; end: string }
+
+/** Solo lo que cambió respecto a la actividad (el título, recortado); `{}` si no hay nada que guardar. */
+export function editChanges(item: Pick<CalendarEntry, "title" | "kind" | "start" | "end">, next: EditFields): Partial<EditFields> {
+  const changes: Partial<EditFields> = {};
+  if (next.title.trim() !== item.title) changes.title = next.title.trim();
+  if (next.kind !== item.kind) changes.kind = next.kind;
+  if (next.start !== item.start) changes.start = next.start;
+  if (next.end !== item.end) changes.end = next.end;
+  return changes;
+}
+
+/** La copia de una actividad: empieza donde termina la original y dura lo mismo. */
+export function duplicateRange(item: Pick<CalendarEntry, "start" | "end">): { start: string; end: string } {
+  return { start: item.end, end: addMinutes(item.end, durationOf(item)) };
+}
+
 /** Hora escrita a mano en 24 h («9:05» o «14:00»), normalizada a HH:mm; `null` si no es una hora válida. */
 export function parseTime24(text: string): string | null {
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(text.trim());

@@ -10,8 +10,8 @@ import { localDate } from "../../src/core/dates.ts";
 import {
   OFFLINE_MESSAGE, addMinutes, areaLabel, areaTextColor, countdown, dayTimeline, defaultSlot, durationOf, filterAreas, fittingTasks, formatDuration, freeMinutes, freeSummary, gapBlock,
   moveToDay, nextUp, nowMarker, occupancy, overlapping, progress, projectLabel, rangeLabel, rowTimes, shiftDays, shiftView, stateGlyph,
-  stateLabel, stateOf, validateArea, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure, joinLocal, parseTime24, splitLocal, type WeekPrefs,
-  type AreaLabel, type Draft, type ProjectLabel, type Scope,
+  stateLabel, stateOf, validateArea, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure, joinLocal, parseTime24, splitLocal, editChanges, duplicateRange, type WeekPrefs,
+  type AreaLabel, type Draft, type EditFields, type ProjectLabel, type Scope,
 } from "./calendar-model.ts";
 import type { AreaRow, CalendarEntry, CalendarResponse, CalendarTask, Gap } from "./types.ts";
 
@@ -163,6 +163,50 @@ function Reschedule({ item, items, now, onSave, onCancel }: { item: CalendarEntr
 }
 
 /** Controles en línea del bloque en curso o sin terminar. */
+/** Todos los campos de la actividad, editables en el sitio. Envía solo lo que cambió (título, tipo, inicio y fin por una vía; el área por otra). */
+function EditForm({ item, items, areas, now, onSave }: { item: CalendarEntry; items: CalendarEntry[]; areas: AreaRow[]; now: Date; onSave(fields: Partial<EditFields>, areaPath: string | null | undefined): Promise<boolean> }) {
+  const [title, setTitle] = useState(item.title);
+  const [kind, setKind] = useState(item.kind);
+  const [start, setStart] = useState(item.start);
+  const [end, setEnd] = useState(item.end);
+  const [areaPath, setAreaPath] = useState(item.areaPath ?? "");
+  const [busy, setBusy] = useState(false);
+  const check = validateTimes(start, end, now);
+  const changes = editChanges(item, { title, kind, start, end });
+  const areaChanged = areaPath !== (item.areaPath ?? "");
+  const dirty = Object.keys(changes).length > 0 || areaChanged;
+  const clash = check.ok ? overlapping(items, start, end, item.path) : [];
+  const changeStart = (value: string) => {
+    setStart(value);
+    if (check.ok) try { setEnd(addMinutes(value, check.minutes)); } catch { /* campo a medio escribir */ }
+  };
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    if (!dirty || !check.ok || !title.trim() || busy) return;
+    setBusy(true);
+    await onSave(changes, areaChanged ? areaPath || null : undefined);
+    setBusy(false);
+  };
+  return (
+    <form class="cal-edit" onSubmit={(e) => void submit(e)}>
+      <label>Título <input class="wide-input" value={title} onInput={(e) => setTitle(e.currentTarget.value)} /></label>
+      <fieldset class="cal-kind">
+        <legend>Tipo</legend>
+        <label><input type="radio" name={`kind-${item.path}`} checked={kind === "block"} onChange={() => setKind("block")} /> Bloque</label>
+        <label><input type="radio" name={`kind-${item.path}`} checked={kind === "event"} onChange={() => setKind("event")} /> Evento</label>
+      </fieldset>
+      {kind === "event" && item.kind === "block" && item.taskPath && <p class="cal-note">Un evento no lleva tarea: al guardar se suelta de «{item.title}».</p>}
+      <DateTime24 label="Empieza" value={start} onChange={changeStart} />
+      <DateTime24 label="Termina" value={end} onChange={setEnd} />
+      {check.ok ? <p class="cal-note">Dura {formatDuration(check.minutes)}.</p> : <p class="cal-warn" role="alert">{check.error}</p>}
+      {clash.length > 0 && <p class="cal-warn" role="status">△ Se cruza con {clash.map((c) => `«${c.title}» (${hm(c.start)}–${hm(c.end)})`).join(" y ")}. Puedes dejarlo así.</p>}
+      <AreaSelect areas={areas} value={areaPath} onChange={setAreaPath} />
+      {!title.trim() && <p class="cal-warn" role="alert">Escribe un título.</p>}
+      <div class="cal-acts"><button class="primary" disabled={!dirty || !check.ok || !title.trim() || busy}>Guardar cambios</button></div>
+    </form>
+  );
+}
+
 function LiveControls({ item, now, onFinish, onEdit }: { item: CalendarEntry; now: Date; onFinish(): void; onEdit(): void }) {
   const pct = progress(item, now);
   return (
@@ -194,6 +238,8 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
   const [editing, setEditing] = useState<string | null>(null);
   const [freed, setFreed] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
+  const [undo, setUndo] = useState<{ path: string; title: string } | null>(null);
+  useEffect(() => { if (!undo) return; const t = setTimeout(() => setUndo(null), 10_000); return () => clearTimeout(t); }, [undo]);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const online = useOnline();
@@ -265,13 +311,41 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
     say(area ? "Área actualizada." : "Área creada.");
     return true;
   };
-  const assignArea = async (item: CalendarEntry, areaPath: string): Promise<boolean> => {
-    if ((item.areaPath ?? "") === areaPath) return true;
-    const result = await once("assign:" + item.path, () => write(() => api<CalendarEntry>("POST", "/api/calendar/area", { path: item.path, areaPath: areaPath || null, hash: item.hash })));
+  /** Guarda lo editado: título, tipo, inicio y fin con una petición; el área con otra (el `hash` cambia entre las dos). `undefined` = el área no cambió. */
+  const saveEdit = async (item: CalendarEntry, fields: Partial<EditFields>, areaPath: string | null | undefined): Promise<boolean> => {
+    let hash = item.hash;
+    if (Object.keys(fields).length) {
+      const r = await once("edit:" + item.path, () => write(() => api<CalendarEntry>("POST", "/api/calendar/update", { path: item.path, hash, ...fields })));
+      if (!r) { reload(); return false; }
+      hash = r.hash;
+    }
+    if (areaPath !== undefined) {
+      const r = await once("assign:" + item.path, () => write(() => api<CalendarEntry>("POST", "/api/calendar/area", { path: item.path, areaPath, hash })));
+      if (!r) { reload(); return false; }
+    }
     reload();
-    if (!result) return false;
-    say("Área de la actividad actualizada.");
+    say("Actividad actualizada.");
     return true;
+  };
+  const duplicate = async (item: CalendarEntry) => {
+    const t = duplicateRange(item);
+    await create({ kind: item.kind, title: item.title, start: t.start, end: t.end, ...(item.areaPath ? { areaPath: item.areaPath } : {}) }, newId());
+  };
+  /** Borrar manda la actividad a la papelera; la barra «Deshacer» la devuelve. No hay diálogo de confirmación: es recuperable. */
+  const remove = async (item: CalendarEntry) => {
+    const r = await once("delete:" + item.path, () => write(async () => { await api("POST", "/api/calendar/delete", { path: item.path, hash: item.hash }); return true; }));
+    reload();
+    if (!r) return;
+    closePanel();
+    setUndo({ path: item.path, title: item.title });
+  };
+  const restore = async () => {
+    if (!undo) return;
+    const r = await once("restore:" + undo.path, () => write(() => api<CalendarEntry>("POST", "/api/calendar/restore", { path: undo.path })));
+    reload();
+    if (!r) return;
+    setUndo(null);
+    say(`«${r.title}» vuelve a estar en el calendario.`);
   };
   const completeTask = async (path: string) => {
     if (await once("task:" + path, () => write(async () => { await api("POST", "/api/task/status", { path, status: "done" }); return true; }))) say("Tarea completada. El bloque no cambia.");
@@ -339,6 +413,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
           {data.invalid.map((n, i) => <span key={n.path}>{i > 0 && ", "}<a href={`#/nota/${enc(n.path)}`}>{n.path}</a></span>)}. Revisa su fecha, fin o tipo.
         </p>
       )}
+      {undo && <p class="cal-undo" role="status">«{undo.title}» borrada. <button onClick={() => void restore()}>Deshacer</button> <button class="mini" onClick={() => setUndo(null)}>Cerrar</button></p>}
       {notice && <p class="cal-warn" role="status">{notice} <button class="mini" onClick={() => setNotice(null)}>Entendido</button></p>}
       {!data && !error && <div class="empty muted">Cargando…</div>}
 
@@ -422,9 +497,8 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
 
       {detail && (
         <Sheet title={detail.title} onClose={closePanel}>
-          <Detail item={detail} items={items} tasks={tasks} areas={areas} onAssign={(path) => assignArea(detail, path)} now={now} editing={editing === detail.path}
-            onFinish={() => void finish(detail)} onEdit={() => setEditing(detail.path)} onCancelEdit={() => setEditing(null)}
-            onSave={(s, e) => reschedule(detail, s, e)} onShift={(n) => { const t = shiftDays(detail, n); void reschedule(detail, t.start, t.end); }}
+          <Detail item={detail} items={items} tasks={tasks} areas={areas} now={now}
+            onFinish={() => void finish(detail)} onSave={(f, a) => saveEdit(detail, f, a)} onDuplicate={() => void duplicate(detail)} onDelete={() => void remove(detail)} onShift={(n) => { const t = shiftDays(detail, n); void reschedule(detail, t.start, t.end); }}
             onCompleteTask={(p) => void completeTask(p)} onClose={closePanel} />
         </Sheet>
       )}
@@ -516,22 +590,17 @@ function AreasManager({ areas, onSave, onClose }: { areas: AreaRow[]; onSave(are
   </>;
 }
 
-function Detail({ item, items, tasks, areas, onAssign, now, editing, onFinish, onEdit, onCancelEdit, onSave, onShift, onCompleteTask, onClose }: {
-  item: CalendarEntry; items: CalendarEntry[]; tasks: CalendarTask[]; areas: AreaRow[]; onAssign(path: string): Promise<boolean>; now: Date; editing: boolean; onFinish(): void; onEdit(): void; onCancelEdit(): void;
-  onSave(start: string, end: string): Promise<boolean>; onShift(n: number): void; onCompleteTask(path: string): void; onClose(): void;
+function Detail({ item, items, tasks, areas, now, onFinish, onSave, onShift, onDuplicate, onDelete, onCompleteTask, onClose }: {
+  item: CalendarEntry; items: CalendarEntry[]; tasks: CalendarTask[]; areas: AreaRow[]; now: Date; onFinish(): void;
+  onSave(fields: Partial<EditFields>, areaPath: string | null | undefined): Promise<boolean>; onShift(n: number): void; onDuplicate(): void; onDelete(): void; onCompleteTask(path: string): void; onClose(): void;
 }) {
-  const [areaPath, setAreaPath] = useState(item.areaPath ?? "");
-  const [areaBusy, setAreaBusy] = useState(false);
   const task = item.taskPath ? tasks.find((t) => t.path === item.taskPath) : undefined;
   const cd = countdown(item, now);
   const noun = item.kind === "event" ? "evento" : "bloque";
   return (
     <>
       <div class="cal-sub"><KindTag item={item} /><Pill item={item} /><AreaBadge area={areaLabel(item)} /><Badge p={projectLabel(item)} /></div>
-      <form class="cal-sect" onSubmit={(e) => { e.preventDefault(); if (areaBusy) return; setAreaBusy(true); void onAssign(areaPath).finally(() => setAreaBusy(false)); }}>
-        <AreaSelect areas={areas} value={areaPath} onChange={setAreaPath} />
-        <div><button disabled={areaBusy || areaPath === (item.areaPath ?? "")}>Guardar área</button></div>
-      </form>
+      <EditForm key={item.hash} item={item} items={items} areas={areas} now={now} onSave={onSave} />
       <p class="cal-when-line">{dayName(item.start.slice(0, 10))} · {rangeLabel(item)} · {formatDuration(durationOf(item))}{cd ? ` · ${cd.big} ${cd.unit}` : ""}</p>
       {item.projectPath && <p class="small"><a href={`#/proyecto/${enc(item.projectPath)}`}>Abrir proyecto</a></p>}
 
@@ -555,11 +624,11 @@ function Detail({ item, items, tasks, areas, onAssign, now, editing, onFinish, o
         <div class="cal-acts">
           {item.kind === "block" && !item.done_at && <button class="primary" onClick={onFinish}>Terminar bloque</button>}
           {item.done_at && <span class="cal-note">Terminado.</span>}
-          <button onClick={onEdit}>Reprogramar</button>
           <button onClick={() => onShift(-1)}>← Un día antes</button>
           <button onClick={() => onShift(1)}>Un día después →</button>
+          <button onClick={onDuplicate}>Duplicar</button>
+          <button class="danger" onClick={onDelete}>Borrar</button>
         </div>
-        {editing && <Reschedule item={item} items={items} now={now} onSave={onSave} onCancel={onCancelEdit} />}
       </section>
 
       {item.taskPath && (

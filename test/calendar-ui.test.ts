@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   addMinutes, countdown, dayTimeline, defaultSlot, filterItems, fittingTasks, formatDuration, freeMinutes, freeSummary, gapBlock,
   moveToDay, nextUp, nowMarker, occupancy, openGaps, overlapping, progress, projectLabel, projectOptions, shiftDays, shiftView,
-  OFFLINE_MESSAGE, UNCONFIRMED_MESSAGE, rangeLabel, rowTimes, stateGlyph, stateLabel, stateOf, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure, parseTime24, joinLocal, splitLocal,
+  OFFLINE_MESSAGE, UNCONFIRMED_MESSAGE, rangeLabel, rowTimes, stateGlyph, stateLabel, stateOf, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure, parseTime24, joinLocal, splitLocal, editChanges, duplicateRange,
 } from "../web/src/calendar-model.ts";
 import type { CalendarEntry, CalendarTask } from "../web/src/types.ts";
 
@@ -293,7 +293,7 @@ test("calendario: sin peticiones externas, sin cola sin conexión y solo con las
   const ui = src("calendar.tsx");
   assert.doesNotMatch(ui, /offline\/(runtime|store|queue)/, "las escrituras del calendario no pasan por la cola sin conexión");
   const routes = [...ui.matchAll(/["'`](\/api\/[^"'`?$]+)/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(routes)].sort(), ["/api/calendar", "/api/calendar/area", "/api/calendar/areas/create", "/api/calendar/areas/update", "/api/calendar/create", "/api/calendar/finish", "/api/calendar/move", "/api/task/status"]);
+  assert.deepEqual([...new Set(routes)].sort(), ["/api/calendar", "/api/calendar/area", "/api/calendar/areas/create", "/api/calendar/areas/update", "/api/calendar/create", "/api/calendar/delete", "/api/calendar/finish", "/api/calendar/move", "/api/calendar/restore", "/api/calendar/update", "/api/task/status"]);
 });
 
 // ───────── Hoja modal: el teclado sigue funcionando aunque el control enfocado desaparezca ─────────
@@ -313,4 +313,17 @@ test("hoja: Esc y Tab se atienden a nivel de documento, el foco perdido se recup
   assert.match(sheet, /\.disconnect\(\)/);
   assert.match(sheet, /opener\?\.isConnected \? opener/, "al cerrar, el foco vuelve a quien abrió la hoja");
   assert.match(sheet, /closeRef\.current\(\)/, "el oyente único usa el onClose más reciente");
+});
+
+test("edición: solo se envía lo que cambió y el título se recorta", () => {
+  const item = block("10:00", "11:00", { title: "Gym", kind: "block" });
+  const same = { title: "Gym", kind: item.kind, start: item.start, end: item.end };
+  assert.deepEqual(editChanges(item, same), {});
+  assert.deepEqual(editChanges(item, { ...same, title: "  Gimnasio " }), { title: "Gimnasio" });
+  assert.deepEqual(editChanges(item, { ...same, kind: "event", end: `${DAY}T12:00` }), { kind: "event", end: `${DAY}T12:00` });
+});
+
+test("duplicar: la copia empieza donde termina la original y dura lo mismo", () => {
+  assert.deepEqual(duplicateRange(block("10:00", "11:30")), { start: `${DAY}T11:30`, end: `${DAY}T13:00` });
+  assert.deepEqual(duplicateRange(block("22:30", "23:30")), { start: `${DAY}T23:30`, end: `${NEXT}T00:30` }, "puede cruzar medianoche");
 });

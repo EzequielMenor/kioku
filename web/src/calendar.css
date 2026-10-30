@@ -181,3 +181,9 @@ a.cal-ttl:hover { color: var(--accent); }
 .cal-dt input[aria-invalid="true"] { border-color: var(--accent); }
 .cal-weekopts { gap: 10px; align-items: center; font-size: 13px; }
 @media (max-width: 720px) { .cal-wstrip { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); } }
+
+/* Edición en el sitio y deshacer */
+.cal-edit { display: grid; gap: 10px; margin: 8px 0 12px; }
+.cal-edit label { display: grid; gap: 4px; }
+.cal-undo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; padding: 8px 12px; border: 1px solid var(--line2); border-radius: 6px; background: var(--surface); }
+.cal-acts button.danger { border-color: var(--line2); }
