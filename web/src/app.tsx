@@ -4,6 +4,7 @@ import "./app.css";
 import { UNAUTHORIZED_EVENT, api, lsGet, lsSet } from "./api.ts";
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
 import { DatabasesList, DatabaseView } from "./databases.tsx";
+import { CalendarView } from "./calendar.tsx";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
@@ -31,6 +32,7 @@ const ICONS: Record<string, string> = {
   bases: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>',
   grafo: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2l7.6.4M7.4 8.2l3.6 7.9M16.6 10.1l-3.4 5.9"/>',
   asistente: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 11h6M9 14h3"/>',
+  calendario: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   diario: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
 };
 const Seal = () => <svg class="seal" viewBox="12 12 76 76" aria-hidden="true"><rect x="12" y="12" width="76" height="76" rx="9" /><path d={SEAL_PATH} /></svg>;
@@ -41,6 +43,7 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/bandeja", label: "Bandeja", key: "b", icon: "bandeja" },
   { route: "/proyectos", label: "Proyectos", key: "p", icon: "proyectos" },
   { route: "/tareas", label: "Tareas", key: "t", icon: "tareas" },
+  { route: "/calendario", label: "Calendario", key: "c", icon: "calendario" },
   { route: "/notas", label: "Notas", key: "n", icon: "notas" },
   { route: "/bases", label: "Bases", key: "d", icon: "bases" },
   { route: "/grafo", label: "Grafo", key: "g", icon: "grafo" },
@@ -195,6 +198,7 @@ function App() {
     case "proyectos": view = <ProjectsView rev={rev} go={setRoute} onNew={() => newNote("project")} />; break;
     case "proyecto": view = <ProjectView key={arg} path={arg} rev={rev} go={setRoute} say={say} guard={guard} focus={focus} onContext={openContext} />; break;
     case "tareas": view = <TasksView rev={rev} go={setRoute} guard={guard} today={counts?.date} />; break;
+    case "calendario": view = <CalendarView rev={rev} guard={guard} say={say} />; break;
     case "notas": view = <NotesView rev={rev} go={setRoute} onNew={() => newNote("note")} />; break;
     case "bases": view = arg ? <DatabaseView key={arg} path={arg} rev={rev} go={setRoute} guard={guard} say={say} /> : <DatabasesList rev={rev} go={setRoute} guard={guard} />; break;
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
@@ -714,7 +718,7 @@ function LockedScreen() {
 
 /** Barra inferior (solo se ve en pantallas estrechas): lo más usado a un pulgar. */
 function BottomNav({ active, pending, onSearch, onMore }: { active: string; pending: number; onSearch(): void; onMore(): void }) {
-  const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/tareas", "Tareas", "tareas"], ["/notas", "Notas", "notas"]];
+  const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/calendario", "Calendario", "calendario"], ["/tareas", "Tareas", "tareas"], ["/notas", "Notas", "notas"]];
   return (
     <nav class="bottomnav" aria-label="Navegación">
       {items.map(([route, label, icon]) => (
@@ -728,7 +732,7 @@ function BottomNav({ active, pending, onSearch, onMore }: { active: string; pend
 
 /** «Más»: el resto de pantallas en el móvil. */
 function MoreSheet({ off, counts, theme, setTheme, onClose, onCapture, onJournal }: { off: OfflineState; counts: TodayView | null; theme: string; setTheme(t: string): void; onClose(): void; onCapture(): void; onJournal(): void }) {
-  const rest = visibleNav().filter((n) => !["/hoy", "/tareas", "/notas"].includes(n.route));
+  const rest = visibleNav().filter((n) => !["/hoy", "/calendario", "/tareas", "/notas"].includes(n.route));
   return (
     <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div class="modal sheet" role="dialog" aria-label="Más">
@@ -876,7 +880,7 @@ function snippetHtml(s: string): string {
 function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
     ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
-    ["g h · b · p · t · n · d · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Notas · Bases · Grafo · Asistente · Propuestas"],
+    ["g h · b · p · t · c · n · d · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Calendario · Notas · Bases · Grafo · Asistente · Propuestas"],
     ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (
