@@ -1,6 +1,6 @@
 # Dokploy deployment preparation
 Objective: prepare a local deployment configuration for Kioku on the existing server.
-Branch: feature/dokploy-private; status: publishing an explicitly user-authorized test candidate; Docker runtime/independent verification unavailable.
+Branch: feature/dokploy-private; status: test candidate ef758e9 published to origin/feature/dokploy-private; Docker runtime/independent verification unavailable.
 Risk: item 5 (deployment configuration); item 2 (private network/auth boundary).
 
 ## Specs
@@ -11,9 +11,9 @@ S3. "si si" — confirms resuming local preparation only, without deploying or t
 S4. "si subelo y lo pruebo en otro pc q es donde quiero montarlo" — publish this test candidate; the user will perform Docker/runtime testing on the target PC.
 
 ## Tasks
-- T1 | S1,S3 | inline | done | Dockerfile, allowlisted .dockerignore, private compose.dokploy.yml and docs/dokploy.md written. RED: 3 missing-file failures; GREEN: 3/3 structural tests and Compose syntax validation. No commit; awaiting T2 proof.
+- T1 | S1,S3 | inline | done | Dockerfile, allowlisted .dockerignore, private compose.dokploy.yml and docs/dokploy.md written. RED: 3 missing-file failures; GREEN: 3/3 structural tests and Compose syntax validation. Commit: ef758e9; published for user testing under S4.
 - T2 | S1,S3,S4 | inline + independent verification | dropped | Local checks passed; Docker runtime and independent proof remain unavailable. User chose to test on another PC and explicitly requested publication despite these disclosed limitations.
-- T3 | S4 | inline | in_progress | Commit and push only deployment files to feature/dokploy-private; preserve unrelated index/worktree changes. No merge or server deployment.
+- T3 | S4 | inline | done | Commit ef758e9 contains only the six deployment files; git push -u origin feature/dokploy-private exited 0. Unrelated index/worktree changes preserved. No merge or server deployment.
 
 ## Log
 L1. Original request: "vale pues vamos alla". Context: run Kioku on the existing server with Dokploy so the laptop need not stay powered on.
@@ -31,3 +31,5 @@ L11. Checks observed: deployment RED 3 missing-file failures; GREEN 3/3; Docker 
 L12. Independent verifier launch was refused by harness admission, which reported no named Risk line despite risks described in the delegated task; no retry or substitute verification. Native assess with explicit item 5 escalation returned high/unassessable because unrelated untracked files need explicit scope selection; no review lineage started, no receipt or approval exists. Stop rather than review unrelated offline work. Commit withheld while required proof is unavailable. Operator decision: supply Docker build/runtime and independent verification evidence, or explicitly decide how to proceed with missing proof. Server enrollment, deployment and data migration remain separately unauthorized.
 
 L13. User: "si subelo y lo pruebo en otro pc q es donde quiero montarlo". Explicitly authorizes commit/push of the deployment test candidate after disclosure of missing Docker/independent proof; testing moves to the user on another PC. No merge, data transfer or deployment by this agent. Publish only the six deployment files; preserve all offline edits/index entries. ProjectOS remains unavailable; no issue key invented. Native assessment/review remains unavailable as recorded in L12; no approval claimed.
+
+L14. Publication observed: commit ef758e9 (6 files, 256 insertions); push to origin/feature/dokploy-private exited 0. Pre-existing staged offline diff remains 8 files, 506 insertions/1 deletion. Local tests were run against the dirty working tree, not an isolated checkout of the published commit; do not claim a Docker build or full-suite validation of the clean published revision. User testing remains required. This follow-up records publication evidence only.
