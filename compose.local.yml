@@ -1,0 +1,63 @@
+name: kioku-local
+
+services:
+  gateway:
+    image: kioku:local-a68f7da
+    init: true
+    # The daemon keeps listening on loopback in this shared network namespace.
+    # Preserve its original Host/Origin headers and authentication unchanged.
+    command:
+      - node
+      - --input-type=module
+      - -e
+      - |
+        import { createServer, connect } from 'node:net';
+        createServer((client) => {
+          const upstream = connect({ host: '127.0.0.1', port: 47800 });
+          client.on('error', () => upstream.destroy());
+          upstream.on('error', () => client.destroy());
+          client.on('close', () => upstream.destroy());
+          upstream.on('close', () => client.destroy());
+          client.pipe(upstream).pipe(client);
+        }).listen(47801, '0.0.0.0');
+    ports:
+      - "127.0.0.1:47800:47801"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    labels:
+      traefik.enable: "false"
+    restart: unless-stopped
+
+  kioku:
+    image: kioku:local-a68f7da
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    network_mode: service:gateway
+    depends_on:
+      gateway:
+        condition: service_started
+    environment:
+      KIOKU_HOME: /data
+      KIOKU_PORT: "47800"
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    labels:
+      traefik.enable: "false"
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:47800/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  data:
