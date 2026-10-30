@@ -7,11 +7,13 @@ import { Kioku } from "../core/kioku.ts";
 import { isLocalUrl } from "../core/llm.ts";
 import { VaultError } from "../core/vault.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
+import type { CalendarInput } from "../core/calendar-store.ts";
 import type { AssistantEngine } from "../assistant/engine.ts";
 import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore } from "../assistant/undo.ts";
+import { assertMobileItem, calendarDto, calendarRange, createsPrivateLink } from "./calendar.ts";
 import { OpsLedger, validOp } from "./ops.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
 import { mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
@@ -231,6 +233,7 @@ export async function startServer(
           }
           return send(res, 200, { notes, pending, gone });
         }
+        case "/api/calendar": return send(res, 200, calendarRange(j, q.get("from"), q.get("to"), role === "mobile" ? mobileExclude : undefined));
         case "/api/databases": return send(res, 200, j.listDatabases({ skip }));
         case "/api/database": {
           const view = q.get("view");
@@ -317,6 +320,27 @@ export async function startServer(
           if (!["todo", "doing", "done", "dropped"].includes(st)) throw new HttpError(400, "Estado inválido");
           await j.setTaskStatus(userPath(body.path), st);
           return send(res, 200, { ok: true });
+        }
+        case "/api/calendar/create": {
+          const optional = (v: unknown) => (v === undefined || v === null ? undefined : userPath(v));
+          const kind = body.kind;
+          if (kind !== "block" && kind !== "event") throw new HttpError(400, "Tipo de actividad inválido");
+          const input: CalendarInput = {
+            id: str(body.id, "id"), title: str(body.title, "title"), kind, start: str(body.start, "start"), end: str(body.end, "end"),
+            taskPath: optional(body.taskPath), projectPath: optional(body.projectPath),
+          };
+          if (role === "mobile" && createsPrivateLink(j, input, mobileExclude)) throw new HttpError(403, "Esa carpeta es privada y no se toca desde el móvil");
+          return send(res, 200, calendarDto(await j.calendar.create(input)));
+        }
+        case "/api/calendar/move": {
+          const rel = userPath(body.path);
+          if (role === "mobile") assertMobileItem(j, rel, mobileExclude);
+          return send(res, 200, calendarDto(await j.calendar.move(rel, str(body.start, "start"), str(body.end, "end"), str(body.hash, "hash"))));
+        }
+        case "/api/calendar/finish": {
+          const rel = userPath(body.path);
+          if (role === "mobile") assertMobileItem(j, rel, mobileExclude);
+          return send(res, 200, calendarDto(await j.calendar.finish(rel, str(body.hash, "hash"))));
         }
         case "/api/database/create": {
           const n = await j.createDatabase({ name: str(body.name, "name"), template: body.template as never });

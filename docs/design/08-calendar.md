@@ -1,6 +1,6 @@
 # Calendario
 
-Estado: **diseño aprobado en prototipo, sin implementar**. Este documento recoge lo decidido, el modelo de datos propuesto y el plan. La decisión de arquitectura se registrará como D-23 en `02-TRD-architecture.md` cuando se confirme el modelo de datos.
+Estado: **diseño aprobado en prototipo; núcleo y API en línea implementados, interfaz pendiente**. Este documento recoge lo decidido, el modelo de datos propuesto y el plan. La decisión de arquitectura se registrará como D-23 en `02-TRD-architecture.md` cuando se confirme el modelo de datos.
 
 ## Problema
 
@@ -71,6 +71,24 @@ Coherente con la bóveda en Markdown como fuente de verdad y SQLite como índice
 - Índice: tabla `blocks(path PK, kind, start, end, task_path, project_key, done_at)`, derivada del Markdown.
 - Reglas: terminar un bloque nunca cambia `status` de la tarea; completar la tarea nunca toca sus bloques; reprogramar solo cambia `start` y `end`; nada se mueve automáticamente.
 - Pregunta abierta: ¿un archivo por bloque o un archivo por día? Un archivo por bloque encaja con la edición móvil sin conexión (D-22: hash base por nota) y evita conflictos entre dispositivos.
+
+## API en línea (implementada)
+
+Solo con el daemon conectado; no hay cola sin conexión para el calendario. Todas las rutas exigen la clave y respetan los roles: el móvil puede leer y escribir el calendario con las mismas reglas de privacidad que el resto (`.kioku/mobile.json`).
+
+| Ruta | Cuerpo / parámetros | Respuesta |
+|---|---|---|
+| `GET /api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` | Fechas locales, ambas **inclusivas**; máximo 367 días. | `{ items, tasks, invalid, now }` |
+| `POST /api/calendar/create` | `{ id, title, kind, start, end, taskPath?, projectPath? }` (`id` de 8–64 caracteres, `[a-zA-Z0-9-]`). Reintentar con el mismo contenido devuelve la misma actividad. | La actividad |
+| `POST /api/calendar/move` | `{ path, start, end, hash }` | La actividad |
+| `POST /api/calendar/finish` | `{ path, hash }` | La actividad |
+
+- Cada actividad lleva `path`, `title`, `kind`, `start`, `end`, `hash`, `state`, `taskPath`, `projectPath`, `projectTitle` y, si se terminó, `done_at`. Las relaciones crudas (`task`, `project`) no salen en la API.
+- Mover y terminar exigen el `hash` leído: si la actividad cambió, `409` y nada se escribe. Terminar un bloque nunca completa su tarea ni a la inversa; nada se reprograma solo.
+- Errores como en el resto de la API (`{ error, code? }`): rango, fecha, tipo, tarea o proyecto inválidos → `400`; hash obsoleto o `id` ya usado con otro contenido → `409`. Una petición inválida no cambia nada.
+- Los huecos libres no se calculan en el servidor: la UI los deriva de las actividades visibles.
+- **Móvil.** Las actividades que apuntan a una nota privada (la propia actividad, su tarea o su proyecto, también el heredado de la tarea) o a una relación que no se resuelve no aparecen, y las tareas privadas tampoco; así no se filtran títulos, cuentas ni huecos. Mover o terminar una actividad oculta responde `404`; crear con rutas privadas, `403`.
+- La lectura no se guarda en la caché del service worker (`web/src/sw-rules.ts`): una agenda antigua parecería actual y podría conservar referencias que el móvil ya no debe ver.
 
 ## Plan
 

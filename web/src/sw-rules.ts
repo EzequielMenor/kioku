@@ -2,8 +2,9 @@ export const READ_TIMEOUT_MS = 3000;
 export const API_CACHE = "kioku-api";
 
 // Lo que nunca se guarda: flujos en vivo, salud, asistente, propuestas e IA (cambian o son sensibles) y los lotes de texto de
-// sincronización (ya viven en la réplica; guardarlos aquí duplicaría el vault en la caché).
-const NEVER = /^\/api\/(?:events|health|assistant|proposals|ai|sync\/notes)(?:\/|$)/;
+// sincronización (ya viven en la réplica; guardarlos aquí duplicaría el vault en la caché). El calendario es solo en línea:
+// una agenda vieja parecería actual (estados, huecos) y podría conservar referencias que el móvil ya no debe ver.
+const NEVER = /^\/api\/(?:events|health|assistant|proposals|ai|calendar|sync\/notes)(?:\/|$)/;
 
 /** Lecturas de datos cuya última respuesta puede servirse sin red. */
 export function cacheableRead(method: string, pathname: string): boolean {
