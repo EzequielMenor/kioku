@@ -38,8 +38,8 @@
 .cal-wsn { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
 .cal-wsn small { font-size: 11px; color: var(--accent); font-weight: 600; }
 .cal-wbar { position: relative; height: 14px; border: 1px solid var(--line2); border-radius: 4px; background: var(--bg); overflow: hidden; }
-.cal-sg { position: absolute; top: 0; bottom: 0; background: var(--accent); }
-.cal-sg.event { background: repeating-linear-gradient(90deg, var(--accent) 0 2px, transparent 2px 4px); }
+.cal-sg { position: absolute; top: 0; bottom: 0; background: currentColor; }
+.cal-sg.event { background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 4px); }
 .cal-wnow { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--fg); }
 .cal-wsf { font-size: 12px; color: var(--muted); }
 
@@ -124,6 +124,10 @@ a.cal-ttl:hover { color: var(--accent); }
 .cal-kind legend { font-size: 13px; color: var(--fg2); padding: 0; margin-bottom: 4px; }
 .cal-kind label { display: flex; align-items: center; gap: 6px; }
 .cal-kind input { width: auto; }
+.cal-areas { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.cal-areas li { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.cal-sect label { display: grid; gap: 4px; }
+.cal-compose input[type=color] { width: 64px; min-height: 40px; padding: 2px; }
 
 @media (max-width: 720px) {
   .cal-tools { justify-content: flex-start; width: 100%; }

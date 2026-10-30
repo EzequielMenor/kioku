@@ -84,6 +84,14 @@
 - Firefox, Safari y dispositivos táctiles reales no probados. El calendario exige conexión; no integra la cola de escrituras offline.
 - El verificador aislado omitió `assistant-engine.test.ts:164` (`bwrap o hermes no instalados` bajo HOME temporal); la suite del padre sí ejecutó310/310 sin omisiones. El launcher de TypeScript falló inicialmente solo en la copia temporal y se reparó allí antes de typecheck/build.
 
+## Áreas vitales del calendario (primera versión)
+
+- Implementación: `498906a` (Markdown, API y privacidad) y `db2eb21` (gestión, selección, filtro y colores). Áreas independientes de los proyectos; renombrar/recolorear conserva las asociaciones por ruta. No se migran las actividades anteriores: quedan «Sin área».
+- Comprobaciones observadas: `npm test` **335/335**, sin omisiones; `npm run typecheck`, `npm run build:web` y `git diff --check` en verde. El verificador independiente pasó **69 pruebas enfocadas**, tipos y compilación del candidato con áreas.
+- El verificador fue cancelado al cerrarse la sesión principal antes del veredicto funcional de Chromium de áreas. No se presenta esa comprobación como terminada.
+- El usuario ofreció la prueba manual y aceptó la entrega como primera versión. Es aceptación general, no evidencia de todos los pasos del checklist, de una auditoría completa de contraste ni de compatibilidad en todos los navegadores.
+- ProjectOS: **JARV-18, JARV-19 y JARV-20 completados** con evidencias. **JARV-21, JARV-22 y JARV-24 abiertos** para los límites de Semana, escrituras offline y validación exhaustiva; **JARV-23 en Todo** (captura/asistente no implementados). Épica **JARV-17** sigue en curso. JARV-21 pide impedir mover al pasado, mientras la implementación solo avisa; diferencia documentada para resolver sin cambiar silenciosamente el criterio.
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.
