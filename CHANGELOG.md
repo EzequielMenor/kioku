@@ -2,6 +2,11 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## Sin publicar
+
+### Despliegue
+- Añadida una configuración Docker Compose para probar Kioku localmente en macOS con Docker Desktop, y otra para un despliegue privado con Dokploy y Tailscale. Las guías están en [`docs/local-macos.md`](docs/local-macos.md) y [`docs/dokploy.md`](docs/dokploy.md).
+
 ## [0.6.0] — 2026-10-28
 
 ### Añadido

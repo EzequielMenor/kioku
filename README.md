@@ -9,7 +9,7 @@ Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un a
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
-[![Tests](https://img.shields.io/badge/tests-264%20OK-brightgreen)](#desarrollo)
+[![Tests](https://img.shields.io/badge/tests-267%20OK-brightgreen)](#desarrollo)
 
 <img src="docs/img/hoy.png" alt="Pantalla Hoy: siguiente paso, capturas sin procesar y proyectos para retomar" width="860">
 
@@ -57,7 +57,7 @@ Además trae **bases de datos** (tabla, tablero y lista sobre tus propias notas)
 | **Chromium, Chrome o Brave** | Recomendado | Abre la interfaz como ventana de aplicación. Sin él puedes abrir la URL del daemon en cualquier navegador. |
 | **bubblewrap (`bwrap`) y [Hermes Agent](https://github.com/NousResearch/hermes-agent)** | Opcional | Solo para el asistente conversacional (ver [Asistente](#asistente)). |
 
-Desarrollado y probado en **Arch Linux / Omarchy con Hyprland**. El Workspace funciona en cualquier Linux con Node y un navegador Chromium; la ventana flotante de captura (Quick) está pensada para Hyprland. No se ha probado en macOS ni en Windows.
+Desarrollado y probado en **Arch Linux / Omarchy con Hyprland**. En Linux, el Workspace funciona con Node y un navegador Chromium; la ventana flotante de captura (Quick) está pensada para Hyprland. En macOS puedes probar Kioku con **Docker Desktop**, sin instalar Node en el Mac; consulta la [guía de instalación](docs/local-macos.md). Para el despliegue privado con Dokploy, consulta la [guía de Dokploy](docs/dokploy.md). Windows no está probado.
 
 ### Paso a paso
 
