@@ -11,6 +11,7 @@ const WRITES = new Set([
   "POST /api/task/status", "POST /api/journal", "POST /api/note/open",
   "POST /api/database/query", // lectura que viaja por POST
   "POST /api/calendar/create", "POST /api/calendar/move", "POST /api/calendar/finish", // calendario en línea; sin cola sin conexión
+  "POST /api/calendar/areas/create", "POST /api/calendar/areas/update", "POST /api/calendar/area", // áreas del calendario y su asignación
 ]);
 
 const under = (p: string, base: string) => p === base || p.startsWith(`${base}/`);
@@ -21,7 +22,7 @@ export function mobileAllowed(method: string, p: string): boolean {
 }
 
 /** Parámetros que nombran una nota: si alguno cae en una carpeta privada, la petición no se atiende. */
-const PATH_PARAMS = ["path", "focus", "project", "taskPath", "projectPath"];
+const PATH_PARAMS = ["path", "focus", "project", "taskPath", "projectPath", "areaPath"];
 
 /** Ruta sin trucos (`//`, `./`, `a/../b`, `\`) antes de compararla con las carpetas privadas. */
 const canonical = (p: string) => path.posix.normalize(p.replace(/\\/g, "/")).replace(/^(\.?\/)+/, "");
@@ -48,7 +49,7 @@ type Obj = Record<string, unknown>;
 const isObj = (x: unknown): x is Obj => !!x && typeof x === "object" && !Array.isArray(x);
 
 /** Claves que nombran una nota en las respuestas (la tarea de un foco, el proyecto de una tarea…). */
-const NOTE_KEYS = ["path", "projectPath", "taskPath"];
+const NOTE_KEYS = ["path", "projectPath", "taskPath", "areaPath"];
 const names = (o: Obj, exclude: string[]) => NOTE_KEYS.some((k) => typeof o[k] === "string" && isPrivate(o[k] as string, exclude));
 /** El objeto es de una nota privada, o lleva una (`{ task: {…privada…} }`, `{ project: {…} }`). */
 const touches = (o: Obj, exclude: string[]) => names(o, exclude) || Object.values(o).some((x) => isObj(x) && names(x, exclude));
@@ -79,16 +80,6 @@ export function mobileView(route: string, v: unknown, exclude: string[]): unknow
   if (route === "/api/today" && isObj(v)) return todayView(v, exclude);
   if (route === "/api/focus" && isObj(v) && touches(v, exclude)) return { active: false };
   return clean(v, exclude);
-}
-
-/** Una actividad de calendario sale al móvil solo si ella, su tarea y su proyecto son visibles; una relación sin resolver podría apuntar a algo privado. */
-export function calendarVisible(
-  it: { path: string; task?: string; project?: string; taskPath: string | null; projectPath: string | null },
-  exclude: string[], resolve: (raw: string) => string | null,
-): boolean {
-  const refs = [it.task && resolve(it.task), it.project && resolve(it.project)];
-  if (refs.some((r) => r === null)) return false;
-  return ![it.path, it.taskPath, it.projectPath, ...refs].some((x) => x && isPrivate(x, exclude));
 }
 
 /** Eventos en vivo que le llegan al móvil: cambios de notas visibles; nada de escritorio, asistente ni rutas privadas. */

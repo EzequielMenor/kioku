@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Kioku } from "../src/core/kioku.ts";
@@ -23,18 +23,20 @@ const SEED = {
   "Calendario/via-tarea.md": BLOCK("ACTIVIDADOCULTA via tarea", "task: \"[[Con proyecto oculto]]\"\n"),
   "Calendario/tarea-sin-resolver.md": BLOCK("ACTIVIDADOCULTA sin tarea", "task: \"[[No existe nada]]\"\n"),
   "Calendario/proyecto-sin-resolver.md": BLOCK("ACTIVIDADOCULTA sin proyecto", "project: \"[[No existe nada]]\"\n"),
+  "Tareas/Huerfana.md": FM("type: task\nstatus: todo\nproject: \"[[Missing secret]]\"\n") + "x\n",
+  "Calendario/via-proyecto-sin-resolver.md": BLOCK("ACTIVIDADOCULTA heredado", "task: \"[[Huerfana]]\"\n"),
   "Privado/Actividad.md": BLOCK("ACTIVIDADOCULTA carpeta", ""),
 };
-const HIDDEN = ["con-tarea-privada", "con-proyecto-privado", "via-tarea", "tarea-sin-resolver", "proyecto-sin-resolver"];
+const HIDDEN = ["con-tarea-privada", "con-proyecto-privado", "via-tarea", "tarea-sin-resolver", "proyecto-sin-resolver", "via-proyecto-sin-resolver"];
 const ALL = { id: "calendar-api-001", title: "Trabajo", kind: "block", start: "2026-10-28T10:00", end: "2026-10-28T11:00" };
 const DAY = "from=2026-10-28&to=2026-10-28";
 
-async function setup(seed: Record<string, string> = SEED) {
+async function setup(seed: Record<string, string> = SEED, exclude: string[] = ["Privado/"]) {
   const { root, cleanup } = tmpVault(seed);
   const web = mkdtempSync(path.join(tmpdir(), "kioku-web-"));
   writeFileSync(path.join(web, "index.html"), "<h1>hola</h1>");
   mkdirSync(path.join(root, ".kioku"), { recursive: true });
-  writeFileSync(path.join(root, ".kioku", "mobile.json"), JSON.stringify({ exclude: ["Privado/"] }));
+  writeFileSync(path.join(root, ".kioku", "mobile.json"), JSON.stringify({ exclude }));
   const j = await Kioku.open({ root, now: () => new Date("2026-10-28T10:20:00") });
   const srv = await startServer(j, { port: 0, webDir: web, key: KEY });
   const mk = loadOrCreateMobileKey(root);
@@ -47,9 +49,15 @@ async function setup(seed: Record<string, string> = SEED) {
     return { status: r.status, text: await r.text(), get json() { try { return JSON.parse(this.text); } catch { return null; } } };
   };
   const mobile = (method: string, p: string, body?: unknown) => call(method, p, body, mk);
-  return { j, root, call, mobile, done: async () => { await srv.close(); j.close(); cleanup(); rmSync(web, { recursive: true, force: true }); } };
+  return { j, root, call, mobile, srv, mk, done: async () => { await srv.close(); j.close(); cleanup(); rmSync(web, { recursive: true, force: true }); } };
 }
 const read = (root: string, rel: string) => readFileSync(path.join(root, rel), "utf8");
+/** Todo lo observable de la bóveda: Markdown, registro de actividad y número de notas. */
+function snapshot(t: { root: string; j: Kioku }): string {
+  const files = readdirSync(t.root, { recursive: true, encoding: "utf8" })
+    .filter((f) => (f.endsWith(".md") && !f.startsWith(".kioku")) || /^\.kioku\/log\/.*\.jsonl$/.test(f)).sort();
+  return JSON.stringify([t.j.index.count(), files.map((f) => [f, read(t.root, f)])]);
+}
 
 test("API calendario: rango inclusivo, crear idempotente, mover con hash y terminar sin tocar la tarea", async () => {
   const t = await setup({ "Tareas/Escribir.md": SEED["Tareas/Escribir.md"] });
@@ -161,14 +169,15 @@ test("móvil calendario: lectura sin actividades, tareas ni proyectos privados o
   const t = await setup();
   try {
     const full = await t.call("GET", "/api/calendar?" + DAY);
-    assert.equal(full.json.items.length, 7, "el rol completo ve todo");
+    assert.equal(full.json.items.length, 8, "el rol completo ve todo");
     assert.ok(full.json.items.every((i: Record<string, unknown>) => !("task" in i) && !("project" in i)));
 
     const r = await t.mobile("GET", "/api/calendar?" + DAY);
     assert.equal(r.status, 200, r.text);
     assert.deepEqual(r.json.items.map((i: { path: string }) => i.path), ["Calendario/visible.md"]);
-    for (const leak of ["MARCASECRETA", "ACTIVIDADOCULTA", "Privado/", "Proyecto oculto", "Tarea privada", "No existe nada", ...HIDDEN]) assert.ok(!r.text.includes(leak), leak);
-    assert.deepEqual(r.json.tasks.map((x: { path: string }) => x.path), ["Tareas/Escribir.md"]);
+    for (const leak of ["MARCASECRETA", "ACTIVIDADOCULTA", "Privado/", "Proyecto oculto", "Tarea privada", "No existe nada", "Missing secret", ...HIDDEN]) assert.ok(!r.text.includes(leak), leak);
+    // Las tareas públicas siguen listándose igual que antes (también la de proyecto sin resolver); solo se filtran las privadas.
+    assert.deepEqual(r.json.tasks.map((x: { path: string }) => x.path).sort(), ["Tareas/Escribir.md", "Tareas/Huerfana.md"]);
     assert.equal(r.json.invalid.length, 0);
   } finally { await t.done(); }
 });
@@ -185,24 +194,28 @@ test("móvil calendario: crear, mover y terminar solo lo visible; lo oculto no e
     assert.equal(f.json.state, "done");
 
     const notes = t.j.index.count();
+    const before = snapshot(t);
     for (const body of [
       { ...ALL, id: "calendar-api-100", taskPath: "Privado/Tarea privada.md" },
       { ...ALL, id: "calendar-api-101", projectPath: "Privado/Proyecto oculto.md" },
       { ...ALL, id: "calendar-api-102", taskPath: "Privado/../Privado/Tarea privada.md" },
       { ...ALL, id: "calendar-api-103", taskPath: "Tareas/Con proyecto oculto.md" }, // su proyecto es privado
+      { ...ALL, id: "calendar-api-104", taskPath: "Tareas/Huerfana.md" }, // su proyecto no se resuelve
     ]) {
       const r = await t.mobile("POST", "/api/calendar/create", body);
       assert.equal(r.status, 403, JSON.stringify(body) + r.text);
       assert.ok(!r.text.includes("MARCASECRETA") && !r.text.includes("Proyecto oculto"));
     }
     assert.equal(t.j.index.count(), notes);
+    assert.equal(snapshot(t), before, "crear rechazado no cambia Markdown ni registro");
 
     for (const name of [...HIDDEN.map((h) => `Calendario/${h}.md`), "Privado/Actividad.md"]) {
       const before = read(t.root, name);
       const hash = (await t.j.readNote(name)).hash;
       const mv = await t.mobile("POST", "/api/calendar/move", { path: name, start: "2026-10-29T09:00", end: "2026-10-29T09:30", hash });
       const fi = await t.mobile("POST", "/api/calendar/finish", { path: name, hash });
-      assert.ok([403, 404].includes(mv.status) && [403, 404].includes(fi.status), `${name}: ${mv.status} ${fi.status}`);
+      assert.equal(mv.status, 404, name);
+      assert.equal(fi.status, 404, name);
       assert.ok(!mv.text.includes("ACTIVIDADOCULTA") && !fi.text.includes("ACTIVIDADOCULTA"));
       assert.equal(read(t.root, name), before, name);
     }
@@ -219,4 +232,129 @@ test("móvil calendario: las operaciones móviles anteriores siguen igual y el r
     assert.equal((await t.mobile("POST", "/api/calendar/delete", {})).status, 403);
     assert.equal((await t.mobile("POST", "/api/note/delete", { path: "Notas/x.md" })).status, 403);
   } finally { await t.done(); }
+});
+
+const NAMES = [...HIDDEN.map((h) => `Calendario/${h}.md`), "Privado/Actividad.md"];
+const LEAKS = ["ACTIVIDADOCULTA", "MARCASECRETA", ...HIDDEN];
+
+test("móvil calendario: la tarea con proyecto sin resolver no se hereda ni con la lista de privados vacía", async () => {
+  const t = await setup(SEED, []);
+  try {
+    const r = await t.mobile("GET", "/api/calendar?" + DAY);
+    assert.equal(r.status, 200, r.text);
+    // Sin carpetas privadas solo desaparece lo que no se puede resolver (falla cerrado).
+    assert.deepEqual(r.json.items.map((i: { path: string }) => i.path).sort(),
+      ["Calendario/con-proyecto-privado.md", "Calendario/con-tarea-privada.md", "Calendario/via-tarea.md", "Calendario/visible.md", "Privado/Actividad.md"]);
+    for (const hidden of ["tarea-sin-resolver", "proyecto-sin-resolver", "via-proyecto-sin-resolver"]) assert.ok(!r.text.includes(hidden), hidden);
+    const before = snapshot(t);
+    const c = await t.mobile("POST", "/api/calendar/create", { ...ALL, taskPath: "Tareas/Huerfana.md" });
+    assert.equal(c.status, 403, c.text);
+    assert.ok(!c.text.includes("Missing secret"));
+    assert.equal(snapshot(t), before);
+    assert.equal((await t.call("POST", "/api/calendar/create", { ...ALL, taskPath: "Tareas/Huerfana.md" })).status, 200, "el rol completo conserva el acceso");
+  } finally { await t.done(); }
+});
+
+test("móvil calendario: las rutas genéricas de lectura no muestran actividades ocultas", async () => {
+  const t = await setup();
+  try {
+    const hiddenPaths = HIDDEN.map((h) => `Calendario/${h}.md`);
+    for (const url of ["/api/notes", "/api/notes?type=block", "/api/search?q=ACTIVIDADOCULTA", "/api/search?q=heredado", "/api/sync/manifest",
+      "/api/suggest-links?q=ACTIVIDADOCULTA", "/api/suggest-links?q=con-tarea", "/api/graph", "/api/resolve?q=con-tarea-privada", "/api/resolve?q=via-proyecto-sin-resolver"]) {
+      const r = await t.mobile("GET", url);
+      assert.equal(r.status, 200, url + r.text);
+      for (const leak of LEAKS) assert.ok(!r.text.includes(leak), `${url} filtra ${leak}`);
+    }
+    assert.ok((await t.mobile("GET", "/api/notes?type=block")).text.includes("Calendario/visible.md"), "la actividad visible sigue apareciendo");
+    assert.ok((await t.call("GET", "/api/notes?type=block")).text.includes("via-proyecto-sin-resolver"), "el rol completo ve todo");
+    for (const name of hiddenPaths) {
+      assert.equal((await t.mobile("GET", "/api/note?path=" + encodeURIComponent(name))).status, 404, name);
+      const sync = await t.mobile("GET", "/api/sync/notes?paths=" + encodeURIComponent(JSON.stringify(["Notas/x.md", name])));
+      assert.equal(sync.status, 404, name);
+      assert.ok(!sync.text.includes("ACTIVIDADOCULTA"));
+    }
+    assert.equal((await t.mobile("GET", "/api/note?path=Calendario/visible.md")).status, 200);
+  } finally { await t.done(); }
+});
+
+test("móvil calendario: las escrituras genéricas sobre actividades ocultas fallan sin cambiar nada", async () => {
+  const t = await setup();
+  try {
+    const before = snapshot(t);
+    for (const name of NAMES) {
+      const { hash, text } = await t.j.readNote(name);
+      for (const [method, url, body] of [
+        ["PUT", "/api/note", { path: name, text: text + "\nCAMBIO\n", hash }],
+        ["POST", "/api/note/props", { path: name, props: { start: "2026-10-30T09:00" } }],
+        ["POST", "/api/note/open", { path: name }],
+        ["POST", "/api/task/status", { path: name, status: "done" }],
+        ["POST", "/api/calendar/move", { path: name, start: "2026-10-29T09:00", end: "2026-10-29T09:30", hash }],
+        ["POST", "/api/calendar/finish", { path: name, hash }],
+      ] as const) {
+        const r = await t.mobile(method, url, body);
+        assert.ok([403, 404].includes(r.status), `${method} ${url} ${name}: ${r.status}`);
+        assert.ok(!r.text.includes("ACTIVIDADOCULTA"));
+        assert.equal(snapshot(t), before, `${method} ${url} ${name}`);
+      }
+    }
+  } finally { await t.done(); }
+});
+
+test("calendario: /api/task/status no completa bloques (visibles o no) y las tareas siguen igual", async () => {
+  const t = await setup();
+  try {
+    const before = snapshot(t);
+    for (const call of [t.mobile, t.call] as const) {
+      const r = await call("POST", "/api/task/status", { path: "Calendario/visible.md", status: "done" });
+      assert.equal(r.status, 400, r.text);
+      assert.equal(snapshot(t), before);
+    }
+    assert.equal((await t.mobile("POST", "/api/task/status", { path: "Tareas/Escribir.md", status: "done" })).status, 200);
+    assert.equal((await t.call("POST", "/api/task/status", { path: "Tareas/Escribir.md", status: "todo" })).status, 200);
+    const cap = await t.mobile("POST", "/api/capture", { text: "una captura" });
+    assert.equal(cap.status, 200);
+  } finally { await t.done(); }
+});
+
+test("móvil calendario: crear sobre el identificador de una actividad oculta o de una carpeta privada no revela nada", async () => {
+  const t = await setup();
+  try {
+    const before = snapshot(t);
+    const taken = await t.mobile("POST", "/api/calendar/create", { ...ALL, id: "con-tarea-privada", title: "ACTIVIDADOCULTA tarea", start: "2026-10-28T09:00", end: "2026-10-28T09:30" });
+    assert.equal(taken.status, 409, taken.text);
+    assert.ok(!taken.text.includes("ACTIVIDADOCULTA") && !taken.text.includes("Privado"));
+    assert.equal(snapshot(t), before);
+  } finally { await t.done(); }
+  const p = await setup({ ...SEED, "Calendario/x.md": SEED["Calendario/visible.md"] }, ["Calendario/"]);
+  try {
+    const before = snapshot(p);
+    const r = await p.mobile("POST", "/api/calendar/create", ALL);
+    assert.equal(r.status, 403, r.text);
+    assert.equal(snapshot(p), before);
+    assert.equal((await p.mobile("POST", "/api/calendar/move", { path: "Calendario/x.md", start: "2026-10-29T09:00", end: "2026-10-29T09:30", hash: "h" })).status, 404);
+  } finally { await p.done(); }
+});
+
+test("móvil calendario: el flujo en vivo no emite actividades ocultas, ni las que se ocultan después de conectar", async () => {
+  const t = await setup();
+  const ctl = new AbortController();
+  try {
+    const res = await fetch(t.srv.url + "/api/events", { headers: { "x-kioku-key": t.mk }, signal: ctl.signal });
+    const reader = res.body!.getReader();
+    let seen = "";
+    void (async () => { for (;;) { const { value, done } = await reader.read(); if (done) return; seen += new TextDecoder().decode(value); } })().catch(() => {});
+    const move = async (name: string, start: string, end: string) => {
+      const { hash } = await t.j.readNote(name);
+      return t.call("POST", "/api/calendar/move", { path: name, start, end, hash });
+    };
+    await move("Calendario/con-tarea-privada.md", "2026-10-29T09:00", "2026-10-29T09:30");
+    await move("Calendario/via-proyecto-sin-resolver.md", "2026-10-29T09:00", "2026-10-29T09:30");
+    // Una actividad visible que pasa a apuntar a lo privado deja de emitirse desde ese momento.
+    assert.equal((await t.call("POST", "/api/note/props", { path: "Calendario/visible.md", props: { task: "[[Privado/Tarea privada]]" } })).status, 200);
+    await move("Calendario/visible.md", "2026-10-29T10:00", "2026-10-29T10:30");
+    await t.call("POST", "/api/note/create", { title: "Nota visible de control" });
+    for (let i = 0; i < 40 && !seen.includes("Nota visible de control"); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(seen.includes("Nota visible de control"), "los eventos visibles llegan: " + seen);
+    for (const leak of ["con-tarea-privada", "via-proyecto-sin-resolver", "Calendario/visible.md"]) assert.ok(!seen.includes(leak), leak + " en " + seen);
+  } finally { ctl.abort(); await t.done(); }
 });

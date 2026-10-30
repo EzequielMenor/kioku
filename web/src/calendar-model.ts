@@ -61,7 +61,30 @@ export function viewTitle(scope: Scope, day: string): string {
   return `Semana del ${sameMonth ? Number(from.slice(8)) : dayMonth(from)} al ${dayMonth(to)}`;
 }
 
-// ───────────── Proyecto o área ─────────────
+// Contraste WCAG: elegir el texto negro o blanco que tenga mayor contraste con el color del área.
+export function areaTextColor(color: string): "#000000" | "#ffffff" {
+  const channels = [1, 3, 5].map((offset) => {
+    const value = parseInt(color.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  return luminance > Math.sqrt(0.0525) - 0.05 ? "#000000" : "#ffffff";
+}
+
+export interface AreaLabel extends ProjectLabel { color: string | null }
+
+export function areaLabel(item: Pick<CalendarEntry, "areaPath" | "areaTitle" | "areaColor">): AreaLabel {
+  if (!item.areaPath || !item.areaTitle || !item.areaColor) return { key: "", name: "Sin área", code: "·", color: null };
+  return { key: item.areaPath, name: item.areaTitle, code: item.areaTitle.match(/[\p{L}\p{N}]/u)?.[0].toUpperCase() ?? "·", color: item.areaColor };
+}
+
+export const filterAreas = (items: CalendarEntry[], key: string | null): CalendarEntry[] =>
+  key === null ? items : items.filter((item) => (item.areaPath ?? "") === key);
+
+export const validateArea = (title: string, color: string): boolean =>
+  title.trim().length > 0 && title.trim().length <= 60 && !/[\r\n]/.test(title) && /^#[0-9a-f]{6}$/i.test(color);
+
+// ───────────── Proyecto ─────────────
 
 export function projectLabel(p: { projectPath: string | null; projectTitle: string | null }): ProjectLabel {
   if (!p.projectPath) return { key: "", code: "·", name: "Sin proyecto" };
@@ -154,12 +177,12 @@ export function nextUp(items: CalendarEntry[], now: Date): { item: CalendarEntry
 }
 
 /** Tira de ocupación 07–22: cada actividad recortada a la ventana, en % del ancho. */
-export function occupancy(items: CalendarEntry[], day: string): { left: number; width: number; kind: "block" | "event"; path: string }[] {
+export function occupancy(items: CalendarEntry[], day: string): { left: number; width: number; kind: "block" | "event"; path: string; color: string | null }[] {
   const from = `${day}T${DAY_START}`, to = `${day}T${DAY_END}`;
   return items.flatMap((i) => {
     if (i.start >= to || i.end <= from) return [];
     const start = i.start < from ? from : i.start, end = i.end > to ? to : i.end;
-    return [{ left: round2((minutesBetween(from, start) / WINDOW_MINUTES) * 100), width: round2((minutesBetween(start, end) / WINDOW_MINUTES) * 100), kind: i.kind, path: i.path }];
+    return [{ left: round2((minutesBetween(from, start) / WINDOW_MINUTES) * 100), width: round2((minutesBetween(start, end) / WINDOW_MINUTES) * 100), kind: i.kind, path: i.path, color: i.areaColor ?? null }];
   });
 }
 
@@ -208,7 +231,7 @@ export function fittingTasks(tasks: CalendarTask[], minutes: number): CalendarTa
     .sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || (a.priority ?? 9) - (b.priority ?? 9) || a.title.localeCompare(b.title));
 }
 
-export interface Draft { kind: "block" | "event"; title: string; start: string; end: string; taskPath?: string }
+export interface Draft { kind: "block" | "event"; title: string; start: string; end: string; taskPath?: string; areaPath?: string }
 
 export function gapBlock(task: CalendarTask, gap: Gap): Draft {
   return { kind: "block", title: task.title, start: gap.start, end: addMinutes(gap.start, task.estimate ?? 30), taskPath: task.path };

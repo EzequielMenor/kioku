@@ -260,5 +260,24 @@ test("calendario: sin peticiones externas, sin cola sin conexión y solo con las
   const ui = src("calendar.tsx");
   assert.doesNotMatch(ui, /offline\/(runtime|store|queue)/, "las escrituras del calendario no pasan por la cola sin conexión");
   const routes = [...ui.matchAll(/["'`](\/api\/[^"'`?$]+)/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(routes)].sort(), ["/api/calendar", "/api/calendar/create", "/api/calendar/finish", "/api/calendar/move", "/api/task/status"]);
+  assert.deepEqual([...new Set(routes)].sort(), ["/api/calendar", "/api/calendar/area", "/api/calendar/areas/create", "/api/calendar/areas/update", "/api/calendar/create", "/api/calendar/finish", "/api/calendar/move", "/api/task/status"]);
+});
+
+// ───────── Hoja modal: el teclado sigue funcionando aunque el control enfocado desaparezca ─────────
+
+test("hoja: Esc y Tab se atienden a nivel de documento, el foco perdido se recupera y todo se retira al cerrar", () => {
+  const ui = src("calendar.tsx");
+  const sheet = ui.slice(ui.indexOf("function Sheet("), ui.indexOf("// ───────────────────────────── Piezas pequeñas"));
+  // Un control que se elimina o se desactiva (completar tarea, enviar…) deja el foco en <body>: el manejador no puede depender de un onKeyDown del contenedor.
+  assert.doesNotMatch(sheet, /onKeyDown=/, "ningún onKeyDown del contenedor: nunca recibiría teclas con el foco en <body>");
+  assert.match(sheet, /document\.addEventListener\("keydown", onKey\)/);
+  assert.match(sheet, /e\.stopPropagation\(\)/, "los atajos globales de la app siguen inactivos con la hoja abierta");
+  assert.match(sheet, /new MutationObserver\(/, "se vigila la eliminación o desactivación del control enfocado");
+  assert.match(sheet, /attributeFilter: \["disabled"\]/);
+  // Los oyentes son del documento: si no se retiran al cerrar, se acumulan y se filtran a otras rutas.
+  assert.match(sheet, /document\.removeEventListener\("keydown", onKey\)/);
+  assert.match(sheet, /document\.removeEventListener\("focusin", keep\)/);
+  assert.match(sheet, /\.disconnect\(\)/);
+  assert.match(sheet, /opener\?\.isConnected \? opener/, "al cerrar, el foco vuelve a quien abrió la hoja");
+  assert.match(sheet, /closeRef\.current\(\)/, "el oyente único usa el onClose más reciente");
 });

@@ -7,16 +7,16 @@ import { api, lsGet, lsSet } from "./api.ts";
 import { useApi } from "./hooks.ts";
 import { localDate } from "../../src/core/dates.ts";
 import {
-  OFFLINE_MESSAGE, addMinutes, countdown, dayTimeline, defaultSlot, durationOf, filterItems, fittingTasks, formatDuration, freeMinutes, freeSummary, gapBlock,
-  moveToDay, nextUp, nowMarker, occupancy, overlapping, progress, projectLabel, rangeLabel, rowTimes, projectOptions, shiftDays, shiftView, stateGlyph,
-  stateLabel, stateOf, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure,
-  type Draft, type ProjectLabel, type Scope,
+  OFFLINE_MESSAGE, addMinutes, areaLabel, areaTextColor, countdown, dayTimeline, defaultSlot, durationOf, filterAreas, fittingTasks, formatDuration, freeMinutes, freeSummary, gapBlock,
+  moveToDay, nextUp, nowMarker, occupancy, overlapping, progress, projectLabel, rangeLabel, rowTimes, shiftDays, shiftView, stateGlyph,
+  stateLabel, stateOf, validateArea, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure,
+  type AreaLabel, type Draft, type ProjectLabel, type Scope,
 } from "./calendar-model.ts";
-import type { CalendarEntry, CalendarResponse, CalendarTask, Gap } from "./types.ts";
+import type { AreaRow, CalendarEntry, CalendarResponse, CalendarTask, Gap } from "./types.ts";
 
 type Guard = <T>(fn: () => Promise<T>) => Promise<T | undefined>;
 type Say = (text: string, error?: boolean) => void;
-type Panel = { kind: "detail"; path: string } | { kind: "gap"; gap: Gap } | { kind: "compose"; draft: Draft };
+type Panel = { kind: "detail"; path: string } | { kind: "gap"; gap: Gap } | { kind: "compose"; draft: Draft } | { kind: "areas" };
 
 const enc = (p: string) => encodeURI(p);
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
@@ -47,33 +47,47 @@ function useOnline(): boolean {
 
 const FOCUSABLE = "button, input, select, textarea, a[href]";
 
-/** Diálogo modal: foco dentro (y atrapado), Esc y clic fuera cierran, el foco vuelve a quien lo abrió. En pantallas estrechas es una hoja inferior. */
+/** Diálogo modal: foco dentro (y atrapado), Esc y clic fuera cierran, el foco vuelve a quien lo abrió. En pantallas estrechas es una hoja inferior.
+ *  El teclado se atiende en el documento, no en el contenedor: si el control enfocado se elimina o se desactiva (completar la tarea, enviar un formulario),
+ *  el foco cae en <body> y un onKeyDown del contenedor ya no recibiría ni Esc ni Tab. */
 function Sheet({ title, onClose, children }: { title: string; onClose(): void; children: ComponentChildren }) {
   const box = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const el = box.current!;
     const opener = document.activeElement as HTMLElement | null;
     const first = () => el.querySelector<HTMLElement>("[data-first]") ?? el;
-    first().focus();
+    const tabbable = () => [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => !x.hasAttribute("disabled"));
+    /** El foco está fuera de la hoja (p. ej. en <body>) o en un control ya desactivado. */
+    const lost = () => { const at = document.activeElement as HTMLButtonElement | null; return !at || !el.contains(at) || at.disabled; };
     const keep = (e: FocusEvent) => { if (!el.contains(e.target as Node)) first().focus(); };
+    const onKey = (e: KeyboardEvent) => {
+      e.stopPropagation(); // los atajos globales de la app no deben dispararse con la hoja abierta
+      if (e.key === "Escape") { e.preventDefault(); closeRef.current(); return; }
+      if (e.key !== "Tab") return;
+      const els = tabbable();
+      if (!els.length) { e.preventDefault(); el.focus(); return; }
+      const at = document.activeElement;
+      if (lost()) { e.preventDefault(); els[e.shiftKey ? els.length - 1 : 0].focus(); }
+      else if (e.shiftKey && (at === els[0] || at === el)) { e.preventDefault(); els[els.length - 1].focus(); }
+      else if (!e.shiftKey && at === els[els.length - 1]) { e.preventDefault(); els[0].focus(); }
+    };
+    // Un control que se elimina o se desactiva suelta el foco: se devuelve a la hoja para que el teclado siga dentro.
+    const watch = new MutationObserver(() => { if (lost()) el.focus(); });
+    first().focus();
+    watch.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
     document.addEventListener("focusin", keep);
+    document.addEventListener("keydown", onKey);
     return () => {
+      watch.disconnect();
       document.removeEventListener("focusin", keep);
+      document.removeEventListener("keydown", onKey);
       (opener?.isConnected ? opener : document.querySelector<HTMLElement>(".cal h1"))?.focus();
     };
   }, []);
-  const onKey = (e: KeyboardEvent) => {
-    e.stopPropagation(); // los atajos globales no deben dispararse detrás del diálogo
-    if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
-    if (e.key !== "Tab") return;
-    const els = [...box.current!.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => !x.hasAttribute("disabled"));
-    if (!els.length) { e.preventDefault(); return; }
-    const at = document.activeElement;
-    if (e.shiftKey && (at === els[0] || at === box.current)) { e.preventDefault(); els[els.length - 1].focus(); }
-    else if (!e.shiftKey && at === els[els.length - 1]) { e.preventDefault(); els[0].focus(); }
-  };
   return (
-    <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={onKey}>
+    <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) closeRef.current(); }}>
       <div class="modal sheet cal-sheet" role="dialog" aria-modal="true" aria-labelledby="cal-sheet-title" tabIndex={-1} ref={box}>
         <div class="cal-grab" aria-hidden="true" />
         <h2 id="cal-sheet-title">{title}</h2>
@@ -86,6 +100,14 @@ function Sheet({ title, onClose, children }: { title: string; onClose(): void; c
 // ───────────────────────────── Piezas pequeñas ─────────────────────────────
 
 const Badge = ({ p }: { p: ProjectLabel }) => <span class="cal-lname"><span class="cal-lb" aria-hidden="true">{p.code}</span>{p.name}</span>;
+const AreaBadge = ({ area }: { area: AreaLabel }) => <span class="cal-lname"><span class="cal-lb" aria-hidden="true" style={area.color ? { backgroundColor: area.color, color: areaTextColor(area.color) } : undefined}>{area.code}</span>{area.name}</span>;
+
+function AreaSelect({ areas, value, onChange }: { areas: AreaRow[]; value: string; onChange(value: string): void }) {
+  return <label>Área <select value={value} onChange={(e) => onChange(e.currentTarget.value)}>
+    <option value="">Sin área</option>
+    {areas.map((area) => <option key={area.path} value={area.path}>{area.title}</option>)}
+  </select></label>;
+}
 const Pill = ({ item }: { item: CalendarEntry }) => <span class={`cal-pill st-${item.state}`}><i aria-hidden="true">{stateGlyph(item.state)}</i> {stateLabel(item.state)}</span>;
 const KindTag = ({ item }: { item: CalendarEntry }) => <span class={`cal-kd ${item.kind}`}>{item.kind === "event" ? "◆ Evento" : "Bloque"}</span>;
 
@@ -147,7 +169,7 @@ function LiveControls({ item, now, onFinish, onEdit }: { item: CalendarEntry; no
 export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; say: Say }) {
   const [scope, setScopeRaw] = useState<Scope>(() => (lsGet("calendar.scope") === "semana" ? "semana" : "dia"));
   const [day, setDay] = useState(() => localDate(new Date()));
-  const [project, setProject] = useState<string | null>(null);
+  const [areaFilter, setAreaFilter] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [freed, setFreed] = useState<ReadonlySet<string>>(new Set());
@@ -162,8 +184,8 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
   const days = scope === "dia" ? [day] : weekDays(day);
   const items = (data?.items ?? []).map((i) => ({ ...i, state: stateOf(i, now) }));
   const tasks = data?.tasks ?? [];
-  const shown = filterItems(items, project);
-  const options = projectOptions(items, tasks);
+  const areas = data?.areas ?? [];
+  const shown = filterAreas(items, areaFilter);
   const setScope = (s: Scope) => { setScopeRaw(s); lsSet("calendar.scope", s); };
   const openDay = (d: string) => { setDay(d); setScope("dia"); };
   const closePanel = () => { setPanel(null); setEditing(null); };
@@ -203,13 +225,30 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
   };
   const create = async (d: Draft, id: string): Promise<boolean> => {
     const r = await write(() => api<CalendarEntry>("POST", "/api/calendar/create", {
-      id, title: d.title.trim(), kind: d.kind, start: d.start, end: d.end, ...(d.taskPath ? { taskPath: d.taskPath } : {}),
+      id, title: d.title.trim(), kind: d.kind, start: d.start, end: d.end, ...(d.taskPath ? { taskPath: d.taskPath } : {}), ...(d.areaPath ? { areaPath: d.areaPath } : {}),
     }));
     if (!r) return false;
     reload();
     if (!days.includes(r.start.slice(0, 10))) setDay(r.start.slice(0, 10));
     announce(r, "queda el");
     closePanel();
+    return true;
+  };
+  const saveArea = async (area: AreaRow | null, title: string, color: string, id: string): Promise<boolean> => {
+    const result = await once("area:" + (area?.path ?? id), () => write(() => area
+      ? api<AreaRow>("POST", "/api/calendar/areas/update", { path: area.path, title: title.trim(), color: color.toLowerCase(), hash: area.hash })
+      : api<AreaRow>("POST", "/api/calendar/areas/create", { id, title: title.trim(), color: color.toLowerCase() })));
+    reload();
+    if (!result) return false;
+    say(area ? "Área actualizada." : "Área creada.");
+    return true;
+  };
+  const assignArea = async (item: CalendarEntry, areaPath: string): Promise<boolean> => {
+    if ((item.areaPath ?? "") === areaPath) return true;
+    const result = await once("assign:" + item.path, () => write(() => api<CalendarEntry>("POST", "/api/calendar/area", { path: item.path, areaPath: areaPath || null, hash: item.hash })));
+    reload();
+    if (!result) return false;
+    say("Área de la actividad actualizada.");
     return true;
   };
   const completeTask = async (path: string) => {
@@ -251,6 +290,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
             <button onClick={() => setDay(today)}>Hoy</button>
             <button aria-label={scope === "dia" ? "Día siguiente" : "Semana siguiente"} onClick={() => setDay(shiftView(scope, day, 1))}>›</button>
           </div>
+          <button onClick={() => setPanel({ kind: "areas" })}>Áreas</button>
           <button class="primary" onClick={() => compose()}>Nueva actividad</button>
         </div>
       </header>
@@ -281,12 +321,12 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
               {upcoming.freeBefore !== null && <span class="muted">Antes tienes {formatDuration(upcoming.freeBefore)} libres.</span>}
             </p>
           )}
-          <div class="chips" role="group" aria-label="Filtrar por proyecto o área">
-            <button class={`chip btn ${project === null ? "on" : ""}`} aria-pressed={project === null} onClick={() => setProject(null)}>Todos</button>
-            {options.map((o) => (
-              <button key={o.key} class={`chip btn ${project === o.key ? "on" : ""}`} aria-pressed={project === o.key} onClick={() => setProject(o.key)}><span class="cal-lb sm" aria-hidden="true">{o.code}</span> {o.name}</button>
+          <div class="chips" role="group" aria-label="Filtrar por área">
+            <button class={`chip btn ${areaFilter === null ? "on" : ""}`} aria-pressed={areaFilter === null} onClick={() => setAreaFilter(null)}>Todos</button>
+            {areas.map((a) => (
+              <button key={a.path} class={`chip btn ${areaFilter === a.path ? "on" : ""}`} aria-pressed={areaFilter === a.path} onClick={() => setAreaFilter(a.path)}><AreaBadge area={areaLabel({ areaPath: a.path, areaTitle: a.title, areaColor: a.color })} /></button>
             ))}
-            {items.some((i) => !i.projectPath) && <button class={`chip btn ${project === "" ? "on" : ""}`} aria-pressed={project === ""} onClick={() => setProject("")}>Sin proyecto</button>}
+            <button class={`chip btn ${areaFilter === "" ? "on" : ""}`} aria-pressed={areaFilter === ""} onClick={() => setAreaFilter("")}><AreaBadge area={areaLabel({ areaPath: null, areaTitle: null, areaColor: null })} /></button>
           </div>
 
           {scope === "semana" && (
@@ -298,7 +338,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
                     <button key={d} class={`cal-wsd ${d === today ? "today" : ""} ${over === d ? "over" : ""}`} aria-label={`${dayName(d)}: ${free}. Ver solo este día`} onClick={() => openDay(d)} {...dropZone(d)}>
                       <span class="cal-wsn"><b>{dayName(d).slice(0, 3)} {dayNumber(d)}</b>{d === today && <small>Hoy</small>}</span>
                       <span class="cal-wbar" aria-hidden="true">
-                        {occupancy(items, d).map((s) => <i key={s.path} class={`cal-sg ${s.kind}`} style={{ left: `${s.left}%`, width: `${s.width}%` }} />)}
+                        {occupancy(items, d).map((s) => <i key={s.path} class={`cal-sg ${s.kind}`} style={{ left: `${s.left}%`, width: `${s.width}%`, color: s.color ?? "var(--muted)" }} />)}
                         {marker !== null && <i class="cal-wnow" style={{ left: `${marker}%` }} />}
                       </span>
                       <small class="cal-wsf">{free}</small>
@@ -324,7 +364,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
                     </div>
                   )}
                   <ul class="cal-list">
-                    {!rows.some((r) => r.type === "item") && <li class="cal-empty">{project === null ? "Nada programado." : "Nada de este proyecto o área."}</li>}
+                    {!rows.some((r) => r.type === "item") && <li class="cal-empty">{areaFilter === null ? "Nada programado." : "Nada de esta área."}</li>}
                     {rows.map((r) => r.type === "gap" ? (
                       <li key={`g${r.gap.start}`} class="cal-gap">
                         <span class="cal-time"><b>{hm(r.gap.start)}</b><small>hasta {hm(r.gap.end)}</small></span>
@@ -350,7 +390,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
 
       {detail && (
         <Sheet title={detail.title} onClose={closePanel}>
-          <Detail item={detail} items={items} tasks={tasks} now={now} editing={editing === detail.path}
+          <Detail item={detail} items={items} tasks={tasks} areas={areas} onAssign={(path) => assignArea(detail, path)} now={now} editing={editing === detail.path}
             onFinish={() => void finish(detail)} onEdit={() => setEditing(detail.path)} onCancelEdit={() => setEditing(null)}
             onSave={(s, e) => reschedule(detail, s, e)} onShift={(n) => { const t = shiftDays(detail, n); void reschedule(detail, t.start, t.end); }}
             onCompleteTask={(p) => void completeTask(p)} onClose={closePanel} />
@@ -358,15 +398,20 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
       )}
       {panel?.kind === "gap" && (
         <Sheet title={`Tiempo libre · ${formatDuration(panel.gap.minutes)}`} onClose={closePanel}>
-          <GapBody gap={panel.gap} tasks={tasks}
-            onPick={(t, id) => create(gapBlock(t, panel.gap), id)}
-            onCompose={() => compose({ kind: "block", title: "", start: panel.gap.start, end: addMinutes(panel.gap.start, Math.min(panel.gap.minutes, 60)) })}
+          <GapBody gap={panel.gap} tasks={tasks} areas={areas}
+            onPick={(t, id, areaPath) => create({ ...gapBlock(t, panel.gap), areaPath }, id)}
+            onCompose={(areaPath) => compose({ kind: "block", title: "", start: panel.gap.start, end: addMinutes(panel.gap.start, Math.min(panel.gap.minutes, 60)), areaPath })}
             onLeave={() => { setFreed(new Set(freed).add(panel.gap.start)); say("Hueco libre. Está bien así."); closePanel(); }} />
+        </Sheet>
+      )}
+      {panel?.kind === "areas" && (
+        <Sheet title="Áreas" onClose={closePanel}>
+          <AreasManager areas={areas} onSave={saveArea} onClose={closePanel} />
         </Sheet>
       )}
       {panel?.kind === "compose" && (
         <Sheet title="Nueva actividad" onClose={closePanel}>
-          <Compose initial={panel.draft} tasks={tasks} items={items} now={now} onSubmit={create} onCancel={closePanel} />
+          <Compose initial={panel.draft} tasks={tasks} areas={areas} items={items} now={now} onSubmit={create} onCancel={closePanel} />
         </Sheet>
       )}
     </div>
@@ -378,16 +423,16 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
 function ActivityRow({ item, day, continued, taskTitle, now, draggable, onOpen, onDragStart, onDragEnd, children }: {
   item: CalendarEntry; day: string; continued: boolean; taskTitle?: string; now: Date; draggable: boolean; onOpen(): void; onDragStart(e: DragEvent): void; onDragEnd(): void; children?: ComponentChildren;
 }) {
-  const cd = countdown(item, now), p = projectLabel(item), times = rowTimes(item, day);
+  const cd = countdown(item, now), area = areaLabel(item), times = rowTimes(item, day);
   return (
-    <li class={`cal-item st-${item.state} ${item.kind} ${continued ? "carried" : ""}`}>
+    <li class={`cal-item st-${item.state} ${item.kind} ${continued ? "carried" : ""}`} style={{ borderLeft: `5px solid ${area.color ?? "var(--line2)"}` }}>
       <button type="button" class="cal-main" aria-haspopup="dialog" draggable={draggable} onClick={onOpen} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <span class="cal-time"><b class={continued ? "word" : ""}>{times.big}</b><small>{times.small}</small></span>
         <span class="cal-act">
           <span class="cal-at">{item.title}</span>
           <span class="cal-sub"><KindTag item={item} /><span class="cal-mdur">{formatDuration(durationOf(item))}</span>{item.taskPath && <span class="cal-tk">→ {taskTitle ?? "con tarea"}</span>}</span>
         </span>
-        <span class="cal-proj"><Badge p={p} /></span>
+        <span class="cal-proj"><AreaBadge area={area} /></span>
         <span class="cal-dur">{formatDuration(durationOf(item))}</span>
         <span class="cal-when">
           {cd && <><span class="cal-big">{cd.big}</span><span class="cal-unit">{cd.unit}</span></>}
@@ -401,16 +446,60 @@ function ActivityRow({ item, day, continued, taskTitle, now, draggable, onOpen, 
 
 // ───────────────────────────── Contenido de las hojas ─────────────────────────────
 
-function Detail({ item, items, tasks, now, editing, onFinish, onEdit, onCancelEdit, onSave, onShift, onCompleteTask, onClose }: {
-  item: CalendarEntry; items: CalendarEntry[]; tasks: CalendarTask[]; now: Date; editing: boolean; onFinish(): void; onEdit(): void; onCancelEdit(): void;
+function AreasManager({ areas, onSave, onClose }: { areas: AreaRow[]; onSave(area: AreaRow | null, title: string, color: string, id: string): Promise<boolean>; onClose(): void }) {
+  const [selected, setSelected] = useState<AreaRow | null>(null);
+  const [title, setTitle] = useState("");
+  const [color, setColor] = useState("#4f46e5");
+  const [busy, setBusy] = useState(false);
+  const id = useRef(newId());
+  const valid = validateArea(title, color);
+  const select = (area: AreaRow | null) => {
+    setSelected(area);
+    setTitle(area?.title ?? "");
+    setColor(area?.color ?? "#4f46e5");
+    id.current = newId();
+  };
+  const submit = async (event: Event) => {
+    event.preventDefault();
+    if (!valid || busy) return;
+    setBusy(true);
+    const saved = await onSave(selected, title, color, id.current);
+    setBusy(false);
+    if (saved) select(null);
+  };
+  return <>
+    <p class="cal-note">Las áreas son independientes de los proyectos. Las actividades anteriores siguen sin área hasta que la elijas.</p>
+    {areas.length ? <ul class="cal-areas">{areas.map((area) => <li key={area.path}>
+      <AreaBadge area={areaLabel({ areaPath: area.path, areaTitle: area.title, areaColor: area.color })} />
+      <button type="button" disabled={busy} onClick={() => select(area)} aria-label={`Editar ${area.title}`}>Editar</button>
+    </li>)}</ul> : <p class="cal-note">Todavía no hay áreas.</p>}
+    <form class="cal-compose" onSubmit={(e) => void submit(e)}>
+      <h3>{selected ? "Editar área" : "Nueva área"}</h3>
+      <label>Nombre <input data-first value={title} maxLength={60} onInput={(e) => setTitle(e.currentTarget.value)} /></label>
+      <label>Color <input value={color} onInput={(e) => setColor(e.currentTarget.value)} placeholder="#RRGGBB" /></label>
+      <label>Elegir color <input type="color" value={/^#[0-9a-f]{6}$/i.test(color) ? color : "#000000"} onInput={(e) => setColor(e.currentTarget.value)} /></label>
+      {!valid && <p class="cal-note">Indica un nombre de 1 a 60 caracteres en una línea y un color #RRGGBB.</p>}
+      <div class="cal-acts"><button class="primary" disabled={!valid || busy}>{selected ? "Guardar cambios" : "Crear área"}</button>{selected && <button type="button" disabled={busy} onClick={() => select(null)}>Nueva área</button>}<button type="button" onClick={onClose}>Cerrar</button></div>
+    </form>
+  </>;
+}
+
+function Detail({ item, items, tasks, areas, onAssign, now, editing, onFinish, onEdit, onCancelEdit, onSave, onShift, onCompleteTask, onClose }: {
+  item: CalendarEntry; items: CalendarEntry[]; tasks: CalendarTask[]; areas: AreaRow[]; onAssign(path: string): Promise<boolean>; now: Date; editing: boolean; onFinish(): void; onEdit(): void; onCancelEdit(): void;
   onSave(start: string, end: string): Promise<boolean>; onShift(n: number): void; onCompleteTask(path: string): void; onClose(): void;
 }) {
+  const [areaPath, setAreaPath] = useState(item.areaPath ?? "");
+  const [areaBusy, setAreaBusy] = useState(false);
   const task = item.taskPath ? tasks.find((t) => t.path === item.taskPath) : undefined;
   const cd = countdown(item, now);
   const noun = item.kind === "event" ? "evento" : "bloque";
   return (
     <>
-      <div class="cal-sub"><KindTag item={item} /><Pill item={item} /><Badge p={projectLabel(item)} /></div>
+      <div class="cal-sub"><KindTag item={item} /><Pill item={item} /><AreaBadge area={areaLabel(item)} /><Badge p={projectLabel(item)} /></div>
+      <form class="cal-sect" onSubmit={(e) => { e.preventDefault(); if (areaBusy) return; setAreaBusy(true); void onAssign(areaPath).finally(() => setAreaBusy(false)); }}>
+        <AreaSelect areas={areas} value={areaPath} onChange={setAreaPath} />
+        <div><button disabled={areaBusy || areaPath === (item.areaPath ?? "")}>Guardar área</button></div>
+      </form>
       <p class="cal-when-line">{dayName(item.start.slice(0, 10))} · {rangeLabel(item)} · {formatDuration(durationOf(item))}{cd ? ` · ${cd.big} ${cd.unit}` : ""}</p>
       {item.projectPath && <p class="small"><a href={`#/proyecto/${enc(item.projectPath)}`}>Abrir proyecto</a></p>}
 
@@ -456,7 +545,8 @@ function Detail({ item, items, tasks, now, editing, onFinish, onEdit, onCancelEd
   );
 }
 
-function GapBody({ gap, tasks, onPick, onCompose, onLeave }: { gap: Gap; tasks: CalendarTask[]; onPick(t: CalendarTask, id: string): Promise<boolean>; onCompose(): void; onLeave(): void }) {
+function GapBody({ gap, tasks, areas, onPick, onCompose, onLeave }: { gap: Gap; tasks: CalendarTask[]; areas: AreaRow[]; onPick(t: CalendarTask, id: string, areaPath: string): Promise<boolean>; onCompose(areaPath: string): void; onLeave(): void }) {
+  const [areaPath, setAreaPath] = useState("");
   const fits = fittingTasks(tasks, gap.minutes);
   const [busy, setBusy] = useState(false);
   const ids = useRef(new Map<string, string>()); // un id estable por tarea: reintentar no duplica el bloque
@@ -464,12 +554,13 @@ function GapBody({ gap, tasks, onPick, onCompose, onLeave }: { gap: Gap; tasks: 
     if (busy) return;
     if (!ids.current.has(t.path)) ids.current.set(t.path, newId());
     setBusy(true);
-    if (!(await onPick(t, ids.current.get(t.path)!))) setBusy(false);
+    if (!(await onPick(t, ids.current.get(t.path)!, areaPath))) setBusy(false);
   };
   return (
     <>
       <p>{dayName(gap.start.slice(0, 10))} · {hm(gap.start)}–{hm(gap.end)}</p>
       <p class="cal-note">Puedes dejarlo libre: no hace falta llenarlo. Solo se sugieren tareas pendientes con estimación que caben en el hueco.</p>
+      <div class="cal-sect"><AreaSelect areas={areas} value={areaPath} onChange={setAreaPath} /></div>
       {fits.length > 0 ? (
         <ul class="cal-sugs">
           {fits.map((t, i) => (
@@ -485,14 +576,14 @@ function GapBody({ gap, tasks, onPick, onCompose, onLeave }: { gap: Gap; tasks: 
       ) : <p class="cal-warn">△ Ninguna tarea pendiente con estimación entra en {formatDuration(gap.minutes)}.</p>}
       <div class="cal-acts">
         <button data-first={fits.length === 0 ? "" : undefined} onClick={onLeave}>Dejarlo libre</button>
-        <button onClick={onCompose}>Crear bloque o evento…</button>
+        <button onClick={() => onCompose(areaPath)}>Crear bloque o evento…</button>
       </div>
     </>
   );
 }
 
-function Compose({ initial, tasks, items, now, onSubmit, onCancel }: {
-  initial: Draft; tasks: CalendarTask[]; items: CalendarEntry[]; now: Date; onSubmit(d: Draft, id: string): Promise<boolean>; onCancel(): void;
+function Compose({ initial, tasks, areas, items, now, onSubmit, onCancel }: {
+  initial: Draft; tasks: CalendarTask[]; areas: AreaRow[]; items: CalendarEntry[]; now: Date; onSubmit(d: Draft, id: string): Promise<boolean>; onCancel(): void;
 }) {
   const [d, setD] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -524,6 +615,7 @@ function Compose({ initial, tasks, items, now, onSubmit, onCancel }: {
       <label>Título <input data-first class="wide-input" value={d.title} onInput={(e) => set({ title: e.currentTarget.value })} /></label>
       <label>Empieza <input type="datetime-local" value={d.start} onInput={(e) => set({ start: e.currentTarget.value })} /></label>
       <label>Termina <input type="datetime-local" value={d.end} onInput={(e) => { endEdited.current = true; set({ end: e.currentTarget.value }); }} /></label>
+      <AreaSelect areas={areas} value={d.areaPath ?? ""} onChange={(areaPath) => set({ areaPath })} />
       {d.kind === "block" && (
         <label>Tarea
           <select value={d.taskPath ?? ""} onChange={(e) => pickTask(e.currentTarget.value)}>

@@ -5,6 +5,7 @@ export interface BlockData {
   end: string;
   task?: string;
   project?: string;
+  area?: string;
   done_at?: string;
 }
 export interface CalendarItem extends BlockData {
@@ -14,6 +15,9 @@ export interface CalendarItem extends BlockData {
   taskPath: string | null;
   projectPath: string | null;
   projectTitle: string | null;
+  areaPath: string | null;
+  areaTitle: string | null;
+  areaColor: string | null;
   state: CalendarState;
 }
 export type CalendarState = "pending" | "active" | "unfinished" | "past" | "done";
@@ -36,7 +40,7 @@ export function parseBlock(fm: Record<string, unknown>): BlockData {
   const start = parseLocal(fm.start), end = parseLocal(fm.end);
   if (end <= start) throw new Error("El fin debe ser posterior al inicio");
   if (fm.kind === "event" && (fm.task || fm.done_at)) throw new Error("Un evento no puede tener tarea ni terminarse como bloque");
-  for (const key of ["task", "project", "done_at"] as const) {
+  for (const key of ["task", "project", "area", "done_at"] as const) {
     if (fm[key] !== undefined && fm[key] !== null && typeof fm[key] !== "string") throw new Error(`Propiedad inválida: ${key}`);
   }
   if (fm.done_at && !Number.isFinite(Date.parse(String(fm.done_at)))) throw new Error("Fecha de finalización inválida");
@@ -44,6 +48,7 @@ export function parseBlock(fm: Record<string, unknown>): BlockData {
     kind: fm.kind, start: fm.start as string, end: fm.end as string,
     ...(fm.task ? { task: fm.task as string } : {}),
     ...(fm.project ? { project: fm.project as string } : {}),
+    ...(fm.area ? { area: fm.area as string } : {}),
     ...(fm.done_at ? { done_at: fm.done_at as string } : {}),
   };
 }
