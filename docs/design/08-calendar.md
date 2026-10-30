@@ -1,6 +1,6 @@
 # Calendario
 
-Estado: **diseño aprobado en prototipo; núcleo y API en línea implementados, interfaz pendiente**. Este documento recoge lo decidido, el modelo de datos propuesto y el plan. La decisión de arquitectura se registrará como D-23 en `02-TRD-architecture.md` cuando se confirme el modelo de datos.
+Estado: **diseño aprobado en prototipo; núcleo, API en línea e interfaz web (Día/Semana y móvil) implementados**. Pendientes: verificación en navegador y casos de `docs/validation.md`, y todo lo fuera de alcance inicial (escrituras sin conexión, captura, asistente). Este documento recoge lo decidido, el modelo de datos propuesto y el plan. La decisión de arquitectura se registrará como D-23 en `02-TRD-architecture.md` cuando se confirme el modelo de datos.
 
 ## Problema
 
@@ -90,15 +90,28 @@ Solo con el daemon conectado; no hay cola sin conexión para el calendario. Toda
 - **Móvil.** Las actividades que apuntan a una nota privada (la propia actividad, su tarea o su proyecto, también el heredado de la tarea) o a una relación que no se resuelve no aparecen, y las tareas privadas tampoco; así no se filtran títulos, cuentas ni huecos. Mover o terminar una actividad oculta responde `404`; crear con rutas privadas, `403`.
 - La lectura no se guarda en la caché del service worker (`web/src/sw-rules.ts`): una agenda antigua parecería actual y podría conservar referencias que el móvil ya no debe ver.
 
+## Interfaz web (implementada)
+
+Ruta `#/calendario` (atajo `g c`; en la barra inferior del móvil entre Hoy y Tareas). Código: `web/src/calendar.tsx` (vista), `web/src/calendar-model.ts` (lógica pura con pruebas en `test/calendar-ui.test.ts`) y `web/src/calendar.css`. Reutiliza `api`, `guard`, `useRevision` y `useApi`, las fuentes y los tokens empaquetados, y no hace peticiones externas.
+
+- **Día / Semana.** Día es una lista ordenada con la hora, la actividad, el proyecto o área (letra + nombre), la duración y la cuenta regresiva a la derecha; la fila en curso va rellena de índigo con su progreso y los botones «Terminar bloque» y «Reprogramar» en línea; «Sin terminar» tiene trazo punteado (no rojo). Semana muestra lunes a viernes (un sábado o domingo apunta a la semana que empieza), una tira de ocupación 07–22 por día y el tiempo libre, calculado con el mismo núcleo (`freeGaps`) que une los intervalos solapados. Arriba, la línea «Siguiente» con el tiempo libre justo antes. Una actividad que cruza la medianoche aparece en cada día que ocupa (también en la vista Día del siguiente, aunque esté en curso): el día en que empieza indica «hasta jue 29 08:00» y los siguientes la marcan «Sigue» con «desde mié 28 23:00». Los datos, la ruta y las acciones (mover, terminar) son siempre los de la actividad original.
+- **Reloj dinámico.** Los estados y las cuentas se recalculan en el navegador cada 15 s a partir de la hora del servidor (`now`) más el tiempo transcurrido, no de un instante fijo. Las fechas son locales sin zona (como en el núcleo): si el navegador y el servidor estuvieran en zonas distintas, las horas se leerían en la del navegador.
+- **Huecos.** Cada hueco libre positivo, por corto que sea (el diseño no fija un mínimo; hoy cuenta desde ahora y los días pasados no ofrecen ninguno), tiene «Usar este hueco»: lista solo las tareas pendientes con estimación positiva que caben (si ninguna cabe, lo dice), y «Programar en este hueco» crea un bloque con esa tarea. «Dejarlo libre» lo marca como libre a propósito solo mientras la página sigue abierta; no se rellena nada solo. También se puede crear un bloque o evento a mano en el hueco.
+- **Crear.** «Nueva actividad»: bloque o evento, título, inicio y fin (`datetime-local`) y, para bloques, una tarea existente (opcional). Un bloque se enlaza a su tarea **solo al crearlo**: no hay endpoint para asociar o cambiar la tarea después.
+- **Mover.** Arrastrar una fila sobre un día de la semana (ratón; el arrastre HTML5 no funciona al tacto), «Un día antes / después» en el detalle (alternativa de teclado y táctil) o «Reprogramar» con inicio y fin escritos a mano. Se avisa si la nueva hora se cruza con otra actividad o ya pasó, pero nunca se bloquea ni se mueve nada automáticamente.
+- **Detalle.** Hoja con foco atrapado, Esc para cerrar y retorno del foco a quien la abrió; en pantallas estrechas es una hoja inferior. «Terminar bloque» y «Completar tarea» (`/api/task/status`) son acciones separadas, con enlaces a la tarea y al proyecto.
+- **Solo en línea.** Sin conexión (el navegador lo sabe antes de enviar) se muestra el aviso y la acción falla sin enviar nada («no se ha guardado nada»). Si la red falla *después* de enviar, la petición pudo llegar y perderse solo la respuesta: entonces se dice «No se pudo confirmar el guardado. Recargá antes de reintentar», se recarga la vista y los reintentos de crear usan el mismo identificador mientras la hoja siga abierta, así que no duplican. No hay cola ni éxito simulado. Una nota de `Calendario/` con datos inválidos aparece como aviso con enlace en vez de romper la vista.
+- **Límites conocidos.** El filtro por proyecto o área solo cambia las filas (los huecos y la ocupación cuentan todas las actividades); las tareas sin estimación no se sugieren; «libre a propósito» no se guarda. Arrastrar una continuación a otro día mueve la actividad entera (su inicio original) a ese día.
+
 ## Plan
 
 Siguiendo TDD (`npm test` y `npm run typecheck` en verde, `npm run build:web` para la web; pruebas con bóvedas y `KIOKU_HOME` temporales).
 
 1. **Modelo y núcleo.** Confirmar el modelo (D-23). Parseo e indexado de bloques, `estimate` en tareas, cálculo de estado (hecho / en curso / sin terminar / ya pasó / pendiente) y de huecos libres. Pruebas del cálculo con casos de borde: bloques que se tocan, cruces, cambio de día, hora local.
 2. **API.** Lectura por rango de fechas; crear, mover y terminar bloques; sugerencias de tareas para un hueco. Operaciones idempotentes con el mismo estilo que `mobile-operations`.
-3. **Web: vista Día.** Fila en curso con progreso, aviso «Siguiente», filtro por proyecto, «Usar este hueco», detalle con la tarea asociada y acciones separadas (terminar bloque / completar tarea).
-4. **Web: vista Semana.** Tira de ocupación, encabezados por día, mover con arrastre y con botones, avisos de cruce.
-5. **Móvil.** Adaptación propia (hoja inferior, filas de dos líneas). Integrar las escrituras con la cola de operaciones sin conexión.
+3. **Web: vista Día.** *(hecho)* Fila en curso con progreso, aviso «Siguiente», filtro por proyecto, «Usar este hueco», detalle con la tarea asociada y acciones separadas (terminar bloque / completar tarea).
+4. **Web: vista Semana.** *(hecho)* Tira de ocupación, encabezados por día, mover con arrastre y con botones, avisos de cruce.
+5. **Móvil.** *(adaptación hecha; escrituras sin conexión fuera del alcance inicial)* Adaptación propia (hoja inferior, filas de dos líneas, barra inferior). Integrar las escrituras con la cola de operaciones sin conexión queda pendiente: hoy el calendario es solo en línea.
 6. **Asistente y captura.** Que la captura pueda crear bloques (`@proyecto`, hora) y que el asistente proponga bloques como propuesta aprobable. Fuera del alcance inicial.
 7. **Validación** en `docs/validation.md`: casos con hora, huecos y vencidos; revisión de contraste y de uso solo con teclado.
 

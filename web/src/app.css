@@ -354,6 +354,8 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; background: var(--side); border-top: 1px solid var(--line); padding-bottom: var(--nav-pad); }
   .bottomnav a, .bottomnav button { flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: none; border: 0; border-radius: 0; color: var(--muted); font-size: 11px; padding: 6px 0; }
   .bottomnav .active { color: var(--accent); }
+  .bottomnav a, .bottomnav button { min-width: 0; }
+  .bottomnav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* seis botones: «Calendario» se recorta antes que ensanchar la barra */
   .bottomnav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
   .bottomnav button { position: relative; }
   .nav-badge { position: absolute; top: 5px; left: calc(50% + 6px); min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--accent-fg); font-size: 10px; font-weight: 650; line-height: 16px; text-align: center; }
