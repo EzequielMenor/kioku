@@ -2,7 +2,7 @@ import type { NoteType, SearchHit } from "../types.ts";
 import type { StoredNote } from "./store.ts";
 
 const W_TITLE = 10, W_HEADING = 4, W_BODY = 1;
-const TYPES: readonly string[] = ["note", "task", "project", "journal", "resource", "capture", "database", "block"];
+const TYPES: readonly string[] = ["note", "task", "project", "journal", "resource", "capture", "database", "block", "area"];
 
 /** Minúsculas sin diacríticos, con el índice de cada carácter en el original (para recortar el snippet). */
 function fold(s: string): { text: string; at: number[] } {
