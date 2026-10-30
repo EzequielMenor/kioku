@@ -1,6 +1,6 @@
 # Calendario
 
-Estado: **diseño aprobado en prototipo; núcleo, API en línea e interfaz web (Día/Semana y móvil) implementados**. Pendientes: verificación en navegador y casos de `docs/validation.md`, y todo lo fuera de alcance inicial (escrituras sin conexión, captura, asistente). Este documento recoge lo decidido, el modelo de datos propuesto y el plan. La decisión de arquitectura se registrará como D-23 en `02-TRD-architecture.md` cuando se confirme el modelo de datos.
+Estado: **calendario en línea implementado y verificado**: núcleo, API, Día/Semana y adaptación móvil. Evidencia y límites en `../validation.md`. El arrastre nativo se conserva explícitamente sin verificar por decisión del usuario; «Un día antes / después» sí está probado. Fuera del alcance inicial: escrituras sin conexión, captura y asistente. Este documento recoge lo decidido, el modelo confirmado y el plan. La decisión está registrada como D-23 en `02-TRD-architecture.md`.
 
 ## Problema
 
@@ -55,9 +55,9 @@ Son fuentes mixtas (reseñas, blogs de diseño y foros), no manuales oficiales.
 - Solo hay cinco días (lunes a viernes) y los datos son de ejemplo.
 - «Asociar a una tarea» y las secciones del menú distintas de Calendario son ilustrativas.
 - Las fuentes se cargan desde Google Fonts. **En la implementación se usa lo empaquetado (D-20)**: sin peticiones externas.
-- El arrastre entre días no se ha comprobado en un navegador.
+- El arrastre entre días del prototipo no se ha comprobado. En producción se conserva **sin verificación de arrastre nativo**, por decisión del usuario; los controles «Un día antes / después» sí se probaron con persistencia real.
 
-## Modelo de datos propuesto (pendiente de confirmar)
+## Modelo de datos confirmado (D-23)
 
 Coherente con la bóveda en Markdown como fuente de verdad y SQLite como índice (ver `05-data-model.md`).
 
@@ -68,9 +68,9 @@ Coherente con la bóveda en Markdown como fuente de verdad y SQLite como índice
   - `project`: clave de proyecto o área, opcional
   - `done_at`: instante en que se terminó el bloque (solo bloques)
 - Tareas: nuevo campo opcional `estimate` (minutos) además de `due`.
-- Índice: tabla `blocks(path PK, kind, start, end, task_path, project_key, done_at)`, derivada del Markdown.
+- Índice: lectura derivada de `notes.fm_json` mediante `noteRows()`, sin tabla nueva ni migración SQLite. Reindexar reconstruye las actividades desde Markdown.
 - Reglas: terminar un bloque nunca cambia `status` de la tarea; completar la tarea nunca toca sus bloques; reprogramar solo cambia `start` y `end`; nada se mueve automáticamente.
-- Pregunta abierta: ¿un archivo por bloque o un archivo por día? Un archivo por bloque encaja con la edición móvil sin conexión (D-22: hash base por nota) y evita conflictos entre dispositivos.
+- Un archivo por bloque o evento en `Calendario/<id>.md`, confirmado por el usuario. Los cambios comprueban el hash leído y preservan el resto del Markdown; reintentar una creación con el mismo identificador y contenido no duplica la actividad. La futura integración con escrituras móviles sin conexión queda fuera de esta entrega.
 
 ## API en línea (implementada)
 
@@ -87,7 +87,7 @@ Solo con el daemon conectado; no hay cola sin conexión para el calendario. Toda
 - Mover y terminar exigen el `hash` leído: si la actividad cambió, `409` y nada se escribe. Terminar un bloque nunca completa su tarea ni a la inversa; nada se reprograma solo.
 - Errores como en el resto de la API (`{ error, code? }`): rango, fecha, tipo, tarea o proyecto inválidos → `400`; hash obsoleto o `id` ya usado con otro contenido → `409`. Una petición inválida no cambia nada.
 - Los huecos libres no se calculan en el servidor: la UI los deriva de las actividades visibles.
-- **Móvil.** Las actividades que apuntan a una nota privada (la propia actividad, su tarea o su proyecto, también el heredado de la tarea) o a una relación que no se resuelve no aparecen, y las tareas privadas tampoco; así no se filtran títulos, cuentas ni huecos. Mover o terminar una actividad oculta responde `404`; crear con rutas privadas, `403`.
+- **Móvil.** Las actividades que apuntan a una nota privada (la propia actividad, su tarea o su proyecto, también el heredado de la tarea) o a una relación que no se resuelve no aparecen. Las rutas de esas actividades se añaden a las exclusiones efectivas de todas las lecturas y escrituras móviles: notas, búsqueda, grafo, sincronización, enlaces y actividad en vivo, no solo calendario. El filtro SSE recalcula esa visibilidad con cada evento. Mover o terminar una actividad oculta responde `404`; crear con rutas privadas o un proyecto heredado sin resolver, `403`. Las tareas ordinarias conservan su comportamiento previo.
 - La lectura no se guarda en la caché del service worker (`web/src/sw-rules.ts`): una agenda antigua parecería actual y podría conservar referencias que el móvil ya no debe ver.
 
 ## Interfaz web (implementada)
@@ -101,19 +101,19 @@ Ruta `#/calendario` (atajo `g c`; en la barra inferior del móvil entre Hoy y Ta
 - **Mover.** Arrastrar una fila sobre un día de la semana (ratón; el arrastre HTML5 no funciona al tacto), «Un día antes / después» en el detalle (alternativa de teclado y táctil) o «Reprogramar» con inicio y fin escritos a mano. Se avisa si la nueva hora se cruza con otra actividad o ya pasó, pero nunca se bloquea ni se mueve nada automáticamente.
 - **Detalle.** Hoja con foco atrapado, Esc para cerrar y retorno del foco a quien la abrió; en pantallas estrechas es una hoja inferior. «Terminar bloque» y «Completar tarea» (`/api/task/status`) son acciones separadas, con enlaces a la tarea y al proyecto.
 - **Solo en línea.** Sin conexión (el navegador lo sabe antes de enviar) se muestra el aviso y la acción falla sin enviar nada («no se ha guardado nada»). Si la red falla *después* de enviar, la petición pudo llegar y perderse solo la respuesta: entonces se dice «No se pudo confirmar el guardado. Recargá antes de reintentar», se recarga la vista y los reintentos de crear usan el mismo identificador mientras la hoja siga abierta, así que no duplican. No hay cola ni éxito simulado. Una nota de `Calendario/` con datos inválidos aparece como aviso con enlace en vez de romper la vista.
-- **Límites conocidos.** El filtro por proyecto o área solo cambia las filas (los huecos y la ocupación cuentan todas las actividades); las tareas sin estimación no se sugieren; «libre a propósito» no se guarda. Arrastrar una continuación a otro día mueve la actividad entera (su inicio original) a ese día.
+- **Límites conocidos.** El filtro por proyecto o área solo cambia las filas (los huecos y la ocupación cuentan todas las actividades); las tareas sin estimación no se sugieren; «libre a propósito» no se guarda. El arrastre nativo se conserva sin prueba disponible: la alternativa comprobada es «Un día antes / después». Firefox y Safari no se han probado. Arrastrar una continuación a otro día mueve la actividad entera (su inicio original) a ese día.
 
 ## Plan
 
 Siguiendo TDD (`npm test` y `npm run typecheck` en verde, `npm run build:web` para la web; pruebas con bóvedas y `KIOKU_HOME` temporales).
 
-1. **Modelo y núcleo.** Confirmar el modelo (D-23). Parseo e indexado de bloques, `estimate` en tareas, cálculo de estado (hecho / en curso / sin terminar / ya pasó / pendiente) y de huecos libres. Pruebas del cálculo con casos de borde: bloques que se tocan, cruces, cambio de día, hora local.
-2. **API.** Lectura por rango de fechas; crear, mover y terminar bloques; sugerencias de tareas para un hueco. Operaciones idempotentes con el mismo estilo que `mobile-operations`.
+1. **Modelo y núcleo.** *(hecho)* Modelo confirmado (D-23). Parseo e indexado de bloques, `estimate` en tareas, cálculo de estado (hecho / en curso / sin terminar / ya pasó / pendiente) y de huecos libres. Pruebas del cálculo con casos de borde: bloques que se tocan, cruces, cambio de día, hora local.
+2. **API.** *(hecho)* Lectura por rango de fechas; crear, mover y terminar bloques. La respuesta incluye tareas pendientes con estimación para sugerir las que caben en cada hueco en la UI. Crear usa identificador estable; mover y terminar son idempotentes y comprueban el hash antes de cambiar contenido.
 3. **Web: vista Día.** *(hecho)* Fila en curso con progreso, aviso «Siguiente», filtro por proyecto, «Usar este hueco», detalle con la tarea asociada y acciones separadas (terminar bloque / completar tarea).
 4. **Web: vista Semana.** *(hecho)* Tira de ocupación, encabezados por día, mover con arrastre y con botones, avisos de cruce.
 5. **Móvil.** *(adaptación hecha; escrituras sin conexión fuera del alcance inicial)* Adaptación propia (hoja inferior, filas de dos líneas, barra inferior). Integrar las escrituras con la cola de operaciones sin conexión queda pendiente: hoy el calendario es solo en línea.
 6. **Asistente y captura.** Que la captura pueda crear bloques (`@proyecto`, hora) y que el asistente proponga bloques como propuesta aprobable. Fuera del alcance inicial.
-7. **Validación** en `docs/validation.md`: casos con hora, huecos y vencidos; revisión de contraste y de uso solo con teclado.
+7. **Validación** *(hecha; límites documentados)* en `docs/validation.md`: suite310/310, typecheck/build, Chromium en tinta/papel y móvil/escritorio, controles accesibles y recheck independiente de privacidad/foco. No se afirma una auditoría completa de contraste ni arrastre nativo verificado.
 
 ## Fuera de alcance por ahora
 

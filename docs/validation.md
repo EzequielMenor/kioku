@@ -69,6 +69,21 @@
 - **iPhone real:** que iOS no expulse el almacenamiento (se pide `storage.persist()`; si lo hace, se vuelve a sincronizar al abrir), que el envío ocurra al abrir la PWA con red (iOS no sincroniza en segundo plano) y «Sin conexión» real en modo avión. Cerrar y abrir la PWA basta; no hace falta reinstalar.
 - Evicción de almacenamiento y bloqueo de pestañas de IndexedDB: no reproducibles en Chromium.
 
+## Calendario en línea (feature/calendar)
+
+**Verificado**
+- Núcleo y API: fechas locales, cinco estados, huecos unidos y recortados a cada día, estimaciones opcionales y actividades que cruzan medianoche. Markdown por actividad; reindexar conserva el resultado. Crear es idempotente y mover/terminar comprueban hash; finalizar bloque y tarea son acciones independientes.
+- Suite final tras las correcciones: `npm test` 310/310, sin omisiones; `npm run typecheck`, `npm run build:web` y `git diff --check` en verde. Bundle app.js ≈672 KB.
+- Privacidad: regresiones HTTP para actividades con tarea/proyecto privado o sin resolver, también proyecto heredado; todas las rutas genéricas de notas, búsqueda, grafo y sincronización usan las exclusiones efectivas. Escrituras denegadas conservan Markdown, hash, recuentos y registro; mover/terminar una actividad oculta devuelve404 y SSE reevalúa la visibilidad al emitir. `task/status` no termina bloques. Recheck independiente sobre7d4df1b:69 tests enfocados sin omisiones y29 grupos de aserciones HTTP en verde; relaciones heredadas que cambian durante SSE quedan filtradas sin reconectar.
+- Chromium real con bóveda temporal:15 comprobaciones iniciales en1200px/390px y temas tinta/papel, sin errores de consola ni desborde horizontal. Día con estados/progreso/hueco de1min/continuación nocturna; crear bloque/evento, enlazar tarea, completar por separado, usar/dejar hueco, filtrar proyecto, Semana con varios días y cinco tiras, navegación móvil y foco/Tab/Escape. «Un día antes / después» persistió correctamente.
+- El detalle podía perder Escape al desaparecer «Completar tarea»: el worker reprodujo el fallo y verificó en Chromium la corrección, recuperación del foco y limpieza de atajos. Recheck independiente puntual:cinco grupos de pruebas reales de modal pasaron en1200px y390px, incluidos controles eliminados/deshabilitados, Tab en ambos sentidos, Escape, retorno al disparador y limpieza de atajos.
+- Diferenciales de comportamiento previo: creación de notas/tareas/proyectos, estado y búsqueda iguales;16 rutas móviles iguales;27 rutas antiguas tras el arreglo de privacidad solo difieren en `lastActivity` por reloj real.
+
+**Límites y evidencia no disponible**
+- Arrastre nativo entre días: no pudo iniciarse con CDP; no hay prueba de persistencia ni defecto del handler confirmado. Se conserva **explícitamente sin verificar**, por decisión del usuario. Alternativa verificada: «Un día antes / después».
+- Firefox, Safari y dispositivos táctiles reales no probados. El calendario exige conexión; no integra la cola de escrituras offline.
+- El verificador aislado omitió `assistant-engine.test.ts:164` (`bwrap o hermes no instalados` bajo HOME temporal); la suite del padre sí ejecutó310/310 sin omisiones. El launcher de TypeScript falló inicialmente solo en la copia temporal y se reparó allí antes de typecheck/build.
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.
