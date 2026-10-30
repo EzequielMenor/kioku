@@ -154,6 +154,19 @@ export class Vault {
     return dest;
   }
 
+  /** Devuelve a su sitio la última copia de `rel` que está en la papelera. Falla si ya hay algo en `rel` o si no hay copia. */
+  async restoreFromTrash(rel: string): Promise<void> {
+    this.assertUserPath(rel);
+    if (this.exists(rel)) throw new VaultError("exists", `Ya existe: ${rel}`);
+    const suffix = `__${rel.replaceAll("/", "__")}`;
+    const dir = this.abs(`${INTERNAL_DIR}/trash`);
+    const names = (await fs.readdir(dir).catch(() => [] as string[])).filter((n) => n.endsWith(suffix) && !n.slice(0, -suffix.length).includes("__")).sort();
+    const last = names[names.length - 1];
+    if (!last) throw new VaultError("not-found", "No hay copia en la papelera");
+    await fs.mkdir(path.dirname(this.abs(rel)), { recursive: true });
+    await fs.rename(path.join(dir, last), this.abs(rel));
+  }
+
   async move(from: string, to: string): Promise<void> {
     this.assertUserPath(from);
     this.assertUserPath(to);

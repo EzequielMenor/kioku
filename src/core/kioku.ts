@@ -306,6 +306,15 @@ export class Kioku {
     return dest;
   }
 
+  /** Saca una nota de la papelera y la vuelve a indexar. */
+  async restoreNote(rel: string): Promise<NoteRow> {
+    await this.vault.restoreFromTrash(rel);
+    const note = await this.reindexPath(rel);
+    this.index.tx(() => { this.index.resolveAll(); });
+    this.changed("note", rel);
+    return note;
+  }
+
   /* ---------------- bases de datos ---------------- */
 
   /** Fila de la base: sus notas se leen siempre del índice, que es derivado (borrarlo y reindexar da lo mismo). */

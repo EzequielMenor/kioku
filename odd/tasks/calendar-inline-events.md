@@ -10,7 +10,7 @@ S5. "Todo lo demás (tarea, proyecto, notas) es opcional y se añade después."
 S6. User decision on surface: "Cuadrícula horaria en Día" (time grid in the Day view; the current list stays as an alternative view).
 
 ## Tasks
-T1 | S3,S4 | inline | pending | Core + API: update (title, kind, start, end, area), delete to trash, restore from trash; mobile privacy guards. Risk: item 1 (deleting stored data; mitigated by trash restore).
+T1 | S3,S4 | inline | done | Core + API: update (title, kind, start, end), delete to trash, restore from trash; new routes stay desktop-only (mobile 403, JARV-22). RED 2+1 failing then GREEN; suite 342/342, typecheck GREEN. Risk: item 1 (deleting stored data; recoverable via trash+restore).
 T2 | S2 | inline | pending | Pure natural-language parser ("gym mañana 18-19") with tests.
 T3 | S1,S4,S6 | inline | pending | Grid layout model (overlap columns, 15-min snapping, pointer↔time) with tests.
 T4 | S1,S2,S6 | inline | pending | Day time grid UI + create by click/drag with title+Enter + one-line quick add.

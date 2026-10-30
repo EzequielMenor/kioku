@@ -53,3 +53,48 @@ test("calendar rejects invalid writes without effects and preserves unrelated Ma
     assert.throws(() => j.calendar.range("2026-02-30", "2026-10-28"), /Fecha/);
   } finally { j.close(); cleanup(); }
 });
+
+test("calendar update changes title, kind, times and keeps the rest of the Markdown", async () => {
+  const { root, cleanup } = tmpVault();
+  const j = await Kioku.open({ root, now: () => new Date("2026-10-28T09:00:00") });
+  try {
+    const task = await j.createNote({ title: "Escribir", type: "task", fm: { status: "todo" } });
+    const b = await j.calendar.create({ ...input, taskPath: task.path });
+    const u = await j.calendar.update(b.path, { title: "  Gimnasio ", start: "2026-10-29T18:00", end: "2026-10-29T19:00" }, b.hash);
+    assert.equal(u.title, "Gimnasio");
+    assert.equal(u.start, "2026-10-29T18:00");
+    assert.equal(u.taskPath, task.path, "los campos no pedidos no cambian");
+    const same = await j.calendar.update(u.path, { title: "Gimnasio" }, u.hash);
+    assert.equal(same.hash, u.hash, "sin cambios no se escribe");
+    const ev = await j.calendar.update(u.path, { kind: "event" }, u.hash);
+    assert.equal(ev.kind, "event");
+    assert.equal(ev.taskPath, null, "un evento no lleva tarea");
+    await assert.rejects(j.calendar.update(ev.path, { title: "   " }, ev.hash), /título/);
+    await assert.rejects(j.calendar.update(ev.path, { end: "2026-10-29T17:00" }, ev.hash), /posterior/);
+    await assert.rejects(j.calendar.update(ev.path, { title: "Otro" }, u.hash), /cambió/);
+    assert.equal(j.calendar.range("2026-10-29", "2026-10-29").items[0].title, "Gimnasio", "los rechazos no escriben");
+    await assert.rejects(j.calendar.update(task.path, { title: "x" }, "h"), /actividad/);
+  } finally { j.close(); cleanup(); }
+});
+
+test("calendar remove sends to trash and restore brings it back; neither touches other notes", async () => {
+  const { root, cleanup } = tmpVault();
+  const j = await Kioku.open({ root, now: () => new Date("2026-10-28T09:00:00") });
+  try {
+    const note = await j.createNote({ title: "Nota", type: "note" });
+    const b = await j.calendar.create(input);
+    await assert.rejects(j.calendar.remove(b.path, "hash-viejo"), /cambió/);
+    assert.equal(j.calendar.range("2026-10-28", "2026-10-28").items.length, 1);
+    await j.calendar.remove(b.path, b.hash);
+    assert.equal(j.calendar.range("2026-10-28", "2026-10-28").items.length, 0);
+    assert.equal(j.vault.exists(b.path), false);
+    await assert.rejects(j.calendar.remove(note.path, note.hash), /actividad/);
+    assert.ok(j.index.getNote(note.path));
+    const back = await j.calendar.restore(b.path);
+    assert.equal(back.title, "Trabajo");
+    assert.equal(j.calendar.range("2026-10-28", "2026-10-28").items.length, 1);
+    await assert.rejects(j.calendar.restore(b.path), /ya existe|Ya existe/i);
+    await assert.rejects(j.calendar.restore("Calendario/nunca-borrada-1.md"), /papelera/);
+    await assert.rejects(j.calendar.restore("Notas/otra.md"), /actividad/);
+  } finally { j.close(); cleanup(); }
+});

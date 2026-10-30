@@ -358,3 +358,38 @@ test("móvil calendario: el flujo en vivo no emite actividades ocultas, ni las q
     for (const leak of ["con-tarea-privada", "via-proyecto-sin-resolver", "Calendario/visible.md"]) assert.ok(!seen.includes(leak), leak + " en " + seen);
   } finally { ctl.abort(); await t.done(); }
 });
+
+test("API calendario: editar, borrar y deshacer; el móvil no puede usar estas rutas", async () => {
+  const t = await setup({ "Calendario/visible.md": BLOCK("Visible", "") });
+  try {
+    const c = await t.call("POST", "/api/calendar/create", ALL);
+    const u = await t.call("POST", "/api/calendar/update", { path: c.json.path, title: "Gym", kind: "event", start: "2026-10-28T18:00", end: "2026-10-28T19:00", hash: c.json.hash });
+    assert.equal(u.status, 200, u.text);
+    assert.deepEqual([u.json.title, u.json.kind, u.json.start, u.json.end], ["Gym", "event", "2026-10-28T18:00", "2026-10-28T19:00"]);
+
+    const before = snapshot(t);
+    for (const body of [
+      { path: c.json.path, title: " ", hash: u.json.hash },
+      { path: c.json.path, end: "2026-10-28T17:00", hash: u.json.hash },
+      { path: c.json.path, title: "x", hash: c.json.hash }, // hash viejo
+      { path: c.json.path, kind: "otro", hash: u.json.hash },
+      { path: c.json.path, title: 5, hash: u.json.hash },
+      { title: "x", hash: u.json.hash },
+    ]) assert.ok([400, 409].includes((await t.call("POST", "/api/calendar/update", body)).status), JSON.stringify(body));
+    assert.equal(snapshot(t), before, "una edición rechazada no cambia nada");
+
+    assert.equal((await t.call("POST", "/api/calendar/delete", { path: c.json.path, hash: c.json.hash })).status, 409);
+    const d = await t.call("POST", "/api/calendar/delete", { path: c.json.path, hash: u.json.hash });
+    assert.equal(d.status, 200, d.text);
+    assert.equal(existsSync(path.join(t.root, c.json.path)), false);
+    assert.deepEqual((await t.call("GET", `/api/calendar?${DAY}`)).json.items.map((i: { path: string }) => i.path), ["Calendario/visible.md"]);
+    const r = await t.call("POST", "/api/calendar/restore", { path: c.json.path });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.title, "Gym");
+    assert.equal((await t.call("POST", "/api/calendar/restore", { path: c.json.path })).status, 409);
+    assert.equal((await t.call("POST", "/api/calendar/restore", { path: "Tareas/Escribir.md" })).status, 400);
+
+    for (const route of ["update", "delete", "restore"]) assert.equal((await t.mobile("POST", `/api/calendar/${route}`, { path: c.json.path, hash: r.json.hash, title: "x" })).status, 403, route);
+    assert.equal(read(t.root, c.json.path).includes("title: Gym"), true);
+  } finally { await t.done(); }
+});

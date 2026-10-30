@@ -355,6 +355,17 @@ export async function startServer(
           if (role === "mobile") assertMobileItem(j, rel);
           return send(res, 200, calendarDto(await j.calendar.move(rel, str(body.start, "start"), str(body.end, "end"), str(body.hash, "hash"))));
         }
+        case "/api/calendar/update": {
+          const opt = (v: unknown, name: string) => (v === undefined ? undefined : str(v, name));
+          const kind = body.kind;
+          if (kind !== undefined && kind !== "block" && kind !== "event") throw new HttpError(400, "Tipo de actividad inválido");
+          return send(res, 200, calendarDto(await j.calendar.update(userPath(body.path), { title: opt(body.title, "title"), kind, start: opt(body.start, "start"), end: opt(body.end, "end") }, str(body.hash, "hash"))));
+        }
+        case "/api/calendar/delete": {
+          await j.calendar.remove(userPath(body.path), str(body.hash, "hash"));
+          return send(res, 200, { ok: true });
+        }
+        case "/api/calendar/restore": return send(res, 200, calendarDto(await j.calendar.restore(userPath(body.path))));
         case "/api/calendar/finish": {
           const rel = userPath(body.path);
           if (role === "mobile") assertMobileItem(j, rel);

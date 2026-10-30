@@ -110,6 +110,43 @@ export class Calendar {
     return this.item(path);
   }
 
+  /** Cambia título, tipo, inicio o fin (lo no indicado queda igual). Un evento no lleva tarea: al pasar a evento se suelta. Todo se valida antes de escribir. */
+  async update(path: string, changes: { title?: string; kind?: "block" | "event"; start?: string; end?: string }, hash: string): Promise<CalendarItem> {
+    const b = this.item(path);
+    const props: Record<string, unknown> = {};
+    if (changes.title !== undefined) {
+      const title = typeof changes.title === "string" ? changes.title.trim() : "";
+      if (!title) throw new VaultError("invalid", "Escribí un título");
+      if (title !== b.title) props.title = title;
+    }
+    const next = { kind: changes.kind ?? b.kind, start: changes.start ?? b.start, end: changes.end ?? b.end };
+    try { parseBlock({ ...b, ...next, ...(next.kind === "event" ? { task: undefined, done_at: undefined } : {}) }); } catch (e) { throw new VaultError("invalid", (e as Error).message); }
+    if (next.kind !== b.kind) {
+      props.kind = next.kind;
+      if (next.kind === "event") { props.task = null; props.done_at = null; }
+    }
+    if (next.start !== b.start) props.start = next.start;
+    if (next.end !== b.end) props.end = next.end;
+    if (!Object.keys(props).length) return b;
+    await this.patch(path, props, hash);
+    return this.item(path);
+  }
+
+  /** Borrar manda la actividad a la papelera (`restore` la devuelve); nunca borra de verdad. */
+  async remove(path: string, hash: string): Promise<void> {
+    this.item(path);
+    const current = await this.host.readNote(path);
+    if (typeof hash !== "string" || !hash || current.hash !== hash) throw new VaultError("conflict", "La actividad cambió: recargá antes de borrarla");
+    await this.host.deleteNote(path);
+  }
+
+  /** Deshacer un borrado: recupera de la papelera la última copia de esa actividad. */
+  async restore(path: string): Promise<CalendarItem> {
+    if (!/^Calendario\/[a-zA-Z0-9-]{8,64}\.md$/.test(path)) throw new VaultError("invalid", "No es una actividad de calendario válida");
+    await this.host.restoreNote(path);
+    return this.item(path);
+  }
+
   async finish(path: string, hash: string): Promise<CalendarItem> {
     const b = this.item(path);
     if (b.kind !== "block") throw new VaultError("invalid", "Un evento no se termina como bloque");
