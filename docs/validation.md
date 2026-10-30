@@ -92,6 +92,11 @@
 - El usuario ofreció la prueba manual y aceptó la entrega como primera versión. Es aceptación general, no evidencia de todos los pasos del checklist, de una auditoría completa de contraste ni de compatibilidad en todos los navegadores.
 - ProjectOS: **JARV-18, JARV-19 y JARV-20 completados** con evidencias. **JARV-21, JARV-22 y JARV-24 abiertos** para los límites de Semana, escrituras offline y validación exhaustiva; **JARV-23 en Todo** (captura/asistente no implementados). Épica **JARV-17** sigue en curso. JARV-21 pide impedir mover al pasado, mientras la implementación solo avisa; diferencia documentada para resolver sin cambiar silenciosamente el criterio.
 
+## Calendario: crear y editar en el sitio (JARV-26)
+- Núcleo y API con pruebas: editar título/tipo/inicio/fin (rechazos sin escribir, hash obsoleto → 409), borrar a la papelera y restaurar, y las rutas nuevas vetadas al móvil (403). Analizador de texto natural y modelo de la cuadrícula (columnas, ajuste a 15 min, recorte en medianoche) como pruebas puras.
+- UI con daemon temporal + Chromium headless (playwright, vault temporal), eventos de puntero reales: arrastrar en un hueco crea un evento con inicio y fin ajustados; un clic da un borrador de 60 min; Esc lo cancela; «gym mañana 18-19» se interpreta y se crea, y una línea sin hora no crea nada; el panel guarda título, tipo y fin; «Duplicar» crea la copia; «Borrar» + «Deshacer» devuelve el archivo idéntico; mover y redimensionar (borde superior e inferior) reescriben el archivo, Esc a mitad de arrastre no escribe y un clic no escribe; sin desbordamiento a 390 px y sin errores de consola.
+- Sin verificar: tacto (en pantallas táctiles el arrastre en la cuadrícula cede al desplazamiento; ahí se crea con un toque y se edita en el panel), teclado para mover/redimensionar (el panel y «Un día antes / después» son la alternativa), tema claro de la cuadrícula.
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.

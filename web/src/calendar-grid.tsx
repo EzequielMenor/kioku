@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { parseQuickAdd } from "../../src/core/quick-add.ts";
 import { areaLabel, formatDuration } from "./calendar-model.ts";
-import { createRange, gridWindow, layoutDay, minuteToY, yToMinute } from "./calendar-grid.ts";
+import { createRange, gridWindow, layoutDay, minuteToY, moveRange, resizeRange, yToMinute } from "./calendar-grid.ts";
 import type { CalendarEntry } from "./types.ts";
 
 /** Píxeles por minuto: 15 min = 18 px, el mínimo cómodo para un bloque con una línea de texto. */
@@ -12,9 +12,14 @@ const hm = (minute: string) => minute.slice(11);
 
 interface Draft { a: number; b: number; held: boolean; title: string }
 
-export function DayGrid({ day, items, now, today, onOpen, onCreate }: {
+/** Un arrastre de más de 4 px es mover o redimensionar; menos es un clic. */
+const CLICK_SLOP = 4;
+type Drag = { path: string; mode: "move" | "start" | "end"; pointer: number; y0: number; moved: boolean; start: string; end: string };
+
+export function DayGrid({ day, items, now, today, onOpen, onCreate, onChange }: {
   day: string; items: CalendarEntry[]; now: Date; today: string;
   onOpen(path: string): void; onCreate(title: string, start: string, end: string): Promise<boolean>;
+  onChange(item: CalendarEntry, start: string, end: string): Promise<boolean>;
 }) {
   const win = gridWindow(items, day);
   const placed = layoutDay(items, day, win);
@@ -23,6 +28,9 @@ export function DayGrid({ day, items, now, today, onOpen, onCreate }: {
   const gesture = useRef<{ pointer: number; a: number; b: number } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
+  const drag = useRef<Drag | null>(null);
+  const suppressClick = useRef(false);
+  const [preview, setPreview] = useState<{ path: string; start: string; end: string } | null>(null);
   const hours = Array.from({ length: (win.to - win.from) / 60 + 1 }, (_, i) => win.from / 60 + i);
   const nowMin = day === today ? now.getHours() * 60 + now.getMinutes() : null;
   const minuteAt = (e: PointerEvent) => yToMinute(e.clientY - body.current!.getBoundingClientRect().top, PX, win);
@@ -52,6 +60,46 @@ export function DayGrid({ day, items, now, today, onOpen, onCreate }: {
     gesture.current = null;
     setDraft({ a: g.a, b: g.b, held: false, title: "" });
   };
+  // Escape durante un arrastre lo cancela sin escribir nada.
+  const dragging = preview !== null;
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { drag.current = null; suppressClick.current = true; setPreview(null); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dragging]);
+
+  const evDown = (e: PointerEvent, item: CalendarEntry, editable: boolean) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !editable || busy) return;
+    const edge = (e.target as HTMLElement).dataset.edge;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    drag.current = { path: item.path, mode: edge === "start" || edge === "end" ? edge : "move", pointer: e.pointerId, y0: e.clientY, moved: false, start: item.start, end: item.end };
+  };
+  const rangeFor = (d: Drag, item: CalendarEntry, clientY: number) => {
+    const delta = Math.round((clientY - d.y0) / PX);
+    return d.mode === "move" ? moveRange(item, delta) : resizeRange(item, d.mode, delta);
+  };
+  const evMove = (e: PointerEvent, item: CalendarEntry) => {
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId || d.path !== item.path) return;
+    if (!d.moved && Math.abs(e.clientY - d.y0) < CLICK_SLOP) return;
+    d.moved = true;
+    setPreview({ path: item.path, ...rangeFor(d, item, e.clientY) });
+  };
+  const evUp = async (e: PointerEvent, item: CalendarEntry) => {
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId || d.path !== item.path) return;
+    drag.current = null;
+    if (!d.moved) return; // un clic: lo atiende onClick
+    suppressClick.current = true;
+    const r = rangeFor(d, item, e.clientY);
+    if (r.start === item.start && r.end === item.end) { setPreview(null); return; }
+    await onChange(item, r.start, r.end);
+    setPreview(null);
+  };
+  const evCancel = () => { if (drag.current) { drag.current = null; setPreview(null); } };
+
   const cancel = (e: PointerEvent) => { if (gesture.current?.pointer === e.pointerId) { gesture.current = null; setDraft(null); } };
 
   const range = draft ? createRange(day, draft.a, draft.b) : null;
@@ -77,12 +125,18 @@ export function DayGrid({ day, items, now, today, onOpen, onCreate }: {
         {placed.map((p) => {
           const item = items.find((i) => i.path === p.path)!;
           const area = areaLabel(item);
+          const editable = !p.continued && !p.continues;
+          const live = preview?.path === p.path ? preview : null;
+          const top = live ? rangeMinute(live.start) - win.from : p.top, height = live ? rangeMinute(live.end) - rangeMinute(live.start) : p.height;
           return (
-            <button key={p.path} type="button" class={`cal-ev st-${item.state} ${item.kind} ${p.continued ? "carried" : ""}`} aria-haspopup="dialog"
-              style={{ top: `${p.top * PX}px`, height: `${p.height * PX - 2}px`, left: `calc(${(p.col / p.cols) * 100}% + 2px)`, width: `calc(${100 / p.cols}% - 4px)`, borderLeftColor: area.color ?? "var(--line2)" }}
-              onPointerDown={(e) => e.stopPropagation()} onClick={() => onOpen(p.path)}>
+            <button key={p.path} type="button" class={`cal-ev st-${item.state} ${item.kind} ${p.continued ? "carried" : ""} ${editable ? "movable" : ""} ${live ? "dragging" : ""}`} aria-haspopup="dialog"
+              style={{ top: `${top * PX}px`, height: `${height * PX - 2}px`, left: `calc(${(p.col / p.cols) * 100}% + 2px)`, width: `calc(${100 / p.cols}% - 4px)`, borderLeftColor: area.color ?? "var(--line2)" }}
+              onPointerDown={(e) => evDown(e, item, editable)} onPointerMove={(e) => evMove(e, item)} onPointerUp={(e) => void evUp(e, item)} onPointerCancel={evCancel}
+              onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } onOpen(p.path); }}>
+              {editable && <span class="cal-rz top" data-edge="start" aria-hidden="true" />}
               <b>{item.kind === "event" ? "◆ " : ""}{item.title}</b>
-              <small>{hm(item.start)}–{hm(item.end)} · {formatDuration(Math.round((p.height)))}</small>
+              <small>{live ? `${hm(live.start)}–${hm(live.end)}` : `${hm(item.start)}–${hm(item.end)}`} · {formatDuration(height)}</small>
+              {editable && <span class="cal-rz bottom" data-edge="end" aria-hidden="true" />}
             </button>
           );
         })}

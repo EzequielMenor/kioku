@@ -5,6 +5,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 ## Sin publicar
 
 ### Calendario
+- **Crear y editar eventos en el sitio** (JARV-26). La vista Día tiene una cuadrícula horaria: arrastra en un hueco (o haz clic) y escribe el título + Enter, o usa la línea «Añadir rápido» con texto natural («gym mañana 18-19»). Un clic abre el panel con todos los campos editables; las actividades se mueven arrastrando, se redimensionan por el borde (pasos de 15 min, Esc cancela), se duplican y se borran con «Deshacer». La lista sigue disponible como vista alternativa. Nuevas rutas de escritorio `/api/calendar/update|delete|restore`.
 - **Hora en 24 h y semana completa** (JARV-25). Los campos de inicio y fin separan fecha y hora (HH:mm), así que ya no aparece AM/PM. La vista Semana muestra de lunes a domingo; se puede ocultar el fin de semana y empezar la semana en domingo (se recuerda en el navegador).
 
 ### Despliegue

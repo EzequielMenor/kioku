@@ -187,3 +187,11 @@ a.cal-ttl:hover { color: var(--accent); }
 .cal-edit label { display: grid; gap: 4px; }
 .cal-undo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; padding: 8px 12px; border: 1px solid var(--line2); border-radius: 6px; background: var(--surface); }
 .cal-acts button.danger { border-color: var(--line2); }
+
+/* Mover y redimensionar en la cuadrícula */
+.cal-ev.movable { cursor: grab; }
+.cal-ev.dragging { cursor: grabbing; z-index: 3; box-shadow: 0 4px 14px rgb(0 0 0 / 0.28); }
+.cal-rz { position: absolute; left: 0; right: 0; height: 8px; z-index: 1; cursor: ns-resize; touch-action: none; }
+.cal-rz.top { top: 0; }
+.cal-rz.bottom { bottom: 0; }
+.cal-ev.movable:hover .cal-rz::after { content: ""; position: absolute; left: 40%; right: 40%; top: 3px; height: 2px; border-radius: 1px; background: currentColor; opacity: 0.45; }

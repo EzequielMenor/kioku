@@ -38,7 +38,8 @@ Se exploraron tres propuestas con los mismos datos ficticios (miércoles 10:20):
 8. **Estados no dependen del color:** pastilla con glifo y texto (Hecho, En curso, Sin terminar, Ya pasó, Pendiente); eventos con ◆ y barra hueca.
 9. **Móvil con su propia adaptación:** filas de dos líneas con la cuenta regresiva a la derecha, detalle como hoja inferior, tira semanal reducida, barra inferior de secciones.
 10. **Hora en 24 h en todas partes** (14:00, nunca AM/PM): los campos de inicio y fin separan la fecha y la hora escrita como HH:mm, porque `datetime-local` muestra AM/PM según el idioma del navegador.
-11. **Identidad:** tinta y papel, índigo 藍, Shippori Mincho en títulos, cifras tabulares, bordes finos y esquinas de 4–8 px, sello 記 solo en la marca.
+11. **Crear y editar en el sitio** (JARV-26). Día tiene una cuadrícula horaria (07–22, se ensancha si hay algo fuera) además de la lista, que se conserva como vista alternativa. Se crea arrastrando en un hueco (un clic da una hora) y escribiendo solo el título + Enter, o con una línea de texto natural («gym mañana 18-19»); ambas crean un **evento**. Un clic en una actividad abre el panel con título, tipo, inicio, fin y área editables; se mueve arrastrando, se redimensiona por el borde superior o inferior (pasos de 15 min, Esc cancela), se duplica y se borra con «Deshacer» (el borrado va a la papelera de `.kioku/trash/`). Tarea, proyecto y notas siguen siendo opcionales y se añaden después (JARV-27).
+12. **Identidad:** tinta y papel, índigo 藍, Shippori Mincho en títulos, cifras tabulares, bordes finos y esquinas de 4–8 px, sello 記 solo en la marca.
 
 Descartado a propósito: numerar cada actividad al estilo del metro de Tokio (letra + número; ver [Station numbering](https://en.wikipedia.org/wiki/Station_numbering)). Se mantiene una letra o símbolo por área, sin volverse críptica.
 
@@ -84,12 +85,16 @@ Solo con el daemon conectado; no hay cola sin conexión para el calendario. Toda
 | `GET /api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` | Fechas locales, ambas **inclusivas**; máximo 367 días. | `{ items, tasks, invalid, now }` |
 | `POST /api/calendar/create` | `{ id, title, kind, start, end, taskPath?, projectPath?, areaPath? }` (`id` de 8–64 caracteres, `[a-zA-Z0-9-]`). Reintentar con el mismo contenido devuelve la misma actividad. | La actividad |
 | `POST /api/calendar/move` | `{ path, start, end, hash }` | La actividad |
+| `POST /api/calendar/update` | `{ path, hash, title?, kind?, start?, end? }`: solo cambia lo indicado; pasar a evento suelta la tarea. | La actividad |
+| `POST /api/calendar/delete` | `{ path, hash }`: manda la actividad a `.kioku/trash/` (no borra de verdad). | `{ ok: true }` |
+| `POST /api/calendar/restore` | `{ path }`: devuelve la última copia de esa actividad desde la papelera; `409` si la ruta ya existe y `404` si no hay copia. | La actividad |
 | `POST /api/calendar/finish` | `{ path, hash }` | La actividad |
 | `GET /api/calendar/areas` | — | `AreaRow[]` = `{ path, title, color, hash }[]`, ordenadas por título |
 | `POST /api/calendar/areas/create` | `{ id, title, color }` (`id` como arriba; `title` de 1–60 caracteres en una línea; `color` `#RRGGBB`). Mismo `id` y contenido: idempotente; otro contenido: `409`. | `AreaRow` |
 | `POST /api/calendar/areas/update` | `{ path, title, color, hash }` | `AreaRow` |
 | `POST /api/calendar/area` | `{ path, areaPath: string \| null, hash }`: asigna, cambia o quita (`null`) el área de un bloque o evento existente. Mismo área: no escribe. | La actividad |
 
+- `update`, `delete` y `restore` son solo de escritorio: el móvil las recibe con `403` (la edición en el móvil es JARV-22).
 - `GET /api/calendar` añade `areas: AreaRow[]` (las mismas de `/api/calendar/areas`) para que la UI pinte etiquetas y filtros con una sola lectura; el resto de campos no cambia.
 - Cada actividad lleva `path`, `title`, `kind`, `start`, `end`, `hash`, `state`, `taskPath`, `projectPath`, `projectTitle`, `areaPath`, `areaTitle`, `areaColor` (los tres `null` si no tiene área o ya no es válida) y, si se terminó, `done_at`. Las relaciones crudas (`task`, `project`, `area`) no salen en la API. `/api/task/status` rechaza (`400`) bloques y áreas: no son tareas.
 - Mover y terminar exigen el `hash` leído: si la actividad cambió, `409` y nada se escribe. Terminar un bloque nunca completa su tarea ni a la inversa; nada se reprograma solo.

@@ -458,7 +458,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
           {scope === "dia" && <p class="cal-free">{freeSummary(items, day, now)} <span class="muted">No hace falta llenar los huecos.</span></p>}
 
           <QuickAdd now={now} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} />
-          {scope === "dia" && dayView === "grid" ? <DayGrid day={day} items={shown} now={now} today={today} onOpen={(path) => setPanel({ kind: "detail", path })} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} /> : <section class="cal-board" aria-label={scope === "dia" ? "Actividades del día en orden" : "Actividades de la semana en orden"}>
+          {scope === "dia" && dayView === "grid" ? <DayGrid day={day} items={shown} now={now} today={today} onOpen={(path) => setPanel({ kind: "detail", path })} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} onChange={reschedule} /> : <section class="cal-board" aria-label={scope === "dia" ? "Actividades del día en orden" : "Actividades de la semana en orden"}>
             {days.map((d) => {
               const rows = dayTimeline(items, shown, d, now);
               return (
