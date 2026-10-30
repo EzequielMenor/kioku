@@ -13,7 +13,7 @@ import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore } from "../assistant/undo.ts";
-import { assertMobileItem, calendarDto, calendarRange, createsPrivateLink } from "./calendar.ts";
+import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobileCreateDenied } from "./calendar.ts";
 import { OpsLedger, validOp } from "./ops.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
 import { mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
@@ -125,12 +125,17 @@ export async function startServer(
   };
 
   const allowedHosts = new Set((opts.allowedHosts ?? []).map((h) => h.trim().toLowerCase()).filter(Boolean));
-  let mobileExclude: string[] = []; // carpetas privadas del móvil; se refresca en cada petición del rol `mobile`
+  let mobileConfig: string[] = []; // carpetas privadas del móvil (`mobile.json`); se refresca en cada petición del rol `mobile`
+  let mobileExclude: string[] = []; // lo anterior + actividades de calendario que apuntan a algo privado o sin resolver
+  /** Carpetas privadas más las actividades ocultas según el estado actual del índice (no el de la última petición). */
+  const currentExclude = () => [...mobileConfig, ...hiddenCalendarPaths(j, mobileConfig)];
   // Cada cliente SSE lleva su rol: el móvil solo recibe eventos de notas visibles.
   const sseClients = new Map<http.ServerResponse, Role>();
   j.bus.on("change", (ev) => {
     const data = `data: ${JSON.stringify(ev)}\n\n`;
-    for (const [c, role] of sseClients) if (role === "full" || mobileEvent(ev, mobileExclude)) c.write(data);
+    // Las relaciones de una actividad pueden cambiar con el flujo abierto: la visibilidad se calcula con cada evento.
+    let exclude: string[] | null = null;
+    for (const [c, role] of sseClients) if (role === "full" || mobileEvent(ev, (exclude ??= currentExclude()))) c.write(data);
   });
   const keepAlive = setInterval(() => { for (const c of sseClients.keys()) c.write(": ka\n\n"); }, 25_000);
   keepAlive.unref();
@@ -168,12 +173,17 @@ export async function startServer(
     const q = url.searchParams;
     if (role === "mobile" && !mobileAllowed(m, p)) throw new HttpError(403, "Eso no se puede hacer desde el móvil: hazlo en el portátil");
     if (role === "mobile") {
-      try { mobileExclude = parseMobileConfig(await j.vault.readInternal("mobile.json")); }
+      try { mobileConfig = parseMobileConfig(await j.vault.readInternal("mobile.json")); }
       catch (e) { throw new HttpError(503, (e as Error).message); }
+      mobileExclude = currentExclude();
     }
     const body = m === "GET" ? {} : await readJson(req);
     // Lo privado no existe para el móvil: al leerlo, 404; al escribirlo, 403. Y lo que sale de cualquier lectura va filtrado.
-    if (role === "mobile" && touchesPrivate([q, body], mobileExclude)) throw new HttpError(m === "GET" ? 404 : 403, m === "GET" ? "No existe" : "Esa carpeta es privada y no se toca desde el móvil");
+    if (role === "mobile" && touchesPrivate([q, body], mobileExclude)) {
+      // Mover o terminar una actividad oculta responde como si no existiera, igual que una lectura.
+      const absent = m === "GET" || p === "/api/calendar/move" || p === "/api/calendar/finish";
+      throw new HttpError(absent ? 404 : 403, absent ? "No existe" : "Esa carpeta es privada y no se toca desde el móvil");
+    }
     const send = role === "mobile" ? (r: http.ServerResponse, status: number, b: unknown) => sendJson(r, status, mobileView(p, b, mobileExclude)) : sendJson;
     const skip = role === "mobile" ? (x: string) => isPrivate(x, mobileExclude) : undefined;
 
@@ -233,7 +243,7 @@ export async function startServer(
           }
           return send(res, 200, { notes, pending, gone });
         }
-        case "/api/calendar": return send(res, 200, calendarRange(j, q.get("from"), q.get("to"), role === "mobile" ? mobileExclude : undefined));
+        case "/api/calendar": return send(res, 200, calendarRange(j, q.get("from"), q.get("to")));
         case "/api/databases": return send(res, 200, j.listDatabases({ skip }));
         case "/api/database": {
           const view = q.get("view");
@@ -318,7 +328,10 @@ export async function startServer(
         case "/api/task/status": {
           const st = str(body.status, "status") as TaskStatus;
           if (!["todo", "doing", "done", "dropped"].includes(st)) throw new HttpError(400, "Estado inválido");
-          await j.setTaskStatus(userPath(body.path), st);
+          const rel = userPath(body.path);
+          // Terminar un bloque es otra acción (/api/calendar/finish): este endpoint es solo de tareas.
+          if (j.index.getNote(rel)?.type === "block") throw new HttpError(400, "Una actividad de calendario no es una tarea");
+          await j.setTaskStatus(rel, st);
           return send(res, 200, { ok: true });
         }
         case "/api/calendar/create": {
@@ -329,17 +342,19 @@ export async function startServer(
             id: str(body.id, "id"), title: str(body.title, "title"), kind, start: str(body.start, "start"), end: str(body.end, "end"),
             taskPath: optional(body.taskPath), projectPath: optional(body.projectPath),
           };
-          if (role === "mobile" && createsPrivateLink(j, input, mobileExclude)) throw new HttpError(403, "Esa carpeta es privada y no se toca desde el móvil");
+          const denied = role === "mobile" ? mobileCreateDenied(j, input, mobileConfig, mobileExclude) : null;
+          if (denied === "private") throw new HttpError(403, "Esa carpeta es privada y no se toca desde el móvil");
+          if (denied === "taken") throw new VaultError("conflict", "El identificador ya corresponde a otra actividad");
           return send(res, 200, calendarDto(await j.calendar.create(input)));
         }
         case "/api/calendar/move": {
           const rel = userPath(body.path);
-          if (role === "mobile") assertMobileItem(j, rel, mobileExclude);
+          if (role === "mobile") assertMobileItem(j, rel);
           return send(res, 200, calendarDto(await j.calendar.move(rel, str(body.start, "start"), str(body.end, "end"), str(body.hash, "hash"))));
         }
         case "/api/calendar/finish": {
           const rel = userPath(body.path);
-          if (role === "mobile") assertMobileItem(j, rel, mobileExclude);
+          if (role === "mobile") assertMobileItem(j, rel);
           return send(res, 200, calendarDto(await j.calendar.finish(rel, str(body.hash, "hash"))));
         }
         case "/api/database/create": {

@@ -81,16 +81,6 @@ export function mobileView(route: string, v: unknown, exclude: string[]): unknow
   return clean(v, exclude);
 }
 
-/** Una actividad de calendario sale al móvil solo si ella, su tarea y su proyecto son visibles; una relación sin resolver podría apuntar a algo privado. */
-export function calendarVisible(
-  it: { path: string; task?: string; project?: string; taskPath: string | null; projectPath: string | null },
-  exclude: string[], resolve: (raw: string) => string | null,
-): boolean {
-  const refs = [it.task && resolve(it.task), it.project && resolve(it.project)];
-  if (refs.some((r) => r === null)) return false;
-  return ![it.path, it.taskPath, it.projectPath, ...refs].some((x) => x && isPrivate(x, exclude));
-}
-
 /** Eventos en vivo que le llegan al móvil: cambios de notas visibles; nada de escritorio, asistente ni rutas privadas. */
 export function mobileEvent(ev: { kind?: string; path?: unknown }, exclude: string[]): boolean {
   if (ev.kind === "navigate" || ev.kind?.startsWith("assistant")) return false;
