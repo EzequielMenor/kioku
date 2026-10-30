@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   addMinutes, countdown, dayTimeline, defaultSlot, filterItems, fittingTasks, formatDuration, freeMinutes, freeSummary, gapBlock,
   moveToDay, nextUp, nowMarker, occupancy, openGaps, overlapping, progress, projectLabel, projectOptions, shiftDays, shiftView,
-  OFFLINE_MESSAGE, UNCONFIRMED_MESSAGE, rangeLabel, rowTimes, stateGlyph, stateLabel, stateOf, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure,
+  OFFLINE_MESSAGE, UNCONFIRMED_MESSAGE, rangeLabel, rowTimes, stateGlyph, stateLabel, stateOf, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure, parseTime24, joinLocal, splitLocal,
 } from "../web/src/calendar-model.ts";
 import type { CalendarEntry, CalendarTask } from "../web/src/types.ts";
 
@@ -31,26 +31,59 @@ function task(over: Partial<CalendarTask> & { path: string }): CalendarTask {
 const rowText = (rows: ReturnType<typeof dayTimeline>) =>
   rows.map((r) => (r.type === "item" ? r.item.title : `libre ${r.gap.start.slice(11)}-${r.gap.end.slice(11)}`));
 
-test("semana: lunes a viernes; el fin de semana apunta a la semana que empieza", () => {
-  assert.deepEqual(weekDays("2026-10-28"), ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"]);
-  assert.equal(weekDays("2026-10-26")[0], "2026-10-26", "el lunes es su propio inicio");
-  assert.deepEqual(weekDays("2026-10-31"), ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"]);
-  assert.equal(weekDays("2026-11-01")[0], "2026-11-02");
+const WORK = { start: "lunes", weekend: false } as const;
+const SUN = { start: "domingo", weekend: true } as const;
+
+test("semana laboral (sin fin de semana): lunes a viernes; sábado y domingo apuntan a la semana que empieza", () => {
+  assert.deepEqual(weekDays("2026-10-28", WORK), ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"]);
+  assert.equal(weekDays("2026-10-26", WORK)[0], "2026-10-26", "el lunes es su propio inicio");
+  assert.deepEqual(weekDays("2026-10-31", WORK), ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"]);
+  assert.equal(weekDays("2026-11-01", WORK)[0], "2026-11-02");
+  assert.deepEqual(weekDays("2026-10-31", { start: "domingo", weekend: false })[0], "2026-11-02", "ocultar el fin de semana ignora el inicio de semana");
+});
+
+test("semana completa por defecto: siete días de lunes a domingo", () => {
+  assert.deepEqual(weekDays("2026-10-28"), ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]);
+  assert.equal(weekDays("2026-11-01")[0], "2026-10-26", "el domingo pertenece a la semana que termina");
+  assert.equal(weekDays("2026-10-26")[0], "2026-10-26");
+});
+
+test("semana que empieza en domingo: de domingo a sábado", () => {
+  assert.deepEqual(weekDays("2026-10-28", SUN), ["2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31"]);
+  assert.equal(weekDays("2026-11-01", SUN)[0], "2026-11-01", "el domingo es su propio inicio");
+  assert.equal(weekDays("2026-10-31", SUN)[0], "2026-10-25");
 });
 
 test("vista: rango, título y desplazamiento de Día (±1 día) y Semana (±7 días)", () => {
   assert.deepEqual(viewRange("dia", DAY), { from: DAY, to: DAY });
-  assert.deepEqual(viewRange("semana", DAY), { from: "2026-10-26", to: "2026-10-30" });
+  assert.deepEqual(viewRange("semana", DAY), { from: "2026-10-26", to: "2026-11-01" });
+  assert.deepEqual(viewRange("semana", DAY, WORK), { from: "2026-10-26", to: "2026-10-30" });
+  assert.deepEqual(viewRange("semana", DAY, SUN), { from: "2026-10-25", to: "2026-10-31" });
   assert.equal(shiftView("dia", DAY, 1), NEXT);
   assert.equal(shiftView("dia", DAY, -1), "2026-10-27");
   assert.equal(shiftView("semana", DAY, 1), "2026-11-04");
   assert.equal(shiftView("semana", "2026-10-26", -1), "2026-10-19");
   assert.equal(weekdayName(DAY), "miércoles");
   assert.equal(viewTitle("dia", DAY), "miércoles 28 de octubre");
-  assert.equal(viewTitle("semana", DAY), "Semana del 26 al 30 de octubre");
-  assert.equal(viewTitle("semana", "2026-10-29"), "Semana del 26 al 30 de octubre");
-  assert.equal(viewTitle("semana", "2026-11-04"), "Semana del 2 al 6 de noviembre");
-  assert.equal(viewTitle("semana", "2026-12-30"), "Semana del 28 de diciembre al 1 de enero", "una semana que cruza de mes");
+  assert.equal(viewTitle("semana", DAY, WORK), "Semana del 26 al 30 de octubre");
+  assert.equal(viewTitle("semana", DAY), "Semana del 26 de octubre al 1 de noviembre");
+  assert.equal(viewTitle("semana", "2026-11-04", WORK), "Semana del 2 al 6 de noviembre");
+  assert.equal(viewTitle("semana", "2026-12-30", WORK), "Semana del 28 de diciembre al 1 de enero", "una semana que cruza de mes");
+});
+
+test("hora en 24 h: se acepta H:mm o HH:mm y se normaliza; lo demás se rechaza", () => {
+  assert.equal(parseTime24("14:00"), "14:00");
+  assert.equal(parseTime24("9:05"), "09:05");
+  assert.equal(parseTime24(" 23:59 "), "23:59");
+  assert.equal(parseTime24("00:00"), "00:00");
+  for (const bad of ["24:00", "14:60", "2pm", "2:00 PM", "14", "", "14:5", "ab:cd"]) assert.equal(parseTime24(bad), null, bad);
+});
+
+test("fecha y hora locales: se parten y se unen sin perder el formato guardado", () => {
+  assert.deepEqual(splitLocal("2026-10-28T14:05"), { date: "2026-10-28", time: "14:05" });
+  assert.equal(joinLocal("2026-10-28", "9:05"), "2026-10-28T09:05");
+  assert.equal(joinLocal("2026-10-28", "25:00"), "2026-10-28T25:00", "una hora inválida se conserva para que validateTimes la rechace");
+  assert.equal(validateTimes(joinLocal("2026-10-28", "25:00"), "2026-10-28T26:00", new Date()).ok, false);
 });
 
 test("duración: minutos y horas legibles", () => {

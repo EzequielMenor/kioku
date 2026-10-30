@@ -4,6 +4,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 
 ## Sin publicar
 
+### Calendario
+- **Hora en 24 h y semana completa** (JARV-25). Los campos de inicio y fin separan fecha y hora (HH:mm), así que ya no aparece AM/PM. La vista Semana muestra de lunes a domingo; se puede ocultar el fin de semana y empezar la semana en domingo (se recuerda en el navegador).
+
 ### Despliegue
 - Añadida una configuración Docker Compose para probar Kioku localmente en macOS con Docker Desktop, y otra para un despliegue privado con Dokploy y Tailscale. Las guías están en [`docs/local-macos.md`](docs/local-macos.md) y [`docs/dokploy.md`](docs/dokploy.md).
 

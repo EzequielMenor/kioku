@@ -9,7 +9,7 @@ import { localDate } from "../../src/core/dates.ts";
 import {
   OFFLINE_MESSAGE, addMinutes, areaLabel, areaTextColor, countdown, dayTimeline, defaultSlot, durationOf, filterAreas, fittingTasks, formatDuration, freeMinutes, freeSummary, gapBlock,
   moveToDay, nextUp, nowMarker, occupancy, overlapping, progress, projectLabel, rangeLabel, rowTimes, shiftDays, shiftView, stateGlyph,
-  stateLabel, stateOf, validateArea, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure,
+  stateLabel, stateOf, validateArea, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure, joinLocal, parseTime24, splitLocal, type WeekPrefs,
   type AreaLabel, type Draft, type ProjectLabel, type Scope,
 } from "./calendar-model.ts";
 import type { AreaRow, CalendarEntry, CalendarResponse, CalendarTask, Gap } from "./types.ts";
@@ -111,7 +111,24 @@ function AreaSelect({ areas, value, onChange }: { areas: AreaRow[]; value: strin
 const Pill = ({ item }: { item: CalendarEntry }) => <span class={`cal-pill st-${item.state}`}><i aria-hidden="true">{stateGlyph(item.state)}</i> {stateLabel(item.state)}</span>;
 const KindTag = ({ item }: { item: CalendarEntry }) => <span class={`cal-kd ${item.kind}`}>{item.kind === "event" ? "◆ Evento" : "Bloque"}</span>;
 
-/** Inicio y fin escritos a mano (`datetime-local` usa el mismo formato local que guarda el calendario). */
+/** Fecha y hora siempre en 24 h: `datetime-local` pinta AM/PM según el idioma del navegador, así que la hora se escribe aparte (HH:mm). */
+function DateTime24({ label, value, onChange, inputRef }: { label: string; value: string; onChange(value: string): void; inputRef?: { current: HTMLInputElement | null } }) {
+  const { date, time } = splitLocal(value);
+  const [text, setText] = useState(time);
+  useEffect(() => { if (parseTime24(text) !== time && text !== time) setText(time); }, [time]);
+  const bad = text !== "" && parseTime24(text) === null;
+  return (
+    <fieldset class="cal-dt">
+      <legend>{label}</legend>
+      <input ref={inputRef} type="date" aria-label={`${label}: fecha`} value={date} onInput={(e) => onChange(joinLocal(e.currentTarget.value, text))} />
+      <input type="text" inputMode="numeric" autoComplete="off" size={5} maxLength={5} placeholder="HH:mm" aria-label={`${label}: hora en 24 h (HH:mm)`} aria-invalid={bad} value={text}
+        onInput={(e) => { setText(e.currentTarget.value); onChange(joinLocal(date, e.currentTarget.value)); }}
+        onBlur={() => { const t = parseTime24(text); if (t) setText(t); }} />
+    </fieldset>
+  );
+}
+
+/** Inicio y fin escritos a mano (fecha y hora en 24 h, el formato local que guarda el calendario). */
 function Reschedule({ item, items, now, onSave, onCancel }: { item: CalendarEntry; items: CalendarEntry[]; now: Date; onSave(start: string, end: string): Promise<boolean>; onCancel(): void }) {
   const [start, setStart] = useState(item.start);
   const [end, setEnd] = useState(item.end);
@@ -133,8 +150,8 @@ function Reschedule({ item, items, now, onSave, onCancel }: { item: CalendarEntr
   };
   return (
     <form class="cal-resched" onSubmit={(e) => void submit(e)}>
-      <label>Empieza <input ref={first} type="datetime-local" value={start} onInput={(e) => changeStart(e.currentTarget.value)} /></label>
-      <label>Termina <input type="datetime-local" value={end} onInput={(e) => setEnd(e.currentTarget.value)} /></label>
+      <DateTime24 label="Empieza" inputRef={first} value={start} onChange={changeStart} />
+      <DateTime24 label="Termina" value={end} onChange={setEnd} />
       {check.ok ? <p class="cal-note">Dura {formatDuration(check.minutes)}.</p> : <p class="cal-warn" role="alert">{check.error}</p>}
       {check.ok && check.past && <p class="cal-warn">△ Esa hora ya pasó. Puedes guardarla igualmente.</p>}
       {clash.length > 0 && <p class="cal-warn" role="status">△ Se cruza con {clash.map((c) => `«${c.title}» (${hm(c.start)}–${hm(c.end)})`).join(" y ")}. Puedes programarlo igual.</p>}
@@ -177,11 +194,13 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const online = useOnline();
-  const range = viewRange(scope, day);
+  const [week, setWeekRaw] = useState<WeekPrefs>(() => ({ start: lsGet("calendar.weekStart") === "domingo" ? "domingo" : "lunes", weekend: lsGet("calendar.weekend") !== "oculto" }));
+  const setWeek = (w: WeekPrefs) => { setWeekRaw(w); lsSet("calendar.weekStart", w.start); lsSet("calendar.weekend", w.weekend ? "visible" : "oculto"); };
+  const range = viewRange(scope, day, week);
   const { data, error, reload } = useApi<CalendarResponse>(`/api/calendar?from=${range.from}&to=${range.to}`, rev);
   const now = useClock(data?.now);
   const today = localDate(now);
-  const days = scope === "dia" ? [day] : weekDays(day);
+  const days = scope === "dia" ? [day] : weekDays(day, week);
   const items = (data?.items ?? []).map((i) => ({ ...i, state: stateOf(i, now) }));
   const tasks = data?.tasks ?? [];
   const areas = data?.areas ?? [];
@@ -279,12 +298,18 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
       <header class="page-head">
         <div>
           <h1 tabIndex={-1}>Calendario</h1>
-          <div class="muted small" aria-live="polite">{viewTitle(scope, day)}</div>
+          <div class="muted small" aria-live="polite">{viewTitle(scope, day, week)}</div>
         </div>
         <div class="row cal-tools">
           <div class="seg" role="group" aria-label="Alcance">
             {(["dia", "semana"] as const).map((s) => <button key={s} class={scope === s ? "on" : ""} aria-pressed={scope === s} onClick={() => setScope(s)}>{s === "dia" ? "Día" : "Semana"}</button>)}
           </div>
+          {scope === "semana" && (
+            <div class="cal-weekopts row" role="group" aria-label="Opciones de la semana">
+              <label><input type="checkbox" checked={week.weekend} onChange={(e) => setWeek({ ...week, weekend: e.currentTarget.checked })} /> Fin de semana</label>
+              <label>Empieza el <select value={week.start} disabled={!week.weekend} onChange={(e) => setWeek({ ...week, start: e.currentTarget.value === "domingo" ? "domingo" : "lunes" })}><option value="lunes">lunes</option><option value="domingo">domingo</option></select></label>
+            </div>
+          )}
           <div class="cal-step" role="group" aria-label="Moverse por el calendario">
             <button aria-label={scope === "dia" ? "Día anterior" : "Semana anterior"} onClick={() => setDay(shiftView(scope, day, -1))}>‹</button>
             <button onClick={() => setDay(today)}>Hoy</button>
@@ -331,7 +356,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
 
           {scope === "semana" && (
             <>
-              <div class="cal-wstrip" role="group" aria-label="Resumen de la semana">
+              <div class="cal-wstrip" role="group" aria-label="Resumen de la semana" style={{ "--cal-days": days.length }}>
                 {days.map((d) => {
                   const marker = nowMarker(d, now), free = d < today ? "Pasado" : `${formatDuration(freeMinutes(items, d, now))} libres`;
                   return (
@@ -613,8 +638,8 @@ function Compose({ initial, tasks, areas, items, now, onSubmit, onCancel }: {
         <label><input type="radio" name="kind" checked={d.kind === "event"} onChange={() => set({ kind: "event", taskPath: undefined })} /> Evento</label>
       </fieldset>
       <label>Título <input data-first class="wide-input" value={d.title} onInput={(e) => set({ title: e.currentTarget.value })} /></label>
-      <label>Empieza <input type="datetime-local" value={d.start} onInput={(e) => set({ start: e.currentTarget.value })} /></label>
-      <label>Termina <input type="datetime-local" value={d.end} onInput={(e) => { endEdited.current = true; set({ end: e.currentTarget.value }); }} /></label>
+      <DateTime24 label="Empieza" value={d.start} onChange={(start) => set({ start })} />
+      <DateTime24 label="Termina" value={d.end} onChange={(end) => { endEdited.current = true; set({ end }); }} />
       <AreaSelect areas={areas} value={d.areaPath ?? ""} onChange={(areaPath) => set({ areaPath })} />
       {d.kind === "block" && (
         <label>Tarea

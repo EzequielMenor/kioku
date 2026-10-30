@@ -31,32 +31,51 @@ export function addMinutes(minute: string, n: number): string {
 export const weekdayName = (day: string): string => WEEKDAYS[calendarDay(day).getDay()];
 const dayMonth = (day: string) => `${Number(day.slice(8))} de ${MONTHS[Number(day.slice(5, 7)) - 1]}`;
 
+/** Hora escrita a mano en 24 h («9:05» o «14:00»), normalizada a HH:mm; `null` si no es una hora válida. */
+export function parseTime24(text: string): string | null {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(text.trim());
+  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
+}
+
+export const splitLocal = (minute: string): { date: string; time: string } => ({ date: dateOf(minute), time: timeOf(minute) });
+
+/** Une fecha y hora en el formato guardado. Una hora inválida se conserva tal cual: `validateTimes` la rechaza y el campo avisa. */
+export const joinLocal = (date: string, time: string): string => `${date}T${parseTime24(time) ?? time}`;
+
 export function formatDuration(min: number): string {
   if (min < 60) return `${min} min`;
   const h = Math.floor(min / 60), r = min % 60;
   return r ? `${h} h ${r} min` : `${h} h`;
 }
 
-// ───────────── Vista: día o semana laboral ─────────────
+// ───────────── Vista: día o semana ─────────────
 
-/** Lunes a viernes de la semana de `day`; un sábado o domingo apunta a la semana que empieza. */
-export function weekDays(day: string): string[] {
+/** `weekend: false` oculta sábado y domingo (la semana pasa a ser de lunes a viernes, sea cual sea `start`). */
+export interface WeekPrefs { start: "lunes" | "domingo"; weekend: boolean }
+export const DEFAULT_WEEK: WeekPrefs = { start: "lunes", weekend: true };
+
+/** Días de la semana de `day`. Con el fin de semana oculto, un sábado o domingo apunta a la semana que empieza. */
+export function weekDays(day: string, prefs: WeekPrefs = DEFAULT_WEEK): string[] {
   const dow = calendarDay(day).getDay();
-  const monday = dow === 6 ? addDays(day, 2) : dow === 0 ? addDays(day, 1) : addDays(day, 1 - dow);
-  return [0, 1, 2, 3, 4].map((n) => addDays(monday, n));
+  if (!prefs.weekend) {
+    const monday = dow === 6 ? addDays(day, 2) : dow === 0 ? addDays(day, 1) : addDays(day, 1 - dow);
+    return [0, 1, 2, 3, 4].map((n) => addDays(monday, n));
+  }
+  const first = prefs.start === "domingo" ? addDays(day, -dow) : addDays(day, -((dow + 6) % 7));
+  return [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(first, n));
 }
 
-export function viewRange(scope: Scope, day: string): { from: string; to: string } {
+export function viewRange(scope: Scope, day: string, prefs: WeekPrefs = DEFAULT_WEEK): { from: string; to: string } {
   if (scope === "dia") return { from: day, to: day };
-  const days = weekDays(day);
-  return { from: days[0], to: days[4] };
+  const days = weekDays(day, prefs);
+  return { from: days[0], to: days[days.length - 1] };
 }
 
 export const shiftView = (scope: Scope, day: string, dir: 1 | -1): string => addDays(day, dir * (scope === "dia" ? 1 : 7));
 
-export function viewTitle(scope: Scope, day: string): string {
+export function viewTitle(scope: Scope, day: string, prefs: WeekPrefs = DEFAULT_WEEK): string {
   if (scope === "dia") return `${weekdayName(day)} ${dayMonth(day)}`;
-  const { from, to } = viewRange("semana", day);
+  const { from, to } = viewRange("semana", day, prefs);
   const sameMonth = from.slice(5, 7) === to.slice(5, 7);
   return `Semana del ${sameMonth ? Number(from.slice(8)) : dayMonth(from)} al ${dayMonth(to)}`;
 }

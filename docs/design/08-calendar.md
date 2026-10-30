@@ -31,13 +31,14 @@ Se exploraron tres propuestas con los mismos datos ficticios (miércoles 10:20):
 1. **Lista ordenada de actividades** con hora, actividad, área (letra + nombre; el color nunca es el único indicador), duración y cuenta regresiva grande («40 min restantes», «70 min para empezar»).
 2. **El bloque en curso es la fila rellena de índigo** con la pastilla «En curso», su progreso y los botones «Terminar bloque» y «Reprogramar» debajo. No hay tarjeta aparte.
 3. **Aviso de una línea «Siguiente»** sobre la lista, con el tiempo libre que hay antes.
-4. **Día / Semana.** Semana muestra los cinco días en orden, una tira con la ocupación de cada día (07:00–22:00) y encabezados con el tiempo libre. Mover entre días: arrastrar una fila sobre un día, o «Un día antes / después» (alternativa táctil y accesible).
+4. **Día / Semana.** Semana muestra los siete días (L–D) en orden —se puede ocultar el fin de semana, y la semana puede empezar en lunes o domingo; la elección se recuerda en el navegador—, una tira con la ocupación de cada día (07:00–22:00) y encabezados con el tiempo libre. Mover entre días: arrastrar una fila sobre un día, o «Un día antes / después» (alternativa táctil y accesible).
 5. **Los huecos ayudan a decidir, sin presión.** «Usar este hueco» lista las tareas pendientes cuya estimación cabe; «Dejarlo libre» es una respuesta válida («está bien así»). No se rellena nada automáticamente.
 6. **Filtro por área** (letra + nombre), incluida «Sin área».
 7. **Lo vencido no se mueve solo.** Un bloque pasado sin terminar se muestra como «Sin terminar» (trazo punteado, nunca rojo) y se ofrece «Reprogramar». Idea tomada de la crítica a Flighty por marcar en rojo cualquier retraso.
 8. **Estados no dependen del color:** pastilla con glifo y texto (Hecho, En curso, Sin terminar, Ya pasó, Pendiente); eventos con ◆ y barra hueca.
 9. **Móvil con su propia adaptación:** filas de dos líneas con la cuenta regresiva a la derecha, detalle como hoja inferior, tira semanal reducida, barra inferior de secciones.
-10. **Identidad:** tinta y papel, índigo 藍, Shippori Mincho en títulos, cifras tabulares, bordes finos y esquinas de 4–8 px, sello 記 solo en la marca.
+10. **Hora en 24 h en todas partes** (14:00, nunca AM/PM): los campos de inicio y fin separan la fecha y la hora escrita como HH:mm, porque `datetime-local` muestra AM/PM según el idioma del navegador.
+11. **Identidad:** tinta y papel, índigo 藍, Shippori Mincho en títulos, cifras tabulares, bordes finos y esquinas de 4–8 px, sello 記 solo en la marca.
 
 Descartado a propósito: numerar cada actividad al estilo del metro de Tokio (letra + número; ver [Station numbering](https://en.wikipedia.org/wiki/Station_numbering)). Se mantiene una letra o símbolo por área, sin volverse críptica.
 

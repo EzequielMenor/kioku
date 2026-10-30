@@ -30,7 +30,7 @@
 .cal-pill.st-active { color: var(--accent); }
 
 /* Tira de la semana */
-.cal-wstrip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.cal-wstrip { display: grid; grid-template-columns: repeat(var(--cal-days, 5), minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
 .cal-wsd { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); text-align: left; min-width: 0; }
 .cal-wsd:hover { background: var(--hover); }
 .cal-wsd.today { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
@@ -151,3 +151,11 @@ a.cal-ttl:hover { color: var(--accent); }
   .cal-acts button { flex: 1 1 auto; }
   .cal-alert { flex-wrap: wrap; }
 }
+
+/* Fecha y hora en 24 h */
+.cal-dt { display: flex; align-items: center; gap: 8px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.cal-dt legend { float: left; padding: 0; margin-right: 8px; }
+.cal-dt input[type="text"] { width: 5.5ch; font-variant-numeric: tabular-nums; text-align: center; }
+.cal-dt input[aria-invalid="true"] { border-color: var(--accent); }
+.cal-weekopts { gap: 10px; align-items: center; font-size: 13px; }
+@media (max-width: 720px) { .cal-wstrip { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); } }
