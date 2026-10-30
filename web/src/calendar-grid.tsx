@@ -1,0 +1,130 @@
+// Cuadrícula horaria del día y línea de creación rápida. La lógica (posiciones, ajuste a 15 min) vive en calendar-grid.ts.
+import { useEffect, useRef, useState } from "preact/hooks";
+import { parseQuickAdd } from "../../src/core/quick-add.ts";
+import { areaLabel, formatDuration } from "./calendar-model.ts";
+import { createRange, gridWindow, layoutDay, minuteToY, yToMinute } from "./calendar-grid.ts";
+import type { CalendarEntry } from "./types.ts";
+
+/** Píxeles por minuto: 15 min = 18 px, el mínimo cómodo para un bloque con una línea de texto. */
+export const PX = 1.2;
+const pad = (n: number) => String(n).padStart(2, "0");
+const hm = (minute: string) => minute.slice(11);
+
+interface Draft { a: number; b: number; held: boolean; title: string }
+
+export function DayGrid({ day, items, now, today, onOpen, onCreate }: {
+  day: string; items: CalendarEntry[]; now: Date; today: string;
+  onOpen(path: string): void; onCreate(title: string, start: string, end: string): Promise<boolean>;
+}) {
+  const win = gridWindow(items, day);
+  const placed = layoutDay(items, day, win);
+  const body = useRef<HTMLDivElement>(null);
+  const titleInput = useRef<HTMLInputElement>(null);
+  const gesture = useRef<{ pointer: number; a: number; b: number } | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [busy, setBusy] = useState(false);
+  const hours = Array.from({ length: (win.to - win.from) / 60 + 1 }, (_, i) => win.from / 60 + i);
+  const nowMin = day === today ? now.getHours() * 60 + now.getMinutes() : null;
+  const minuteAt = (e: PointerEvent) => yToMinute(e.clientY - body.current!.getBoundingClientRect().top, PX, win);
+
+  useEffect(() => { gesture.current = null; setDraft(null); }, [day]);
+  // `autoFocus` solo vale al montar la página: el campo aparece al soltar el puntero, así que se enfoca a mano.
+  const typing = draft !== null && !draft.held;
+  useEffect(() => { if (typing) titleInput.current?.focus(); }, [typing]);
+
+  const down = (e: PointerEvent) => {
+    if (e.button !== 0 || busy) return;
+    const m = minuteAt(e);
+    body.current!.setPointerCapture(e.pointerId);
+    gesture.current = { pointer: e.pointerId, a: m, b: m };
+    setDraft({ a: m, b: m, held: true, title: "" });
+  };
+  const move = (e: PointerEvent) => {
+    const g = gesture.current;
+    if (!g || g.pointer !== e.pointerId) return;
+    g.b = minuteAt(e);
+    setDraft({ a: g.a, b: g.b, held: true, title: "" });
+  };
+  const up = (e: PointerEvent) => {
+    const g = gesture.current;
+    if (!g || g.pointer !== e.pointerId) return;
+    g.b = minuteAt(e);
+    gesture.current = null;
+    setDraft({ a: g.a, b: g.b, held: false, title: "" });
+  };
+  const cancel = (e: PointerEvent) => { if (gesture.current?.pointer === e.pointerId) { gesture.current = null; setDraft(null); } };
+
+  const range = draft ? createRange(day, draft.a, draft.b) : null;
+  const rangeMinute = (value: string) => value.slice(0, 10) === day ? Number(value.slice(11, 13)) * 60 + Number(value.slice(14, 16)) : 1440;
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    if (!draft || !range || !draft.title.trim() || busy) return;
+    setBusy(true);
+    const ok = await onCreate(draft.title.trim(), range.start, range.end);
+    setBusy(false);
+    if (ok) setDraft(null);
+  };
+
+  return (
+    <div class="cal-grid" style={{ height: `${(win.to - win.from) * PX}px` }}>
+      <div class="cal-gutter" aria-hidden="true">
+        {hours.slice(0, -1).map((h) => <span key={h} style={{ top: `${minuteToY(h * 60, PX, win)}px` }}>{pad(h % 24)}:00</span>)}
+      </div>
+      <div ref={body} class="cal-gbody" role="group" aria-label="Horas del día: arrastra en un hueco para crear una actividad"
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>
+        {hours.map((h) => <i key={h} class="cal-hline" style={{ top: `${minuteToY(h * 60, PX, win)}px` }} />)}
+        {nowMin !== null && nowMin >= win.from && nowMin <= win.to && <i class="cal-gnow" style={{ top: `${minuteToY(nowMin, PX, win)}px` }} />}
+        {placed.map((p) => {
+          const item = items.find((i) => i.path === p.path)!;
+          const area = areaLabel(item);
+          return (
+            <button key={p.path} type="button" class={`cal-ev st-${item.state} ${item.kind} ${p.continued ? "carried" : ""}`} aria-haspopup="dialog"
+              style={{ top: `${p.top * PX}px`, height: `${p.height * PX - 2}px`, left: `calc(${(p.col / p.cols) * 100}% + 2px)`, width: `calc(${100 / p.cols}% - 4px)`, borderLeftColor: area.color ?? "var(--line2)" }}
+              onPointerDown={(e) => e.stopPropagation()} onClick={() => onOpen(p.path)}>
+              <b>{item.kind === "event" ? "◆ " : ""}{item.title}</b>
+              <small>{hm(item.start)}–{hm(item.end)} · {formatDuration(Math.round((p.height)))}</small>
+            </button>
+          );
+        })}
+        {draft && range && (
+          <form class="cal-ev draft" onSubmit={(e) => void submit(e)} onPointerDown={(e) => e.stopPropagation()}
+            style={{ top: `${(rangeMinute(range.start) - win.from) * PX}px`, height: `${(rangeMinute(range.end) - rangeMinute(range.start)) * PX - 2}px` }}>
+            {!draft.held && (
+              <input ref={titleInput} aria-label={`Título de la nueva actividad, ${hm(range.start)} a ${hm(range.end)}`} placeholder={`${hm(range.start)}–${hm(range.end)} · Título y Enter`}
+                value={draft.title} disabled={busy} onInput={(e) => setDraft({ ...draft, title: e.currentTarget.value })}
+                onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setDraft(null); } }}
+                onBlur={() => { if (!draft.title.trim() && !busy && !gesture.current) setDraft(null); }} />
+            )}
+            {draft.held && <small>{hm(range.start)}–{hm(range.end)}</small>}
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Una línea con texto natural: «gym mañana 18-19». Muestra lo que entendió antes de crear. */
+export function QuickAdd({ now, onCreate }: { now: Date; onCreate(title: string, start: string, end: string): Promise<boolean> }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const parsed = text.trim() ? parseQuickAdd(text, now) : null;
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    if (!parsed?.ok || busy) return;
+    setBusy(true);
+    const ok = await onCreate(parsed.title, parsed.start, parsed.end);
+    setBusy(false);
+    if (ok) setText("");
+  };
+  return (
+    <form class="cal-quick" onSubmit={(e) => void submit(e)}>
+      <label>
+        <span class="cal-eyebrow">Añadir rápido</span>
+        <input type="text" value={text} disabled={busy} placeholder="gym mañana 18-19" autoComplete="off" onInput={(e) => setText(e.currentTarget.value)} />
+      </label>
+      <p class="cal-note" role="status" aria-live="polite">
+        {!parsed ? "Escribe qué, cuándo y a qué hora; Enter crea un evento." : parsed.ok ? `◆ ${parsed.title} · ${parsed.start.slice(0, 10)} · ${hm(parsed.start)}–${hm(parsed.end)}` : parsed.error}
+      </p>
+    </form>
+  );
+}

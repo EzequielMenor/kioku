@@ -13,7 +13,7 @@ S6. User decision on surface: "Cuadrícula horaria en Día" (time grid in the Da
 T1 | S3,S4 | inline | done | Core + API: update (title, kind, start, end), delete to trash, restore from trash; new routes stay desktop-only (mobile 403, JARV-22). RED 2+1 failing then GREEN; suite 342/342, typecheck GREEN. Risk: item 1 (deleting stored data; recoverable via trash+restore).
 T2 | S2 | inline | done | Pure parser src/core/quick-add.ts (hoy/mañana/weekday/ISO/d/m/«5 de noviembre», ranges, single time + duration, clear errors). RED module-not-found then 4/4 GREEN, typecheck GREEN. Risk: none.
 T3 | S1,S4,S6 | inline | done | web/src/calendar-grid.ts pure model (window, overlap columns, midnight clipping, 15-min snapping, create/move/resize ranges). RED module-not-found then 8/8 GREEN, typecheck GREEN. Risk: none.
-T4 | S1,S2,S6 | inline | pending | Day time grid UI + create by click/drag with title+Enter + one-line quick add.
+T4 | S1,S2,S6 | delegated (context backstop) + parent Chromium check | done | DayGrid + QuickAdd wired in Day scope with Cuadrícula/Lista toggle. Chromium (playwright, temp vault) 15/15: drag creates snapped event file, click = 60 min draft, Esc cancels, quick add «gym mañana 18-19» interprets and creates, invalid line creates nothing, list/week unchanged, 390px no overflow, zero console errors. Parent fixed draft focus (autoFocus does not fire on late mount). Suite 354/354, typecheck, build GREEN. Risk: none.
 T5 | S3,S4 | inline | pending | Edit panel in place, move/resize by pointer, duplicate, delete with undo; docs/changelog/08-calendar.md; Chromium check.
 
 ## Log

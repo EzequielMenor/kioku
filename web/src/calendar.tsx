@@ -3,6 +3,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import "./calendar.css";
+import { DayGrid, QuickAdd } from "./calendar-grid.tsx";
 import { api, lsGet, lsSet } from "./api.ts";
 import { useApi } from "./hooks.ts";
 import { localDate } from "../../src/core/dates.ts";
@@ -186,6 +187,8 @@ function LiveControls({ item, now, onFinish, onEdit }: { item: CalendarEntry; no
 export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; say: Say }) {
   const [scope, setScopeRaw] = useState<Scope>(() => (lsGet("calendar.scope") === "semana" ? "semana" : "dia"));
   const [day, setDay] = useState(() => localDate(new Date()));
+  const [dayView, setDayViewRaw] = useState<"grid" | "list">(() => lsGet("calendar.dayView") === "list" ? "list" : "grid");
+  const setDayView = (view: "grid" | "list") => { setDayViewRaw(view); lsSet("calendar.dayView", view); };
   const [areaFilter, setAreaFilter] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -304,6 +307,9 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
           <div class="seg" role="group" aria-label="Alcance">
             {(["dia", "semana"] as const).map((s) => <button key={s} class={scope === s ? "on" : ""} aria-pressed={scope === s} onClick={() => setScope(s)}>{s === "dia" ? "Día" : "Semana"}</button>)}
           </div>
+          {scope === "dia" && <div class="seg" role="group" aria-label="Vista del día">
+            {(["grid", "list"] as const).map((view) => <button key={view} class={dayView === view ? "on" : ""} aria-pressed={dayView === view} onClick={() => setDayView(view)}>{view === "grid" ? "Cuadrícula" : "Lista"}</button>)}
+          </div>}
           {scope === "semana" && (
             <div class="cal-weekopts row" role="group" aria-label="Opciones de la semana">
               <label><input type="checkbox" checked={week.weekend} onChange={(e) => setWeek({ ...week, weekend: e.currentTarget.checked })} /> Fin de semana</label>
@@ -376,7 +382,8 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
           )}
           {scope === "dia" && <p class="cal-free">{freeSummary(items, day, now)} <span class="muted">No hace falta llenar los huecos.</span></p>}
 
-          <section class="cal-board" aria-label={scope === "dia" ? "Actividades del día en orden" : "Actividades de la semana en orden"}>
+          <QuickAdd now={now} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} />
+          {scope === "dia" && dayView === "grid" ? <DayGrid day={day} items={shown} now={now} today={today} onOpen={(path) => setPanel({ kind: "detail", path })} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} /> : <section class="cal-board" aria-label={scope === "dia" ? "Actividades del día en orden" : "Actividades de la semana en orden"}>
             {days.map((d) => {
               const rows = dayTimeline(items, shown, d, now);
               return (
@@ -409,7 +416,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
                 </div>
               );
             })}
-          </section>
+          </section>}
         </>
       )}
 
