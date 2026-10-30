@@ -1,0 +1,39 @@
+services:
+  tailscale:
+    image: ${TAILSCALE_IMAGE:?Set TAILSCALE_IMAGE to a tested tailscale/tailscale version or digest}
+    hostname: kioku
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_AUTH_ONCE: "true"
+      TS_HOSTNAME: ${TS_HOSTNAME:-kioku}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    labels:
+      traefik.enable: "false"
+    restart: unless-stopped
+
+  kioku:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    environment:
+      KIOKU_HOME: /data
+      KIOKU_PORT: "47800"
+      KIOKU_ALLOWED_HOSTS: ${KIOKU_ALLOWED_HOSTS:?Set the exact Tailscale DNS hostname without scheme or slash}
+      KIOKU_PUBLIC_HOST: ${KIOKU_ALLOWED_HOSTS:?Set the exact Tailscale DNS hostname without scheme or slash}
+    command: ["node", "src/cli/main.ts", "daemon"]
+    volumes:
+      - kioku-data:/data
+    labels:
+      traefik.enable: "false"
+    restart: unless-stopped
+
+volumes:
+  kioku-data:
+  tailscale-state:
