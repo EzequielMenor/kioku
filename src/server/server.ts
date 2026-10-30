@@ -13,7 +13,7 @@ import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore } from "../assistant/undo.ts";
-import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobileCreateDenied } from "./calendar.ts";
+import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobileAreaCreateDenied, mobileCreateDenied } from "./calendar.ts";
 import { OpsLedger, validOp } from "./ops.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
 import { mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
@@ -181,7 +181,7 @@ export async function startServer(
     // Lo privado no existe para el móvil: al leerlo, 404; al escribirlo, 403. Y lo que sale de cualquier lectura va filtrado.
     if (role === "mobile" && touchesPrivate([q, body], mobileExclude)) {
       // Mover o terminar una actividad oculta responde como si no existiera, igual que una lectura.
-      const absent = m === "GET" || p === "/api/calendar/move" || p === "/api/calendar/finish";
+      const absent = m === "GET" || p === "/api/calendar/move" || p === "/api/calendar/finish" || p === "/api/calendar/area";
       throw new HttpError(absent ? 404 : 403, absent ? "No existe" : "Esa carpeta es privada y no se toca desde el móvil");
     }
     const send = role === "mobile" ? (r: http.ServerResponse, status: number, b: unknown) => sendJson(r, status, mobileView(p, b, mobileExclude)) : sendJson;
@@ -244,6 +244,7 @@ export async function startServer(
           return send(res, 200, { notes, pending, gone });
         }
         case "/api/calendar": return send(res, 200, calendarRange(j, q.get("from"), q.get("to")));
+        case "/api/calendar/areas": return send(res, 200, j.areas.list());
         case "/api/databases": return send(res, 200, j.listDatabases({ skip }));
         case "/api/database": {
           const view = q.get("view");
@@ -330,7 +331,9 @@ export async function startServer(
           if (!["todo", "doing", "done", "dropped"].includes(st)) throw new HttpError(400, "Estado inválido");
           const rel = userPath(body.path);
           // Terminar un bloque es otra acción (/api/calendar/finish): este endpoint es solo de tareas.
-          if (j.index.getNote(rel)?.type === "block") throw new HttpError(400, "Una actividad de calendario no es una tarea");
+          const kind = j.index.getNote(rel)?.type;
+          if (kind === "block") throw new HttpError(400, "Una actividad de calendario no es una tarea");
+          if (kind === "area") throw new HttpError(400, "Un área no es una tarea");
           await j.setTaskStatus(rel, st);
           return send(res, 200, { ok: true });
         }
@@ -340,7 +343,7 @@ export async function startServer(
           if (kind !== "block" && kind !== "event") throw new HttpError(400, "Tipo de actividad inválido");
           const input: CalendarInput = {
             id: str(body.id, "id"), title: str(body.title, "title"), kind, start: str(body.start, "start"), end: str(body.end, "end"),
-            taskPath: optional(body.taskPath), projectPath: optional(body.projectPath),
+            taskPath: optional(body.taskPath), projectPath: optional(body.projectPath), areaPath: optional(body.areaPath),
           };
           const denied = role === "mobile" ? mobileCreateDenied(j, input, mobileConfig, mobileExclude) : null;
           if (denied === "private") throw new HttpError(403, "Esa carpeta es privada y no se toca desde el móvil");
@@ -356,6 +359,19 @@ export async function startServer(
           const rel = userPath(body.path);
           if (role === "mobile") assertMobileItem(j, rel);
           return send(res, 200, calendarDto(await j.calendar.finish(rel, str(body.hash, "hash"))));
+        }
+        case "/api/calendar/areas/create": {
+          const id = str(body.id, "id");
+          if (role === "mobile" && mobileAreaCreateDenied(id, mobileConfig)) throw new HttpError(403, "Esa carpeta es privada y no se toca desde el móvil");
+          return send(res, 200, await j.areas.create({ id, title: body.title as string, color: body.color as string }));
+        }
+        case "/api/calendar/areas/update":
+          return send(res, 200, await j.areas.update(userPath(body.path), body.title as string, body.color as string, str(body.hash, "hash")));
+        case "/api/calendar/area": {
+          const rel = userPath(body.path);
+          if (role === "mobile") assertMobileItem(j, rel);
+          const areaPath = body.areaPath === null ? null : userPath(body.areaPath);
+          return send(res, 200, calendarDto(await j.calendar.setArea(rel, areaPath, str(body.hash, "hash"))));
         }
         case "/api/database/create": {
           const n = await j.createDatabase({ name: str(body.name, "name"), template: body.template as never });

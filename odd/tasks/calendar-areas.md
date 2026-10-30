@@ -1,0 +1,23 @@
+# Áreas del calendario
+Objetivo: líneas por área vital con nombre y color, independientes de los proyectos. Rama: `feature/calendar`.
+Entrega: cadena sobre rama de funcionalidad (decisión vigente), solo commits locales. Pruebas: `npm test`, `npm run typecheck`, `npm run build:web`, Chromium.
+
+## Specs
+S1. Pedido original: "vale me gusta bastante, lo uncio que nos ha faltado lo de las \"lineas\" de tren sbs mas que sean proyectso sino q sean areas sbs cada area pues ns JW, estudio trabajo ocio y cosas asi son areas, son las lineas del tren sbs y eso deberiamos hacerlo para poder diferenciar facilmente visualmente por colores pues en cada area q esta sbs el bloque o el evento". Las áreas/líneas son independientes de los proyectos; ejemplos ilustrativos, no lista cerrada.
+S2. Decisión: "Áreas editables con nombre y color (recomendado)". Crear y editar nombre/color desde Calendario; asignar o cambiar el área de bloques y eventos; reflejar nombre/color en etiquetas, filas y ocupación semanal, y filtrar por área.
+S3. Restricción vigente: "de momento lo del calendario solo". Mantener la implementación en línea; no integrar cambios offline pendientes ni ampliar captura/asistente. Las actividades existentes sin área conservan su contenido y aparecen como «Sin área»; no inferir áreas de proyectos.
+S4. Preferencia de comunicación: "no me escribas nunca mas en ingles porfa para nada". Comunicaciones y textos nuevos de UI/documentación en español, siguiendo la convención del proyecto.
+
+## Tasks
+A1 | S1-S3 | delegado (backstop de contexto ya activado) | done | Áreas Markdown, asociación opcional y API privada; RED módulo/rutas, GREEN330/330 suite,74 enfocados,typecheck; padre22 enfocados+typecheck+diff-check GREEN. Riesgos2/3; commit registrado al cerrar unidad.
+A2 | S1-S4 | delegado (backstop; depende de A1) | in_progress | Gestión de áreas, selector en crear/detalle, colores y filtro en Día/Semana/móvil; pruebas y documentación; commit pendiente.
+A3 | S1-S4 | padre + verificador independiente (riesgos2/3) | pending | Suite/typecheck/build, Chromium con asignación/renombrado/color/filtros y regresión de privacidad; cierre; commit pendiente.
+
+## Log
+L1. Pedido original: "vale me gusta bastante, lo uncio que nos ha faltado lo de las \"lineas\" de tren sbs mas que sean proyectso sino q sean areas sbs cada area pues ns JW, estudio trabajo ocio y cosas asi son areas, son las lineas del tren sbs y eso deberiamos hacerlo para poder diferenciar facilmente visualmente por colores pues en cada area q esta sbs el bloque o el evento".
+L2. Usuario eligió "Áreas editables con nombre y color (recomendado)". Se explicó que serán independientes de proyectos y que actividades previas seguirán «Sin área» hasta asignarlas. No crear ejemplos automáticamente ni modificar datos reales.
+L3. Base verificada c8fcee0. Checkout original sigue con cambios ajenos de móvil/offline; trabajar únicamente en .superpowers/worktrees/calendar. ProjectOS next_work sigue no disponible en herramientas expuestas. Reutilizar la estrategia de entrega elegida (cadena sobre rama de funcionalidad), no publicar.
+L4. Decisión de implementación: una nota Markdown por área en Areas/ con identificador/ruta estable y nombre/color editables; asociación opcional area en frontmatter de actividades. Sin migración de notas ni cambio del esquema SQLite; índices derivados. No borrar áreas (no pedido), no heredar de proyectos/tareas.
+L5. Previsión:800–1400 líneas nuevas/modificadas; unidades coherentes con pruebas/docs, sin comprimir para ajustarse al orientativo400. Verificación independiente final por privacidad y código compartido. Se mantiene la limitación de arrastre nativo sin verificar aceptada en S5 de odd/tasks/calendar.md; no nuevos intentos de arrastre.
+L6. A1 delegado a mvuwunqs-9-mijt (backend/persistencia/API/pruebas). Contrato propuesto: GET calendar/areas, POST calendar/areas/create y update, POST calendar/area para asignar/quitar en actividad; areaPath opcional al crear. El worker devolverá el contrato exacto para A2. No cambios de UI en paralelo porque depende de A1.
+L7. A1 entregado:330 tests sin omisiones,typecheck GREEN; padre22 pruebas y typecheck GREEN. GET calendar/areas y calendar.range.areas devuelven AreaRow{path,title,color,hash}; POST areas/create,areas/update y calendar/area asignan/quitan por hash; calendar/create admite areaPath. DTO área siempre explícita null/string (tipo web provisionalmente opcional hasta actualizar fixtures en A2). Diferencial34 peticiones antiguas sin diferencias tras normalizar campos volátiles y nuevos null. Sin build web en A1: se ejecutará con A2/A3.

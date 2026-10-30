@@ -65,8 +65,10 @@ Coherente con la bóveda en Markdown como fuente de verdad y SQLite como índice
   - `kind`: `block` | `event`
   - `start`, `end`: fecha y hora locales (`YYYY-MM-DDTHH:mm`)
   - `task`: enlace `[[…]]` opcional (solo bloques)
-  - `project`: clave de proyecto o área, opcional
+  - `project`: enlace `[[…]]` a un proyecto, opcional
+  - `area`: enlace `[[Areas/<id>]]` a un área, opcional (bloques y eventos); independiente del proyecto y de la tarea
   - `done_at`: instante en que se terminó el bloque (solo bloques)
+- **Áreas** («líneas»): una nota Markdown por área en `Areas/<id>.md` con `type: area`, `title` y `color` (`#RRGGBB`, se guarda en minúsculas). La ruta es el identificador estable: renombrar o recolorear solo cambia esa nota y todas las actividades que la enlazan lo reflejan tras reindexar. Son independientes de los proyectos; Kioku no crea áreas de ejemplo ni las infiere (JW, Estudio, Trabajo u Ocio son ejemplos del usuario). Una actividad sin `area` no se reescribe nunca hasta que se le asigna una; se muestra como «Sin área». Si el área se borra o su color deja de ser válido, la actividad sigue y se lee sin área. Sin migración de esquema: `NoteType` gana `area` y el índice sigue derivado de `notes.fm_json`.
 - Tareas: nuevo campo opcional `estimate` (minutos) además de `due`.
 - Índice: lectura derivada de `notes.fm_json` mediante `noteRows()`, sin tabla nueva ni migración SQLite. Reindexar reconstruye las actividades desde Markdown.
 - Reglas: terminar un bloque nunca cambia `status` de la tarea; completar la tarea nunca toca sus bloques; reprogramar solo cambia `start` y `end`; nada se mueve automáticamente.
@@ -79,15 +81,21 @@ Solo con el daemon conectado; no hay cola sin conexión para el calendario. Toda
 | Ruta | Cuerpo / parámetros | Respuesta |
 |---|---|---|
 | `GET /api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` | Fechas locales, ambas **inclusivas**; máximo 367 días. | `{ items, tasks, invalid, now }` |
-| `POST /api/calendar/create` | `{ id, title, kind, start, end, taskPath?, projectPath? }` (`id` de 8–64 caracteres, `[a-zA-Z0-9-]`). Reintentar con el mismo contenido devuelve la misma actividad. | La actividad |
+| `POST /api/calendar/create` | `{ id, title, kind, start, end, taskPath?, projectPath?, areaPath? }` (`id` de 8–64 caracteres, `[a-zA-Z0-9-]`). Reintentar con el mismo contenido devuelve la misma actividad. | La actividad |
 | `POST /api/calendar/move` | `{ path, start, end, hash }` | La actividad |
 | `POST /api/calendar/finish` | `{ path, hash }` | La actividad |
+| `GET /api/calendar/areas` | — | `AreaRow[]` = `{ path, title, color, hash }[]`, ordenadas por título |
+| `POST /api/calendar/areas/create` | `{ id, title, color }` (`id` como arriba; `title` de 1–60 caracteres en una línea; `color` `#RRGGBB`). Mismo `id` y contenido: idempotente; otro contenido: `409`. | `AreaRow` |
+| `POST /api/calendar/areas/update` | `{ path, title, color, hash }` | `AreaRow` |
+| `POST /api/calendar/area` | `{ path, areaPath: string \| null, hash }`: asigna, cambia o quita (`null`) el área de un bloque o evento existente. Mismo área: no escribe. | La actividad |
 
-- Cada actividad lleva `path`, `title`, `kind`, `start`, `end`, `hash`, `state`, `taskPath`, `projectPath`, `projectTitle` y, si se terminó, `done_at`. Las relaciones crudas (`task`, `project`) no salen en la API.
+- `GET /api/calendar` añade `areas: AreaRow[]` (las mismas de `/api/calendar/areas`) para que la UI pinte etiquetas y filtros con una sola lectura; el resto de campos no cambia.
+- Cada actividad lleva `path`, `title`, `kind`, `start`, `end`, `hash`, `state`, `taskPath`, `projectPath`, `projectTitle`, `areaPath`, `areaTitle`, `areaColor` (los tres `null` si no tiene área o ya no es válida) y, si se terminó, `done_at`. Las relaciones crudas (`task`, `project`, `area`) no salen en la API. `/api/task/status` rechaza (`400`) bloques y áreas: no son tareas.
 - Mover y terminar exigen el `hash` leído: si la actividad cambió, `409` y nada se escribe. Terminar un bloque nunca completa su tarea ni a la inversa; nada se reprograma solo.
-- Errores como en el resto de la API (`{ error, code? }`): rango, fecha, tipo, tarea o proyecto inválidos → `400`; hash obsoleto o `id` ya usado con otro contenido → `409`. Una petición inválida no cambia nada.
+- Errores como en el resto de la API (`{ error, code? }`): rango, fecha, tipo, tarea o proyecto inválidos → `400`; hash obsoleto o `id` ya usado con otro contenido → `409`. Título o color de área inválidos, o un `areaPath` que no es un área válida → `400`. Una petición inválida no cambia nada.
 - Los huecos libres no se calculan en el servidor: la UI los deriva de las actividades visibles.
 - **Móvil.** Las actividades que apuntan a una nota privada (la propia actividad, su tarea o su proyecto, también el heredado de la tarea) o a una relación que no se resuelve no aparecen. Las rutas de esas actividades se añaden a las exclusiones efectivas de todas las lecturas y escrituras móviles: notas, búsqueda, grafo, sincronización, enlaces y actividad en vivo, no solo calendario. El filtro SSE recalcula esa visibilidad con cada evento. Mover o terminar una actividad oculta responde `404`; crear con rutas privadas o un proyecto heredado sin resolver, `403`. Las tareas ordinarias conservan su comportamiento previo.
+- **Móvil y áreas.** Una actividad cuya área es privada (o no se resuelve) se oculta igual que si lo fuera su tarea o su proyecto, así que ni su nombre ni su color salen por el calendario ni por las rutas genéricas, la sincronización o el flujo en vivo. `areas` y `/api/calendar/areas` omiten las áreas privadas. Crear o editar un área, o asignarla, funciona desde el móvil con las mismas reglas: `areaPath` privado en crear → `403`, asignar a una actividad oculta o con un `areaPath` privado → `404`, editar un área privada → `403`, crear un área cuya ruta `Areas/<id>.md` es privada → `403`; ninguna deja rastro en Markdown, hash, recuento ni registro.
 - La lectura no se guarda en la caché del service worker (`web/src/sw-rules.ts`): una agenda antigua parecería actual y podría conservar referencias que el móvil ya no debe ver.
 
 ## Interfaz web (implementada)
