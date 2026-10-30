@@ -47,33 +47,47 @@ function useOnline(): boolean {
 
 const FOCUSABLE = "button, input, select, textarea, a[href]";
 
-/** Diálogo modal: foco dentro (y atrapado), Esc y clic fuera cierran, el foco vuelve a quien lo abrió. En pantallas estrechas es una hoja inferior. */
+/** Diálogo modal: foco dentro (y atrapado), Esc y clic fuera cierran, el foco vuelve a quien lo abrió. En pantallas estrechas es una hoja inferior.
+ *  El teclado se atiende en el documento, no en el contenedor: si el control enfocado se elimina o se desactiva (completar la tarea, enviar un formulario),
+ *  el foco cae en <body> y un onKeyDown del contenedor ya no recibiría ni Esc ni Tab. */
 function Sheet({ title, onClose, children }: { title: string; onClose(): void; children: ComponentChildren }) {
   const box = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const el = box.current!;
     const opener = document.activeElement as HTMLElement | null;
     const first = () => el.querySelector<HTMLElement>("[data-first]") ?? el;
-    first().focus();
+    const tabbable = () => [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => !x.hasAttribute("disabled"));
+    /** El foco está fuera de la hoja (p. ej. en <body>) o en un control ya desactivado. */
+    const lost = () => { const at = document.activeElement as HTMLButtonElement | null; return !at || !el.contains(at) || at.disabled; };
     const keep = (e: FocusEvent) => { if (!el.contains(e.target as Node)) first().focus(); };
+    const onKey = (e: KeyboardEvent) => {
+      e.stopPropagation(); // los atajos globales de la app no deben dispararse con la hoja abierta
+      if (e.key === "Escape") { e.preventDefault(); closeRef.current(); return; }
+      if (e.key !== "Tab") return;
+      const els = tabbable();
+      if (!els.length) { e.preventDefault(); el.focus(); return; }
+      const at = document.activeElement;
+      if (lost()) { e.preventDefault(); els[e.shiftKey ? els.length - 1 : 0].focus(); }
+      else if (e.shiftKey && (at === els[0] || at === el)) { e.preventDefault(); els[els.length - 1].focus(); }
+      else if (!e.shiftKey && at === els[els.length - 1]) { e.preventDefault(); els[0].focus(); }
+    };
+    // Un control que se elimina o se desactiva suelta el foco: se devuelve a la hoja para que el teclado siga dentro.
+    const watch = new MutationObserver(() => { if (lost()) el.focus(); });
+    first().focus();
+    watch.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
     document.addEventListener("focusin", keep);
+    document.addEventListener("keydown", onKey);
     return () => {
+      watch.disconnect();
       document.removeEventListener("focusin", keep);
+      document.removeEventListener("keydown", onKey);
       (opener?.isConnected ? opener : document.querySelector<HTMLElement>(".cal h1"))?.focus();
     };
   }, []);
-  const onKey = (e: KeyboardEvent) => {
-    e.stopPropagation(); // los atajos globales no deben dispararse detrás del diálogo
-    if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
-    if (e.key !== "Tab") return;
-    const els = [...box.current!.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => !x.hasAttribute("disabled"));
-    if (!els.length) { e.preventDefault(); return; }
-    const at = document.activeElement;
-    if (e.shiftKey && (at === els[0] || at === box.current)) { e.preventDefault(); els[els.length - 1].focus(); }
-    else if (!e.shiftKey && at === els[els.length - 1]) { e.preventDefault(); els[0].focus(); }
-  };
   return (
-    <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={onKey}>
+    <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) closeRef.current(); }}>
       <div class="modal sheet cal-sheet" role="dialog" aria-modal="true" aria-labelledby="cal-sheet-title" tabIndex={-1} ref={box}>
         <div class="cal-grab" aria-hidden="true" />
         <h2 id="cal-sheet-title">{title}</h2>
