@@ -10,12 +10,13 @@ import { addDays, diffDays, localDate, localTime } from "./dates.ts";
 import { availableColumns, matchesSource, parseDatabase, queryRows, type Column, type DatabaseDef, type QueryResult, type View } from "./database.ts";
 import { fuzzyScore, Index, relationTarget, type NoteRow, type NoteType, type TaskRow, type TaskStatus } from "./index.ts";
 import { ulid } from "./ids.ts";
+import { Calendar } from "./calendar-store.ts";
 import { appendToSection, normKey, parseNote, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
 import { ProposalStore, type Op, type Proposal, type ProposalDraft } from "./proposals.ts";
 import { sanitizeFileName, Vault, VaultError } from "./vault.ts";
 
 export const FOLDERS: Record<NoteType, string> = {
-  capture: "Bandeja", task: "Tareas", project: "Proyectos", note: "Notas", journal: "Diario", resource: "Recursos", database: "Bases",
+  capture: "Bandeja", task: "Tareas", project: "Proyectos", note: "Notas", journal: "Diario", resource: "Recursos", database: "Bases", block: "Calendario",
 };
 
 /** Claves del sistema: ni las filas nuevas ni el asistente pueden fijarlas. */
@@ -126,6 +127,7 @@ export class Kioku {
   readonly proposals: ProposalStore;
   readonly bus = new EventEmitter();
   readonly providers: AIProvider[];
+  readonly calendar: Calendar;
   private now: () => Date;
   private watcher: FSWatcher | null = null;
   private syncTimer: NodeJS.Timeout | null = null;
@@ -138,6 +140,7 @@ export class Kioku {
     this.log = new ActivityLog(this.vault, this.index, this.now);
     this.proposals = new ProposalStore(this.vault);
     this.providers = opts.providers ?? [new RulesProvider()];
+    this.calendar = new Calendar(this, this.now);
   }
 
   static async open(opts: KiokuOptions): Promise<Kioku> {

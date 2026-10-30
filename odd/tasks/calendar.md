@@ -9,9 +9,9 @@ S3. User choice: "Cadena sobre rama de funcionalidad (recomendado)". Work-unit c
 S4. Latest scope: "de momento lo del calendario solo". Online calendar core, API, Day/Week and responsive mobile layout only; do not incorporate unrelated unfinished offline editing.
 
 ## Tasks
-T1 | S1,S2,S4 | inline (dependent core unit) | done | Local-minute parsing, five states, merged/clipped gaps and estimate validation; RED module-not-found then 3/3 GREEN, typecheck GREEN; commit recorded in next log entry.
-T2 | S1,S2,S4 | inline (depends on T1) | in_progress | Indexed read model and validated Markdown create/move/finish; focused RED/GREEN; commit pending.
-T3 | S1,S2,S4 | inline (depends on T2) | pending | Authenticated calendar API and privacy-safe responses; Risk: item 2 (new routes must preserve mobile privacy); commit pending.
+T1 | S1,S2,S4 | inline (dependent core unit) | done | Local-minute parsing, five states, merged/clipped gaps and estimate validation; RED module-not-found then 3/3 GREEN, typecheck GREEN; commit 65e1013; native assess medium, reviewDue false (under_budget).
+T2 | S1,S2,S4 | inline (depends on T1) | done | Markdown create/move/finish, range and estimates; RED undefined calendar then 5/5 calendar tests GREEN and typecheck GREEN; Risk: item 3 (shared note-type recognition); commit recorded next.
+T3 | S1,S2,S4 | delegated (context backstop at 76,822 tokens) | in_progress | Authenticated calendar API and privacy-safe responses; Risk: item 2 (new routes must preserve mobile privacy); commit pending.
 T4 | S1,S4 | inline (depends on T3) | pending | Day view, optional gap suggestions, filters and independent completion actions; commit pending.
 T5 | S1,S4 | inline (depends on T4) | pending | Week view, accessible moves and responsive mobile detail; commit pending.
 T6 | S1-S4 | inline + independent verify (Risk: item 2, API privacy) | pending | Suite/typecheck/build, isolated Chromium checks, documentation and final verification; commit pending.
