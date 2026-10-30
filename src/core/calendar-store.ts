@@ -13,6 +13,7 @@ export interface CalendarInput {
   end: string;
   taskPath?: string | null;
   projectPath?: string | null;
+  areaPath?: string | null;
 }
 
 export class Calendar {
@@ -34,9 +35,12 @@ export class Calendar {
     try { data = parseBlock(note.fm); } catch (e) { throw new VaultError("invalid", (e as Error).message); }
     const taskPath = this.relation(data.task), task = taskPath ? this.host.index.getNote(taskPath) : null;
     const projectPath = this.relation(data.project) ?? (task ? this.relation(task.fm.project) : null);
+    // El área es independiente del proyecto; si ya no es un área válida (borrada, color roto) la actividad se muestra sin área.
+    const areaPath = this.relation(data.area), area = areaPath ? this.host.areas.get(areaPath) : null;
     return {
       ...data, path, title: note.title, hash: note.hash, taskPath, projectPath,
       projectTitle: projectPath ? this.host.index.getNote(projectPath)?.title ?? null : null,
+      areaPath: area?.path ?? null, areaTitle: area?.title ?? null, areaColor: area?.color ?? null,
       state: calendarState(data, this.now()),
     };
   }
@@ -69,16 +73,32 @@ export class Calendar {
       if (!n || n.type !== type || /[\[\]#|\n\r]/.test(ref)) throw new VaultError("invalid", type === "task" ? "La tarea no existe o no es válida" : "El proyecto no existe o no es válido");
       fm[type] = "[[" + ref.replace(/\.md$/i, "") + "]]";
     }
+    if (input.areaPath !== undefined && input.areaPath !== null) fm.area = this.areaLink(input.areaPath);
     try { parseBlock(fm); } catch (e) { throw new VaultError("invalid", (e as Error).message); }
     const path = "Calendario/" + input.id + ".md";
     if (this.host.index.getNote(path)) {
       const old = this.item(path);
-      if (old.title !== input.title.trim() || old.kind !== input.kind || old.start !== input.start || old.end !== input.end || old.task !== fm.task || old.project !== fm.project) {
+      if (old.title !== input.title.trim() || old.kind !== input.kind || old.start !== input.start || old.end !== input.end || old.task !== fm.task || old.project !== fm.project || old.area !== fm.area) {
         throw new VaultError("conflict", "El identificador ya corresponde a otra actividad");
       }
       return old;
     }
     await this.host.createNote({ title: input.id, type: "block", folder: "Calendario", fm: { ...fm, title: input.title.trim() } });
+    return this.item(path);
+  }
+
+  /** El enlace `[[Areas/<id>]]` de un área existente y válida; cualquier otra ruta se rechaza antes de escribir. */
+  private areaLink(ref: unknown): string {
+    if (typeof ref !== "string" || /[\[\]#|\n\r]/.test(ref) || !this.host.areas.get(ref)) throw new VaultError("invalid", "El área no existe o no es válida");
+    return "[[" + ref.replace(/\.md$/i, "") + "]]";
+  }
+
+  /** Asigna, cambia o quita (`null`) el área de un bloque o evento; no toca su tarea, su proyecto ni el resto del Markdown. */
+  async setArea(path: string, areaPath: string | null, hash: string): Promise<CalendarItem> {
+    const b = this.item(path);
+    const link = areaPath === null ? null : this.areaLink(areaPath);
+    if (areaPath === null ? !b.area : b.areaPath === areaPath) return b;
+    await this.patch(path, { area: link }, hash);
     return this.item(path);
   }
 
