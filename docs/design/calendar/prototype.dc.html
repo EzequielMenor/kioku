@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Calendario Kioku</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+JP:wght@500&family=Shippori+Mincho:wght@500;700&display=swap">
+<style>
+body{margin:0}
+.root,.root *{box-sizing:border-box}
+.root{--stage:#141210;--bg:#1c1a17;--panel:#252220;--panel2:#2f2b27;--line:#443f36;--ink:#ece4d3;--mute:#aaa190;--accent:#8ba6e4;--accent-bg:#3a58a6;--on-accent:#f6f1e4;
+--c-kioku:#8ba6e4;--c-japones:#8db580;--c-equipo:#d1a65a;--c-salud:#e08c75;--c-personal:#b9a1d6;color-scheme:dark;
+font-family:'IBM Plex Sans','Noto Sans JP',sans-serif;font-size:14px;line-height:1.45;font-feature-settings:"tnum";font-variant-numeric:tabular-nums;color:var(--ink);background:var(--stage);min-height:100vh}
+.root[data-theme="light"]{--stage:#e4dcc6;--bg:#f1ead9;--panel:#f8f3e6;--panel2:#ebe3d0;--line:#cfc3a8;--ink:#231f1a;--mute:#5c5446;--accent:#1f3f7a;--accent-bg:#26437f;--on-accent:#f8f3e6;
+--c-kioku:#26437f;--c-japones:#436738;--c-equipo:#76530f;--c-salud:#9c3f27;--c-personal:#654a85;color-scheme:light}
+.ln-kioku{--lc:var(--c-kioku)}.ln-japones{--lc:var(--c-japones)}.ln-equipo{--lc:var(--c-equipo)}.ln-salud{--lc:var(--c-salud)}.ln-personal{--lc:var(--c-personal)}
+.lane0{--li:0}.lane1{--li:1}.lane2{--li:2}.lane3{--li:3}.lane4{--li:4}
+button,select{font:inherit;color:inherit}
+.root button:focus-visible,.root select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.serif{font-family:'Shippori Mincho','Noto Sans JP',serif}
+
+/* barra del prototipo */
+.proto{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:10px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.pname{display:flex;align-items:center;gap:10px;color:var(--mute);font-size:13px;margin-right:auto}
+.seg2{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg2 button{border:0;background:transparent;padding:8px 14px;min-height:40px;cursor:pointer;font-weight:500}
+.seg2 button+button{border-left:1px solid var(--line)}
+.seg2 button[aria-pressed="true"]{background:var(--accent-bg);color:var(--on-accent)}
+.toast{flex-basis:100%;display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-weight:500}
+.toast button{margin-left:auto;background:none;border:0;cursor:pointer;color:inherit;min-height:32px;padding:0 8px}
+
+/* marco */
+.stage{padding:0}
+.stage.phoneStage{padding:24px 0 48px}
+.frame{container-type:inline-size;width:100%;background:var(--bg)}
+.frame.phone{width:390px;height:844px;margin:0 auto;border:1px solid var(--line);border-radius:32px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.app{display:flex;min-height:900px;position:relative;background:var(--bg)}
+.frame.phone .app{height:100%;min-height:0}
+.side{width:208px;flex:none;border-right:1px solid var(--line);padding:24px 14px;display:flex;flex-direction:column;gap:28px;background:var(--panel)}
+.brand{display:flex;align-items:center;gap:10px;padding:0 6px}
+.seal{width:30px;height:30px;border:1.5px solid var(--accent);border-radius:4px;display:grid;place-items:center;font-family:'Shippori Mincho','Noto Sans JP',serif;color:var(--accent);font-weight:700;font-size:17px;line-height:1}
+.seal.sm{width:22px;height:22px;font-size:13px}
+.brand b{font-family:'Shippori Mincho',serif;font-size:22px;letter-spacing:.08em}
+.nav{display:flex;flex-direction:column;gap:2px}
+.navb{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border:0;border-left:3px solid transparent;border-radius:6px;background:none;color:var(--mute);cursor:pointer;text-align:left;min-height:44px}
+.navb svg,.tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.navb:hover{color:var(--ink)}
+.navb.on{background:var(--panel2);color:var(--ink);border-left-color:var(--accent);font-weight:600}
+.sidenote{margin-top:auto;padding:0 8px;font-size:12px;color:var(--mute)}
+.tabs{display:none;border-top:1px solid var(--line);background:var(--panel);position:sticky;bottom:0;z-index:10}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 10px;border:0;background:none;color:var(--mute);cursor:pointer;font-size:11px;min-height:56px}
+.tab.on{color:var(--ink);font-weight:600;box-shadow:inset 0 2px 0 var(--accent)}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;padding:28px 32px 6px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:500}
+.eyebrow.acc{color:var(--accent)}
+.title{font-family:'Shippori Mincho',serif;font-weight:700;font-size:34px;line-height:1.2;margin:2px 0 0}
+.clock{text-align:right;display:flex;flex-direction:column}
+.clock b{font-size:30px;font-weight:500;line-height:1.1}
+.blurb{padding:0 32px;margin:6px 0 4px;color:var(--mute);max-width:72ch}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips.onlym{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);cursor:pointer;font-weight:500}
+.chip small{font-size:11px;color:var(--mute);font-weight:400}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip[aria-pressed="true"] small{color:var(--bg)}
+.daybar{padding:10px 32px 0}
+.strip{margin:10px 32px 0;border:1px dashed var(--mute);border-radius:8px;background:var(--panel);padding:6px 16px}
+.stripi{display:flex;align-items:center;gap:12px;padding:8px 0;flex-wrap:wrap}
+.stripi p{margin:0;flex:1;min-width:200px}
+.glyph{font-size:16px}
+
+.body{display:grid;gap:20px;padding:16px 32px 48px;align-items:start}
+.v-A,.v-B{grid-template-columns:minmax(0,1fr) 340px;grid-template-areas:"view detail" "view tasks"}
+.v-C{grid-template-columns:260px minmax(0,1fr) 330px;grid-template-areas:"tasks view detail"}
+.view{grid-area:view;min-width:0;display:flex;flex-direction:column;gap:18px}
+.tasks{grid-area:tasks}.detail{grid-area:detail}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:20px}
+.h2{font-family:'Shippori Mincho',serif;font-weight:700;font-size:21px;line-height:1.3;margin:4px 0 6px}
+.sub{margin:0 0 10px;color:var(--mute);font-size:13px}
+.free{margin:0;color:var(--ink)}
+.free span{color:var(--mute)}
+.legend{margin:0;font-size:12.5px;color:var(--mute);max-width:80ch}
+
+/* botones, pastillas, etiquetas */
+.btn{min-height:40px;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-weight:500}
+.btn.sm{min-height:36px;padding:6px 12px;font-size:13px}
+.btn.pri{background:var(--accent-bg);border-color:var(--accent-bg);color:var(--on-accent)}
+.btn.ghost{background:transparent}
+.btn.task{background:transparent;border-color:var(--accent);color:var(--accent);font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:1px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;color:var(--ink)}
+.pill.st-actual{border-color:var(--accent);color:var(--accent);font-weight:600}.pill.st-actual::before{content:"●"}
+.pill.st-hecho{color:var(--mute)}.pill.st-hecho::before{content:"✓"}
+.pill.st-vencido{border-style:dashed;border-color:var(--mute)}.pill.st-vencido::before{content:"△"}
+.pill.st-pendiente::before{content:"○"}
+.pill.st-paso{color:var(--mute)}.pill.st-paso::before{content:"–"}
+.lb{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:4px;border:1.5px solid var(--lc);color:var(--lc);font-weight:600;font-size:11px;flex:none;line-height:1;background:var(--panel)}
+.lb.xs{width:16px;height:16px;font-size:10px;border-width:1.3px}
+.lname{display:inline-flex;align-items:center;gap:8px}
+.kd{font-size:12px;color:var(--mute);border:1px solid var(--line);border-radius:4px;padding:0 6px;white-space:nowrap}
+.kd.ev::before{content:"◆ "}
+.tk{font-size:12.5px}
+
+/* A · panel de salidas */
+.hero{border:1px solid var(--accent);border-radius:8px;background:color-mix(in srgb,var(--accent) 9%,var(--panel));padding:24px 28px;display:grid;gap:14px}
+.hero .big{font-family:'Shippori Mincho',serif;font-weight:700;font-size:32px;line-height:1.2}
+.hero .meta{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.bar{height:10px;border:1px solid var(--accent);border-radius:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.barl{display:flex;justify-content:space-between;font-size:13px}
+.barl b{font-size:16px}
+.after{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:12px}
+.after div{display:flex;gap:12px;align-items:baseline}
+.after b{font-size:15px;min-width:48px}
+.board{border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.brow{display:grid;grid-template-columns:96px minmax(0,1fr) 170px 90px 150px;grid-template-areas:"time act proj dur when";gap:12px;align-items:center;padding:14px 18px;border:0;border-top:1px solid var(--line);background:transparent;width:100%;text-align:left}
+.bhead{border-top:0;padding-top:10px;padding-bottom:10px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);background:var(--panel2)}
+.bt{cursor:pointer}
+.bt:hover{background:var(--panel2)}
+.brow.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.brow.cur{background:var(--accent-bg);color:var(--on-accent)}
+.brow.cur:hover{background:var(--accent-bg)}
+.brow.cur small,.brow.cur .cdu,.brow.cur .tk,.brow.cur .mdur{color:var(--on-accent)}
+.brow.cur .kd,.brow.cur .pill{color:var(--on-accent);border-color:var(--on-accent)}
+.brow.cur.sel{outline-color:var(--ink)}
+.brow.past{color:var(--mute)}
+.brow.gap{border-top-style:dashed;padding-top:10px;padding-bottom:10px;color:var(--mute)}
+.c-time{grid-area:time;display:flex;flex-direction:column}
+.c-time b{font-size:24px;font-weight:500;line-height:1.1}
+.c-time small{font-size:12px;color:var(--mute)}
+.c-act{grid-area:act;display:flex;flex-direction:column;gap:4px;min-width:0}
+.at{font-size:17px;font-weight:500}
+.sub2{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.c-proj{grid-area:proj;display:flex;align-items:center;gap:8px}
+.c-dur{grid-area:dur}
+.c-when{grid-area:when;display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.cd{font-weight:600}
+.gapt{font-style:italic}
+
+/* A · controles, semana y cuenta regresiva */
+.actl{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.chips.hide{display:none!important}
+.wstrip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.wsd{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);cursor:pointer;text-align:left}
+.wsd:hover{background:var(--panel2)}
+.wsd.today{border-color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}
+.wsn{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.wsn small{font-size:11px;color:var(--accent);font-weight:600}
+.wbar{position:relative;height:14px;border:1px solid var(--line);border-radius:4px;background:var(--bg);overflow:hidden}
+.sg{position:absolute;top:0;bottom:0;background:var(--lc)}
+.sg.ev{background:repeating-linear-gradient(90deg,var(--lc) 0 2px,transparent 2px 4px)}
+.wsnow{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
+.wsf{font-size:12px;color:var(--mute)}
+.dayhead{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:12px 18px;border-top:1px solid var(--line);background:var(--panel2)}
+.dayhead .dht{font-size:18px}
+.dayhead .dhs{margin-right:auto;color:var(--mute);font-size:13px}
+.emptyd{padding:14px 18px;border-top:1px dashed var(--line);color:var(--mute);font-style:italic}
+.cdn{font-size:30px;font-weight:500;line-height:1}
+.cdu{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.mdur{display:none;color:var(--mute);font-size:12px}
+.liveact{display:grid;gap:8px;padding:12px 18px 16px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border-top:0}
+.liveact .acts{margin-top:4px}
+.ticker{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px 16px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;background:var(--panel)}
+.ticker b{font-size:15px}
+.sugs{display:grid;gap:8px;margin-top:12px}
+.sug{display:grid;gap:4px;text-align:left;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);cursor:pointer}
+.sug:hover{border-color:var(--accent)}
+
+/* B · líneas del día */
+.rail{position:relative;--laneW:26px;--lanesW:130px;--rl:52px;margin-top:6px}
+.hl{position:absolute;left:0;right:0;border-top:1px solid var(--line);opacity:.7}
+.hl span{position:absolute;left:0;top:-9px;font-size:12px;color:var(--mute);background:var(--bg);padding-right:4px}
+.lbase{position:absolute;top:0;bottom:0;left:calc(var(--rl) + var(--li)*var(--laneW) + 10px);border-left:2px dotted var(--line)}
+.seg{position:absolute;left:calc(var(--rl) + var(--li)*var(--laneW) + 6px);width:10px;border-radius:5px;background:var(--lc)}
+.seg.ev{background:var(--bg);border:2px solid var(--lc)}
+.seg.st-hecho{opacity:.55}
+.seg.st-vencido{background:repeating-linear-gradient(45deg,var(--lc) 0 3px,var(--bg) 3px 6px)}
+.stn{position:absolute;left:calc(var(--rl) + var(--li)*var(--laneW));width:22px;height:22px;border-radius:50%;border:2px solid var(--lc);background:var(--bg);color:var(--lc);display:grid;place-items:center;font-size:11px;font-weight:600;z-index:2}
+.stn.st-actual{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--accent)}
+.conn{position:absolute;height:0;border-top:1px solid var(--lc);left:calc(var(--rl) + var(--li)*var(--laneW) + 22px);width:calc(var(--lanesW) - var(--li)*var(--laneW) - 8px)}
+.rlab{position:absolute;left:calc(var(--rl) + var(--lanesW) + 14px);right:0;display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:6px 12px;border:1px solid var(--line);border-left:4px solid var(--lc);border-radius:6px;background:var(--panel);text-align:left;cursor:pointer;z-index:2;overflow:hidden;line-height:1.35}
+.rlab:hover{background:var(--panel2)}
+.rlab.sel{outline:2px solid var(--ink);outline-offset:1px}
+.rlab.ev{border-left-style:double;border-left-width:6px}
+.rlab.st-hecho,.rlab.st-paso{color:var(--mute)}
+.rlab.st-vencido{border-style:dashed;border-left-style:dashed}
+.rlab.st-actual{background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+.rlab .rt{font-weight:600;white-space:nowrap}
+.rlab .rn{font-weight:500;font-size:15px}
+.rlab .rbr{flex-basis:100%;height:0}
+.rlab.short{flex-wrap:nowrap;white-space:nowrap}
+.rgap{position:absolute;left:calc(var(--rl) + var(--lanesW) + 14px);right:0;border-left:2px dashed var(--mute);margin-left:6px;padding-left:14px;display:flex;align-items:center;color:var(--mute);font-size:13px;font-style:italic}
+.nowl{position:absolute;left:0;right:0;border-top:2px solid var(--accent);z-index:4;pointer-events:none}
+.nowp{position:absolute;left:0;top:-11px;background:var(--accent-bg);color:var(--on-accent);font-size:12px;font-weight:600;padding:1px 7px;border-radius:4px}
+.key{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13px;color:var(--mute);align-items:center}
+.key .lname{color:var(--ink)}
+.sw{display:inline-block;width:10px;height:22px;border-radius:5px;background:var(--ink);vertical-align:middle;margin-right:6px}
+.sw.hollow{background:transparent;border:2px solid var(--ink)}
+.sw.dots{width:0;border-radius:0;border-left:2px dotted var(--mute);background:none}
+
+/* C · agenda híbrida */
+.nd{display:grid;grid-template-columns:1.2fr 1.2fr 1fr;border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.nd>div{padding:14px 18px;display:flex;flex-direction:column;gap:3px}
+.nd>div+div{border-left:1px solid var(--line)}
+.nd b.tt2{font-size:16px;font-weight:600}
+.nd .l{display:flex;gap:10px;align-items:baseline}
+.nd .l b{min-width:44px}
+.wk{border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.wkh,.wkb{display:grid;grid-template-columns:48px repeat(5,minmax(0,1fr))}
+.wkh{border-bottom:1px solid var(--line);background:var(--panel2)}
+.dh{padding:10px 8px;display:flex;flex-direction:column;border-left:1px solid var(--line)}
+.dh b{font-weight:600}
+.dh small{font-size:12px;color:var(--accent);font-weight:600}
+.dh.today{box-shadow:inset 0 -3px 0 var(--accent)}
+.wkb{position:relative}
+.axis{position:relative}
+.axis span{position:absolute;right:6px;top:-8px;font-size:11.5px;color:var(--mute)}
+.dcol{position:relative;border-left:1px solid var(--line);background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 55px,var(--line) 55px,var(--line) 56px)}
+.dcol.today{background-color:color-mix(in srgb,var(--accent) 5%,transparent)}
+.wnow{position:absolute;left:0;right:0;border-top:2px solid var(--accent);z-index:4}
+.wnow::before{content:"Ahora";position:absolute;left:0;top:-9px;background:var(--accent-bg);color:var(--on-accent);font-size:10.5px;font-weight:600;padding:0 4px;border-radius:3px}
+.wb{position:absolute;left:3px;right:3px;padding:3px 6px;border:1px solid var(--lc);border-left-width:4px;border-radius:4px;background:color-mix(in srgb,var(--lc) 16%,var(--panel));text-align:left;cursor:pointer;overflow:hidden;font-size:12px;line-height:1.3;z-index:2}
+.wb:hover{background:color-mix(in srgb,var(--lc) 26%,var(--panel))}
+.wb.ev{background:var(--panel);border-left-style:double;border-left-width:6px}
+.wb.sel{outline:2px solid var(--ink);outline-offset:1px;z-index:3}
+.wb.st-hecho{opacity:.62}
+.wb.st-vencido{border-style:dashed;background:transparent}
+.wb .wt{display:flex;align-items:flex-start;gap:5px;font-weight:600}
+.wb .wt span:last-child{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.wb.st-hecho .wt span:last-child::before{content:"✓ "}
+.wb.st-vencido .wt span:last-child::before{content:"△ "}
+.wb.ev .wt span:last-child::before{content:"◆ "}
+.wb.st-actual .wt span:last-child::before{content:"● "}
+.wb .ws,.wb .wp{display:none;color:var(--mute);font-size:11.5px}
+.wb.tall .ws{display:block}.wb.tall2 .wp{display:block}
+
+/* tareas y panel de detalle */
+.task{border-top:1px solid var(--line);padding:14px 0;display:grid;gap:6px}
+.task:first-of-type{border-top:0}
+.tt{font-weight:600;font-size:15px}
+.task.done .tt{text-decoration:line-through;color:var(--mute)}
+.tm,.tb{font-size:13px;color:var(--mute);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.task .acts{margin-top:6px}
+.dhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.closeb{display:none}
+.rel{border:1px solid var(--accent);border-radius:8px;padding:14px;margin-top:14px;display:grid;gap:8px;background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+.rel .tt{font-size:16px}
+.rel ul{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.rel li button{border:0;background:none;padding:4px 0;cursor:pointer;text-align:left;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.rel li button[aria-current="true"]{text-decoration:none;font-weight:600}
+.note{margin:10px 0 0;font-size:13px;color:var(--mute)}
+.sect{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.sect .fl{display:block;margin-bottom:6px}
+.field{display:grid;gap:6px;margin-top:14px}
+.fl{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:500}
+.field select{min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);width:100%}
+.warn{margin:12px 0 0;padding:8px 12px;border:1px dashed var(--mute);border-radius:6px;font-size:13px}
+
+/* móvil: se activa por ancho del marco, no por la ventana */
+@container (max-width: 1120px){
+  .v-C{grid-template-columns:240px minmax(0,1fr);grid-template-areas:"tasks view" "detail view"}
+  .brow{grid-template-columns:84px minmax(0,1fr) 140px 80px 130px}
+}
+@container (max-width: 720px){
+  .app{flex-direction:column}
+  .side{display:none}
+  .tabs{display:flex}
+  .main{flex:1;min-height:0}
+  .head{padding:20px 16px 4px}
+  .title{font-size:26px}
+  .clock b{font-size:24px}
+  .blurb{padding:0 16px;font-size:13px}
+  .daybar{padding:10px 16px 0}
+  .strip{margin:10px 16px 0}
+  .chips.onlym{display:flex}
+  .body{grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"view" "tasks"!important;padding:12px 16px 28px;gap:16px}
+  .card{padding:16px}
+  .detail{display:none}
+  .detail.open{display:block;position:absolute;left:0;right:0;bottom:0;max-height:80%;overflow:auto;z-index:30;border-radius:16px 16px 0 0;background:var(--bg);box-shadow:0 -14px 40px rgba(0,0,0,.45);border-top:1px solid var(--ink)}
+  .detail.open .card{border:0;border-radius:0;background:var(--bg)}
+  .closeb{display:inline-flex}
+  .hero{padding:18px}.hero .big{font-size:25px}
+  .bhead{display:none}
+  .brow{grid-template-columns:58px minmax(0,1fr) auto;grid-template-areas:"time act when" "time proj when";gap:4px 12px;padding:12px 14px;align-items:start}
+  .c-time b{font-size:20px}
+  .at{font-size:16px}
+  .c-when{align-items:flex-end;text-align:right}
+  .c-dur{display:none}.mdur{display:inline}.cdn{font-size:26px}.wsd{padding:8px 6px}.wsn small,.wsf{display:none}
+  .c-proj{font-size:13px}
+  .rail{--laneW:0px;--lanesW:30px;--rl:46px}
+  .lbase:not(.lane0){display:none}
+  .rlab.short .opt{display:none}
+  .rlab .rn{font-size:14px}
+  .nd{grid-template-columns:1fr}
+  .nd>div+div{border-left:0;border-top:1px solid var(--line)}
+  .wkh,.wkb{grid-template-columns:44px minmax(0,1fr)}
+  .dh:not(.isSel),.dcol:not(.isSel){display:none}
+  .wb{font-size:13px}
+  .wb.tall2 .wp{display:block}.wb .ws{display:block}
+  .proto .pname{flex-basis:100%}
+}
+</style>
+</helmet>
+
+<div class="root" data-theme="{{theme}}">
+  <div class="proto">
+    <span class="pname"><span class="seal sm" aria-hidden="true">記</span>Prototipo de calendario · datos ficticios · la hora está fija: miércoles 10:20</span>
+    <div class="seg2" role="group" aria-label="Propuesta">
+      <sc-for list="{{views}}" as="v" hint-placeholder-count="3">
+        <button type="button" aria-pressed="{{v.on}}" onClick="{{v.pick}}">{{v.label}}</button>
+      </sc-for>
+    </div>
+    <div class="seg2" role="group" aria-label="Tema">
+      <sc-for list="{{themes}}" as="t" hint-placeholder-count="2">
+        <button type="button" aria-pressed="{{t.on}}" onClick="{{t.pick}}">{{t.label}}</button>
+      </sc-for>
+    </div>
+    <div class="seg2" role="group" aria-label="Pantalla">
+      <sc-for list="{{devices}}" as="d" hint-placeholder-count="2">
+        <button type="button" aria-pressed="{{d.on}}" onClick="{{d.pick}}">{{d.label}}</button>
+      </sc-for>
+    </div>
+    <button type="button" class="btn ghost sm" onClick="{{reset}}">Restablecer datos</button>
+    <sc-if value="{{toast}}" hint-placeholder-val="{{false}}">
+      <div class="toast" role="status"><span>{{toast}}</span><button type="button" aria-label="Cerrar aviso" onClick="{{clearToast}}">✕</button></div>
+    </sc-if>
+  </div>
+
+  <div class="stage {{stageClass}}">
+  <div class="frame {{frameClass}}">
+  <div class="app">
+
+    <aside class="side">
+      <div class="brand"><span class="seal" aria-hidden="true">記</span><b>Kioku</b></div>
+      <nav class="nav" aria-label="Secciones">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="5">
+          <button type="button" class="navb {{n.cls}}" aria-current="{{n.cur}}" onClick="{{n.go}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.d}}"/></svg><span>{{n.label}}</span></button>
+        </sc-for>
+      </nav>
+      <p class="sidenote">Todo queda en tu equipo. Sin cuentas ni sincronización.</p>
+    </aside>
+
+    <div class="main">
+      <header class="head">
+        <div>
+          <div class="eyebrow">Calendario</div>
+          <h1 class="title">{{heading}}</h1>
+        </div>
+        <div class="clock"><span class="eyebrow">Ahora</span><b>Mié 10:20</b></div>
+      </header>
+      <p class="blurb">{{blurb}}</p>
+
+      <div class="daybar">
+        <div class="chips {{chipsClass}}" role="group" aria-label="Día">
+          <sc-for list="{{dayChips}}" as="c" hint-placeholder-count="5">
+            <button type="button" class="chip" aria-pressed="{{c.on}}" onClick="{{c.pick}}">{{c.label}}<sc-if value="{{c.today}}" hint-placeholder-val="{{false}}"><small>hoy</small></sc-if></button>
+          </sc-for>
+        </div>
+      </div>
+
+      <sc-if value="{{hasOverdue}}" hint-placeholder-val="{{true}}">
+        <section class="strip" aria-label="Bloques sin terminar">
+          <sc-for list="{{overdue}}" as="o" hint-placeholder-count="1">
+            <div class="stripi">
+              <span class="glyph" aria-hidden="true">△</span>
+              <p><b>{{o.t}}</b> · {{o.when}}. Quedó sin terminar y no lo movimos. ¿Lo reprogramás?</p>
+              <button type="button" class="btn sm" onClick="{{o.move}}">Reprogramar</button>
+            </div>
+          </sc-for>
+        </section>
+      </sc-if>
+
+      <div class="body v-{{view}}">
+
+        <div class="view">
+
+          <!-- A · Panel de salidas -->
+          <sc-if value="{{isA}}" hint-placeholder-val="{{true}}">
+            <sc-if value="{{hasTicker}}" hint-placeholder-val="{{true}}">
+              <div class="ticker"><span class="eyebrow acc">Siguiente</span><b>{{ticker.time}} · {{ticker.t}}</b><span>en {{ticker.cd}}.</span><span style="color:var(--mute)">{{ticker.note}}</span></div>
+            </sc-if>
+            <div class="actl">
+              <div class="seg2" role="group" aria-label="Alcance">
+                <sc-for list="{{aModes}}" as="m" hint-placeholder-count="2"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}">{{m.label}}</button></sc-for>
+              </div>
+              <div class="chips" role="group" aria-label="Filtrar por proyecto o área">
+                <sc-for list="{{lineChips}}" as="c" hint-placeholder-count="6"><button type="button" class="chip" aria-pressed="{{c.on}}" onClick="{{c.pick}}"><sc-if value="{{c.hasBadge}}" hint-placeholder-val="{{false}}"><span class="lb xs {{c.ln}}">{{c.code}}</span></sc-if>{{c.label}}</button></sc-for>
+              </div>
+            </div>
+            <sc-if value="{{isWeek}}" hint-placeholder-val="{{false}}">
+              <div class="wstrip" role="group" aria-label="Resumen de la semana">
+                <sc-for list="{{wstrip}}" as="w" hint-placeholder-count="5">
+                  <button type="button" class="wsd {{w.cls}}" onClick="{{w.pick}}" onDragOver="{{w.over}}" onDrop="{{w.drop}}">
+                    <span class="wsn"><b>{{w.name}}</b><sc-if value="{{w.today}}" hint-placeholder-val="{{false}}"><small>Hoy</small></sc-if></span>
+                    <span class="wbar" aria-hidden="true">
+                      <sc-for list="{{w.segs}}" as="g" hint-placeholder-count="3"><i class="sg {{g.cls}}" style="left:{{g.l}}%;width:{{g.w}}%"></i></sc-for>
+                      <sc-if value="{{w.today}}" hint-placeholder-val="{{false}}"><i class="wsnow" style="left:{{w.nowL}}%"></i></sc-if>
+                    </span>
+                    <small class="wsf">{{w.sum}}</small>
+                  </button>
+                </sc-for>
+              </div>
+              <p class="legend">Cada barra es el día de 07:00 a 22:00: lo lleno está ocupado, lo vacío está libre, y la marca oscura es ahora. Tocá un día para verlo solo, o arrastrá un bloque encima de un día para moverlo.</p>
+            </sc-if>
+            <sc-if value="{{hasHero}}" hint-placeholder-val="{{true}}">
+              <section class="hero" aria-label="Ahora">
+                <div class="eyebrow acc">Ahora · {{hero.range}}</div>
+                <div class="big">{{hero.t}}</div>
+                <div class="meta">
+                  <span class="lname"><span class="lb {{hero.ln}}">{{hero.code}}</span>{{hero.line}}</span>
+                  <span class="kd">{{hero.kindLabel}}</span>
+                  <span>Dura {{hero.dur}}</span>
+                </div>
+                <div>
+                  <div class="bar" role="progressbar" aria-label="Avance del bloque actual" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{hero.pct}}"><i style="width:{{hero.pct}}%"></i></div>
+                  <div class="barl"><span>{{hero.startL}} · llevás {{hero.done}}</span><b>Quedan {{hero.left}}</b><span>{{hero.endL}}</span></div>
+                </div>
+                <div class="after">
+                  <div class="eyebrow">Después</div>
+                  <sc-for list="{{hero.after}}" as="a" hint-placeholder-count="2">
+                    <div><b>{{a.time}}</b><span>{{a.label}}</span><span style="color:var(--mute)">{{a.meta}}</span></div>
+                  </sc-for>
+                </div>
+                <div class="acts" style="margin-top:0">
+                  <button type="button" class="btn pri" onClick="{{hero.finish}}">Terminar bloque</button>
+                  <button type="button" class="btn" onClick="{{hero.move}}">Reprogramar</button>
+                  <button type="button" class="btn ghost" onClick="{{hero.pick}}">Ver detalle</button>
+                </div>
+              </section>
+            </sc-if>
+            <p class="free">{{freeText}} <span>No hace falta llenar los huecos.</span></p>
+            <section class="board" aria-label="Actividades del día en orden">
+              <div class="brow bhead" aria-hidden="true"><span style="grid-area:time">Hora</span><span style="grid-area:act">Actividad</span><span style="grid-area:proj">Proyecto o área</span><span style="grid-area:dur">Duración</span><span style="grid-area:when">Empieza</span></div>
+              <sc-for list="{{rowsShown}}" as="r" hint-placeholder-count="6">
+                <sc-if value="{{r.head}}" hint-placeholder-val="{{false}}">
+                  <div class="dayhead" onDragOver="{{r.over}}" onDrop="{{r.drop}}">
+                    <div><b class="serif dht">{{r.title}}</b><sc-if value="{{r.today}}" hint-placeholder-val="{{false}}"><span class="pill st-actual" style="margin-left:10px">Hoy</span></sc-if></div>
+                    <span class="dhs">{{r.sum}}</span>
+                    <button type="button" class="btn sm ghost" onClick="{{r.open}}">Ver solo este día</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{r.empty}}" hint-placeholder-val="{{false}}"><div class="emptyd">{{r.emptyText}}</div></sc-if>
+                <sc-if value="{{r.gap}}" hint-placeholder-val="{{false}}">
+                  <div class="brow gap {{r.cls}}">
+                    <span class="c-time"><b style="font-size:18px">{{r.from}}</b><small>hasta {{r.to}}</small></span>
+                    <span class="c-act"><span class="at gapt">Tiempo libre</span></span>
+                    <span class="c-proj">—</span>
+                    <span class="c-dur">{{r.dur}}</span>
+                    <span class="c-when"><sc-if value="{{r.canUse}}" hint-placeholder-val="{{false}}"><button type="button" class="btn sm" onClick="{{r.use}}">Usar este hueco</button></sc-if></span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{r.blk}}" hint-placeholder-val="{{true}}">
+                  <button type="button" class="brow bt {{r.cls}}" aria-pressed="{{r.sel}}" onClick="{{r.pick}}" draggable="true" onDragStart="{{r.dragStart}}">
+                    <span class="c-time"><b>{{r.from}}</b><small>hasta {{r.to}}</small></span>
+                    <span class="c-act"><span class="at">{{r.t}}</span><span class="sub2"><span class="kd {{r.kdCls}}">{{r.kindLabel}}</span><span class="mdur">{{r.dur}}</span><sc-if value="{{r.task}}" hint-placeholder-val="{{false}}"><span class="tk">→ Trabaja sobre: {{r.task}}</span></sc-if></span></span>
+                    <span class="c-proj"><span class="lb {{r.ln}}">{{r.code}}</span>{{r.line}}</span>
+                    <span class="c-dur">{{r.dur}}</span>
+                    <span class="c-when"><span class="cdn">{{r.big}}</span><span class="cdu">{{r.unit}}</span><sc-if value="{{r.pill}}" hint-placeholder-val="{{false}}"><span class="pill st-{{r.st}}">{{r.stLabel}}</span></sc-if></span>
+                  </button>
+                  <sc-if value="{{r.live}}" hint-placeholder-val="{{false}}">
+                    <div class="liveact">
+                      <div class="bar" role="progressbar" aria-label="Avance del bloque actual" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{r.pct}}"><i style="width:{{r.pct}}%"></i></div>
+                      <div class="barl"><span>{{r.from}} · llevás {{r.done}}</span><span>{{r.to}}</span></div>
+                      <div class="acts"><button type="button" class="btn pri sm" onClick="{{r.finish}}">Terminar bloque</button><button type="button" class="btn sm" onClick="{{r.move}}">Reprogramar</button></div>
+                    </div>
+                  </sc-if>
+                </sc-if>
+              </sc-for>
+            </section>
+          </sc-if>
+
+          <!-- B · Líneas del día -->
+          <sc-if value="{{isB}}" hint-placeholder-val="{{false}}">
+            <p class="free">{{freeText}} <span>No hace falta llenar los huecos.</span></p>
+            <div class="rail" style="height:{{railH}}px">
+              <sc-for list="{{hoursB}}" as="h" hint-placeholder-count="12">
+                <div class="hl" style="top:{{h.top}}px"><span>{{h.label}}</span></div>
+              </sc-for>
+              <sc-for list="{{lanes}}" as="l" hint-placeholder-count="5">
+                <div class="lbase {{l.cls}}"></div>
+              </sc-for>
+              <sc-if value="{{showNowB}}" hint-placeholder-val="{{false}}">
+                <div class="nowl" style="top:{{nowTopB}}px"><span class="nowp">Ahora</span></div>
+              </sc-if>
+              <sc-for list="{{gapsB}}" as="g" hint-placeholder-count="3">
+                <div class="rgap" style="top:{{g.top}}px;height:{{g.h}}px">Tiempo libre · {{g.dur}} ({{g.from}}–{{g.to}})</div>
+              </sc-for>
+              <sc-for list="{{itemsB}}" as="it" hint-placeholder-count="5">
+                <div class="seg {{it.cls}}" style="top:{{it.top}}px;height:{{it.h}}px"></div>
+                <div class="conn {{it.cls}}" style="top:{{it.cy}}px"></div>
+                <div class="stn {{it.cls}}" style="top:{{it.sy}}px" aria-hidden="true">{{it.code}}</div>
+                <button type="button" class="rlab {{it.cls}}" style="top:{{it.top}}px;min-height:{{it.lh}}px" aria-pressed="{{it.sel}}" onClick="{{it.pick}}">
+                  <span class="rt">{{it.range}}</span>
+                  <span class="rn">{{it.t}}</span>
+                  <span class="opt">{{it.dur}}</span>
+                  <span class="opt kd {{it.kdCls}}">{{it.kindLabel}}</span>
+                  <span class="opt lname"><span class="lb xs {{it.ln}}">{{it.code}}</span>{{it.line}}</span>
+                  <sc-if value="{{it.showPill}}" hint-placeholder-val="{{false}}"><span class="opt pill st-{{it.st}}">{{it.stLabel}}</span></sc-if>
+                  <sc-if value="{{it.task}}" hint-placeholder-val="{{false}}"><span class="opt tk" style="flex-basis:100%">→ Trabaja sobre: {{it.task}}</span></sc-if>
+                </button>
+              </sc-for>
+            </div>
+            <div class="key" aria-label="Cómo leer el diagrama">
+              <sc-for list="{{legendLines}}" as="k" hint-placeholder-count="5"><span class="lname"><span class="lb {{k.ln}}">{{k.code}}</span>{{k.name}}</span></sc-for>
+              <span><i class="sw"></i>Barra llena: bloque</span>
+              <span><i class="sw hollow"></i>Barra hueca: evento</span>
+              <span><i class="sw dots"></i>Línea punteada: sin nada asignado</span>
+            </div>
+            <p class="legend">El largo de cada barra es su duración. Cada proyecto tiene su carril y su letra.</p>
+          </sc-if>
+
+          <!-- C · Agenda híbrida -->
+          <sc-if value="{{isC}}" hint-placeholder-val="{{false}}">
+            <section class="nd" aria-label="Ahora y después">
+              <div>
+                <span class="eyebrow acc">Ahora</span>
+                <sc-if value="{{hasCur}}" hint-placeholder-val="{{true}}">
+                  <b class="tt2">{{cur.t}}</b>
+                  <span>{{cur.range}} · quedan {{cur.left}}</span>
+                  <span class="lname"><span class="lb {{cur.ln}}">{{cur.code}}</span>{{cur.line}}</span>
+                </sc-if>
+                <sc-if value="{{noCur}}" hint-placeholder-val="{{false}}"><b class="tt2">Nada en curso</b><span style="color:var(--mute)">Es un buen momento para respirar.</span></sc-if>
+              </div>
+              <div>
+                <span class="eyebrow">Después</span>
+                <sc-for list="{{afterC}}" as="a" hint-placeholder-count="2">
+                  <div class="l"><b>{{a.time}}</b><span>{{a.label}}</span><span style="color:var(--mute)">· {{a.meta}}</span></div>
+                </sc-for>
+              </div>
+              <div>
+                <span class="eyebrow">Tiempo libre hoy</span>
+                <b class="tt2">{{freeToday}}</b>
+                <span style="color:var(--mute)">{{gapToday}}</span>
+              </div>
+            </section>
+            <section class="wk" aria-label="Agenda de la semana">
+              <div class="wkh">
+                <span></span>
+                <sc-for list="{{cols}}" as="c" hint-placeholder-count="5">
+                  <div class="dh {{c.cls}}"><b>{{c.name}}</b><sc-if value="{{c.today}}" hint-placeholder-val="{{false}}"><small>Hoy</small></sc-if></div>
+                </sc-for>
+              </div>
+              <div class="wkb" style="height:{{wkH}}px">
+                <div class="axis">
+                  <sc-for list="{{hoursC}}" as="h" hint-placeholder-count="15"><span style="top:{{h.top}}px">{{h.label}}</span></sc-for>
+                </div>
+                <sc-for list="{{cols}}" as="c" hint-placeholder-count="5">
+                  <div class="dcol {{c.cls}}">
+                    <sc-if value="{{c.today}}" hint-placeholder-val="{{false}}"><div class="wnow" style="top:{{nowTopC}}px"></div></sc-if>
+                    <sc-for list="{{c.items}}" as="it" hint-placeholder-count="2">
+                      <button type="button" class="wb {{it.cls}}" style="top:{{it.top}}px;height:{{it.h}}px" aria-pressed="{{it.sel}}" onClick="{{it.pick}}">
+                        <span class="wt"><span class="lb xs {{it.ln}}">{{it.code}}</span><span>{{it.t}}</span></span>
+                        <span class="ws">{{it.range}}</span>
+                        <span class="wp">{{it.line}}</span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+          </sc-if>
+
+          <p class="legend">Bloque: tiempo que reservás para trabajar. Evento (◆): compromiso con horario. Terminar un bloque no completa la tarea: eso se marca aparte.</p>
+        </div>
+
+        <section class="tasks card" aria-label="Tareas">
+          <h2 class="h2">{{tasksTitle}}</h2>
+          <p class="sub">Una tarea puede tener varios bloques.</p>
+          <sc-for list="{{tasksV}}" as="t" hint-placeholder-count="3">
+            <div class="task {{t.cls}}">
+              <div class="tt">{{t.t}}</div>
+              <div class="tm"><span class="lname"><span class="lb xs {{t.ln}}">{{t.code}}</span>{{t.line}}</span><span>· {{t.due}}</span></div>
+              <div class="tb">{{t.blocksText}}</div>
+              <div class="acts">
+                <button type="button" class="btn sm" disabled="{{t.done}}" onClick="{{t.schedule}}">Programar bloque</button>
+                <button type="button" class="btn sm task" onClick="{{t.toggle}}">{{t.toggleLabel}}</button>
+              </div>
+            </div>
+          </sc-for>
+        </section>
+
+        <aside class="detail {{sheetClass}}" aria-label="Detalle">
+          <div class="card">
+            <div class="dhead">
+              <span class="eyebrow">{{panelEyebrow}}</span>
+              <button type="button" class="btn sm ghost closeb" onClick="{{closePanel}}">✕ Cerrar</button>
+            </div>
+
+            <sc-if value="{{hasForm}}" hint-placeholder-val="{{false}}">
+              <h2 class="h2">{{f.title}}</h2>
+              <sc-if value="{{f.isMove}}" hint-placeholder-val="{{false}}"><p class="sub">{{f.blockTitle}}</p></sc-if>
+              <sc-if value="{{f.isNew}}" hint-placeholder-val="{{false}}">
+                <div class="field"><label class="fl" for="f-task">Tarea</label>
+                  <select id="f-task" value="{{f.taskId}}" onChange="{{f.setTask}}">
+                    <sc-for list="{{f.taskOpts}}" as="o" hint-placeholder-count="3"><option value="{{o.id}}">{{o.t}}</option></sc-for>
+                  </select>
+                </div>
+              </sc-if>
+              <div class="field"><span class="fl" id="f-day">Día</span>
+                <div class="chips" role="group" aria-labelledby="f-day">
+                  <sc-for list="{{f.days}}" as="d" hint-placeholder-count="3"><button type="button" class="chip" aria-pressed="{{d.on}}" onClick="{{d.pick}}">{{d.label}}</button></sc-for>
+                </div>
+              </div>
+              <div class="field"><label class="fl" for="f-time">Hora de inicio</label>
+                <select id="f-time" value="{{f.time}}" onChange="{{f.setTime}}">
+                  <sc-for list="{{timeOpts}}" as="o" hint-placeholder-count="10"><option value="{{o.v}}">{{o.l}}</option></sc-for>
+                </select>
+              </div>
+              <div class="field"><span class="fl" id="f-dur">Duración</span>
+                <div class="chips" role="group" aria-labelledby="f-dur">
+                  <sc-for list="{{f.durs}}" as="d" hint-placeholder-count="5"><button type="button" class="chip" aria-pressed="{{d.on}}" onClick="{{d.pick}}">{{d.label}}</button></sc-for>
+                </div>
+              </div>
+              <p class="note">Terminaría a las <b style="color:var(--ink)">{{f.end}}</b>.</p>
+              <sc-if value="{{f.conflict}}" hint-placeholder-val="{{false}}"><p class="warn">△ {{f.conflict}}</p></sc-if>
+              <sc-if value="{{f.past}}" hint-placeholder-val="{{false}}"><p class="warn">△ Esa hora ya pasó hoy (son las 10:20). Elegí una más tarde o probá con otro día.</p></sc-if>
+              <sc-if value="{{f.isMove}}" hint-placeholder-val="{{false}}"><p class="note">Reprogramar mueve solo este bloque. La tarea y sus otros bloques no cambian.</p></sc-if>
+              <div class="acts">
+                <button type="button" class="btn pri" disabled="{{f.blocked}}" onClick="{{f.submit}}">{{f.cta}}</button>
+                <button type="button" class="btn ghost" onClick="{{f.cancel}}">Cancelar</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{showGap}}" hint-placeholder-val="{{false}}">
+              <h2 class="h2">Tiempo libre · {{gapM.dur}}</h2>
+              <p class="sub" style="color:var(--ink)">{{gapM.when}} · {{gapM.range}}</p>
+              <p class="note">Podés dejarlo libre: no hace falta llenarlo. Si querés usarlo, estas tareas entran:</p>
+              <sc-if value="{{gapM.hasSugs}}" hint-placeholder-val="{{true}}">
+                <div class="sugs">
+                  <sc-for list="{{gapM.sugs}}" as="s" hint-placeholder-count="1">
+                    <button type="button" class="sug" onClick="{{s.pick}}"><span class="tt">{{s.t}}</span><span class="tm"><span class="lname"><span class="lb xs {{s.ln}}">{{s.code}}</span>{{s.line}}</span><span>· ~{{s.est}} · {{s.due}}</span></span><span class="tk">Programar en este hueco →</span></button>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{gapM.noSugs}}" hint-placeholder-val="{{false}}"><p class="warn">△ Ninguna tarea pendiente entra en {{gapM.dur}}. Podés dejarlo libre o programar una desde la lista de tareas.</p></sc-if>
+              <div class="acts"><button type="button" class="btn ghost" onClick="{{gapM.leave}}">Dejarlo libre</button></div>
+            </sc-if>
+
+            <sc-if value="{{showDetail}}" hint-placeholder-val="{{true}}">
+              <h2 class="h2">{{d.t}}</h2>
+              <div class="sub2" style="margin-bottom:8px">
+                <span class="kd {{d.kdCls}}">{{d.kindLabel}}</span>
+                <span class="pill st-{{d.st}}">{{d.stLabel}}</span>
+                <span class="lname"><span class="lb {{d.ln}}">{{d.code}}</span>{{d.line}}</span>
+              </div>
+              <p class="sub" style="color:var(--ink)">{{d.when}}</p>
+
+              <sc-if value="{{d.hasTask}}" hint-placeholder-val="{{true}}">
+                <div class="rel">
+                  <span class="eyebrow acc">Trabaja sobre la tarea</span>
+                  <div class="tt">{{d.task.t}}</div>
+                  <div class="tm"><span class="pill {{d.task.stCls}}">{{d.task.stateLabel}}</span><span>{{d.task.due}}</span></div>
+                  <span class="fl" style="margin-top:4px">Bloques de esta tarea</span>
+                  <ul>
+                    <sc-for list="{{d.task.others}}" as="o" hint-placeholder-count="1">
+                      <li><button type="button" aria-current="{{o.here}}" onClick="{{o.pick}}">{{o.label}}</button></li>
+                    </sc-for>
+                  </ul>
+                </div>
+              </sc-if>
+              <sc-if value="{{d.noTask}}" hint-placeholder-val="{{false}}">
+                <div class="rel" style="border-color:var(--line);background:transparent">
+                  <span class="eyebrow">Sin tarea asociada</span>
+                  <span class="note" style="margin:0">Es un bloque suelto: reserva tiempo sin estar atado a una tarea.</span>
+                  <button type="button" class="btn sm ghost" onClick="{{illustrative}}" style="justify-self:start">Asociar a una tarea (ilustrativo)</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{d.isEv}}" hint-placeholder-val="{{false}}">
+                <p class="note">Los eventos son compromisos con horario y no necesitan una tarea.</p>
+              </sc-if>
+
+              <div class="sect">
+                <span class="fl">El {{d.noun}}</span>
+                <div class="acts" style="margin-top:0">
+                  <sc-if value="{{d.canFinish}}" hint-placeholder-val="{{true}}"><button type="button" class="btn pri" onClick="{{d.finish}}">{{d.finishLabel}}</button></sc-if>
+                  <button type="button" class="btn" onClick="{{d.move}}">{{d.moveLabel}}</button>
+                  <button type="button" class="btn ghost" onClick="{{d.prev}}">← Un día antes</button>
+                  <button type="button" class="btn ghost" onClick="{{d.next}}">Un día después →</button>
+                </div>
+              </div>
+              <sc-if value="{{d.hasTask}}" hint-placeholder-val="{{true}}">
+                <div class="sect">
+                  <span class="fl">La tarea</span>
+                  <div class="acts" style="margin-top:0">
+                    <button type="button" class="btn task" onClick="{{d.task.toggle}}">{{d.task.toggleLabel}}</button>
+                  </div>
+                  <p class="note">Terminar el bloque no completa la tarea: son acciones separadas.</p>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{showEmpty}}" hint-placeholder-val="{{false}}">
+              <h2 class="h2">Elegí un bloque</h2>
+              <p class="note">Tocá cualquier bloque o evento para ver a qué tarea pertenece, terminarlo o reprogramarlo. También podés programar un bloque desde una tarea.</p>
+            </sc-if>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+
+    <nav class="tabs" aria-label="Secciones">
+      <sc-for list="{{nav}}" as="n" hint-placeholder-count="5">
+        <button type="button" class="tab {{n.cls}}" aria-current="{{n.cur}}" onClick="{{n.go}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.d}}"/></svg><span>{{n.label}}</span></button>
+      </sc-for>
+    </nav>
+
+  </div>
+  </div>
+  </div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+const TODAY = 2, NOW = 620, DAY_END = 1320;
+const DAYS = [['Lun',12],['Mar',13],['Mié',14],['Jue',15],['Vie',16]];
+const LONG = ['Lunes','Martes','Miércoles','Jueves','Viernes'];
+const LINES = {
+  kioku:{code:'K',name:'Kioku',lane:0}, japones:{code:'J',name:'Japonés',lane:1},
+  equipo:{code:'E',name:'Equipo',lane:2}, salud:{code:'S',name:'Salud',lane:3}, personal:{code:'P',name:'Personal',lane:4}
+};
+const STL = {hecho:'Hecho', actual:'En curso', vencido:'Sin terminar', paso:'Ya pasó', pendiente:'Pendiente'};
+const pad = n => String(n).padStart(2,'0');
+const hm = m => pad(Math.floor(m/60)) + ':' + pad(m%60);
+const dl = m => { const h = Math.floor(m/60), r = m%60; return h ? (r ? h+' h '+r+' min' : h+' h') : r+' min'; };
+const TIMES = []; for (let m = 420; m <= 1200; m += 15) TIMES.push({v:m, l:hm(m)});
+const NAV = [
+  ['Hoy','M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
+  ['Calendario','M4 6h16v14H4z M4 10h16 M9 3v4 M15 3v4'],
+  ['Tareas','M4 5h16v14H4z M8 12l3 3 5-6'],
+  ['Proyectos','M3 7h7l2 2h9v10H3z'],
+  ['Notas','M6 3h9l4 4v14H6z M9 12h7 M9 16h7']
+];
+const seedBlocks = () => [
+  {id:'plan',day:2,s:540,d:30,t:'Planificar el día',kind:'bloque',line:'personal',task:null,fin:true},
+  {id:'disen',day:2,s:600,d:60,t:'Diseñar calendario de Kioku',kind:'bloque',line:'kioku',task:null,fin:false},
+  {id:'llamada',day:2,s:690,d:30,t:'Llamada con equipo',kind:'evento',line:'equipo',task:null,fin:false},
+  {id:'japo',day:2,s:840,d:90,t:'Estudiar japonés',kind:'bloque',line:'japones',task:'examen',fin:false},
+  {id:'entre',day:2,s:1080,d:45,t:'Entrenar',kind:'bloque',line:'salud',task:null,fin:false},
+  {id:'notas',day:1,s:960,d:60,t:'Ordenar notas de la semana',kind:'bloque',line:'kioku',task:null,fin:false}
+];
+const seedTasks = () => [
+  {id:'examen',t:'Preparar examen de japonés',line:'japones',due:'Vence el viernes 16',est:60,done:false},
+  {id:'presu',t:'Revisar presupuesto',line:'equipo',due:'Sin fecha límite',est:30,done:false},
+  {id:'propuesta',t:'Terminar propuesta de diseño',line:'kioku',due:'Vence el jueves 15',est:90,done:false}
+];
+const init = () => ({theme:'dark', view:'A', aMode:'dia', filter:null, gap:null, phone:false, day:2, sel:'japo', sheet:false, form:null, toast:'', seq:0, blocks:seedBlocks(), tasks:seedTasks()});
+const statusOf = b => {
+  const e = b.s + b.d;
+  if (b.fin) return 'hecho';
+  if (b.day === TODAY && b.s <= NOW && NOW < e) return 'actual';
+  if (b.day < TODAY || (b.day === TODAY && e <= NOW)) return b.kind === 'evento' ? 'paso' : 'vencido';
+  return 'pendiente';
+};
+const whenShort = (b, st) => {
+  if (st === 'hecho') return 'Hecho';
+  if (st === 'actual') return 'Quedan ' + dl(b.s + b.d - NOW);
+  if (st === 'vencido') return 'Sin terminar';
+  if (st === 'paso') return 'Ya pasó';
+  if (b.day === TODAY) return 'En ' + dl(b.s - NOW);
+  return DAYS[b.day][0] + ' ' + DAYS[b.day][1];
+};
+
+class Component extends DCLogic {
+  state = init();
+
+  say = (m) => { clearTimeout(this._t); this.setState({toast:m}); this._t = setTimeout(() => this.setState({toast:''}), 6000); };
+  clearToast = () => this.setState({toast:''});
+  pickBlock = (id) => this.setState({sel:id, form:null, gap:null, sheet:true});
+  closePanel = () => this.setState({sel:null, form:null, gap:null, sheet:false});
+  illustrative = () => this.say('Ilustrativo: asociar un bloque a una tarea no está implementado en este prototipo.');
+  reset = () => { clearTimeout(this._t); this.setState(init()); };
+  toggleFin = (id) => {
+    const blocks = this.state.blocks.map(b => b.id === id ? {...b, fin:!b.fin} : b);
+    const b = blocks.find(x => x.id === id);
+    const tk = b.task && this.state.tasks.find(t => t.id === b.task);
+    this.setState({blocks});
+    this.say(b.fin ? 'Bloque terminado.' + (tk && !tk.done ? ' La tarea «' + tk.t + '» sigue abierta.' : '') : 'Bloque reabierto.');
+  };
+  toggleTask = (id) => {
+    const tasks = this.state.tasks.map(t => t.id === id ? {...t, done:!t.done} : t);
+    const t = tasks.find(x => x.id === id);
+    this.setState({tasks});
+    this.say(t.done ? 'Tarea completada: «' + t.t + '». Sus bloques quedan como estaban.' : 'Tarea reabierta: «' + t.t + '».');
+  };
+  moveTo = (id, nd) => {
+    const S = this.state, b = S.blocks.find(x => x.id === id);
+    if (!b || nd === b.day) return;
+    if (nd < TODAY || (nd === TODAY && b.s < NOW)) return this.say('Ese momento ya pasó. Usá «Cambiar horario» para elegir otro.');
+    const clash = S.blocks.filter(x => x.id !== id && x.day === nd && x.s < b.s + b.d && b.s < x.s + x.d);
+    this.setState({blocks:S.blocks.map(x => x.id === id ? {...x, day:nd} : x), day:S.aMode === 'dia' ? nd : S.day});
+    this.say('«' + b.t + '» pasó al ' + LONG[nd].toLowerCase() + ' ' + DAYS[nd][1] + ', a la misma hora.' + (clash.length ? ' △ Se cruza con «' + clash[0].t + '».' : ''));
+  };
+  openGap = (day, s, e) => this.setState({gap:{day, s, e}, form:null, sheet:true});
+  leaveGap = () => { this.setState({gap:null, sheet:this.state.sel != null}); this.say('Lo dejaste libre. Está bien así.'); };
+  useGap = (taskId) => {
+    const S = this.state, g = S.gap, task = S.tasks.find(t => t.id === taskId);
+    if (!g || !task) return;
+    const d = Math.min(task.est, g.e - g.s), id = 'n' + (S.seq + 1);
+    this.setState({blocks:[...S.blocks, {id, day:g.day, s:g.s, d, t:task.t, kind:'bloque', line:task.line, task:task.id, fin:false}], seq:S.seq + 1, sel:id, gap:null, day:g.day, sheet:true});
+    this.say('Bloque programado: ' + LONG[g.day] + ' ' + DAYS[g.day][1] + ' · ' + hm(g.s) + '–' + hm(g.s + d) + '. La tarea sigue pendiente.');
+  };
+  moveDay = (id, delta) => {
+    const S = this.state, b = S.blocks.find(x => x.id === id), nd = b.day + delta;
+    if (nd < 0 || nd > 4) return this.say('Esta semana no tiene más días en esa dirección.');
+    if (nd < TODAY || (nd === TODAY && b.s < NOW)) return this.say('Ese momento ya pasó. Usá «Cambiar horario» para elegir otro.');
+    const clash = S.blocks.filter(x => x.id !== id && x.day === nd && x.s < b.s + b.d && b.s < x.s + x.d);
+    this.setState({blocks:S.blocks.map(x => x.id === id ? {...x, day:nd} : x), day:S.aMode === 'dia' ? nd : S.day});
+    this.say('«' + b.t + '» pasó al ' + LONG[nd].toLowerCase() + ' ' + DAYS[nd][1] + ', a la misma hora.' + (clash.length ? ' △ Se cruza con «' + clash[0].t + '».' : ''));
+  };
+  openNew = (tid) => this.setState({form:{mode:'new', taskId:tid, blockId:null, day:Math.max(this.state.day, TODAY), time:960, dur:(this.state.tasks.find(t => t.id === tid) || {est:60}).est}, gap:null, sheet:true});
+  openMove = (bid) => {
+    const b = this.state.blocks.find(x => x.id === bid);
+    const late = b.day < TODAY;
+    this.setState({form:{mode:'move', taskId:b.task, blockId:bid, day:late ? TODAY : b.day, time:late ? 960 : b.s, dur:b.d}, sel:bid, gap:null, sheet:true});
+  };
+  setForm = (p) => this.setState({form:{...this.state.form, ...p}});
+  cancelForm = () => this.setState({form:null, sheet:this.state.sel != null});
+  submit = () => {
+    const S = this.state, f = S.form;
+    if (!f || (f.day === TODAY && f.time < NOW)) return;
+    const when = LONG[f.day] + ' ' + DAYS[f.day][1] + ' · ' + hm(f.time) + '–' + hm(f.time + f.dur);
+    if (f.mode === 'new') {
+      const task = S.tasks.find(t => t.id === f.taskId);
+      if (!task) return;
+      const id = 'n' + (S.seq + 1);
+      this.setState({blocks:[...S.blocks, {id, day:f.day, s:f.time, d:f.dur, t:task.t, kind:'bloque', line:task.line, task:task.id, fin:false}], seq:S.seq + 1, sel:id, form:null, day:f.day, sheet:true});
+      this.say('Bloque programado: ' + when + '. La tarea sigue pendiente.');
+    } else {
+      this.setState({blocks:S.blocks.map(b => b.id === f.blockId ? {...b, day:f.day, s:f.time, d:f.dur} : b), form:null, sel:f.blockId, day:f.day, sheet:true});
+      this.say('Bloque reprogramado: ' + when + '.');
+    }
+  };
+
+  renderVals() {
+    const S = this.state, {blocks, tasks} = S, view = S.view, dayN = S.day, isToday = dayN === TODAY;
+    const taskBy = id => tasks.find(t => t.id === id);
+    const deco = (b) => {
+      const st = statusOf(b), L = LINES[b.line], ev = b.kind === 'evento', tk = b.task ? taskBy(b.task) : null;
+      return {b, st, stLabel:STL[st], tk, ev, ln:'ln-' + b.line, code:L.code, line:L.name, kindLabel:ev ? 'Evento' : 'Bloque', kdCls:ev ? 'ev' : '',
+        range:hm(b.s) + '–' + hm(b.s + b.d), dur:dl(b.d), sel:S.sel === b.id, pick:() => this.pickBlock(b.id), pill:st !== 'pendiente'};
+    };
+    const all = blocks.map(deco);
+    const dayItems = d => all.filter(x => x.b.day === d).sort((a, c) => a.b.s - c.b.s);
+    const timeline = (d, filt) => {
+      const items = dayItems(d).filter(x => !filt || x.b.line === filt), out = [];
+      items.forEach((x, i) => {
+        if (i > 0 && !filt) { const p = items[i-1].b, g = x.b.s - (p.s + p.d); if (g >= 15) out.push({gap:true, from:p.s + p.d, to:x.b.s, d:g}); }
+        out.push({gap:false, x, from:x.b.s});
+      });
+      return out;
+    };
+    const free = (d) => {
+      let cursor = d === TODAY ? NOW : 420, busy = 0, gap = null;
+      dayItems(d).forEach(x => {
+        const b = x.b, e = b.s + b.d; if (e <= cursor) return;
+        const st = Math.max(b.s, cursor);
+        if (st - cursor >= 15 && !gap) gap = {from:cursor, to:st};
+        busy += e - st; cursor = e;
+      });
+      if (!gap && DAY_END - cursor >= 15) gap = {from:cursor, to:DAY_END};
+      const start = d === TODAY ? NOW : 420;
+      return {left:(DAY_END - start) - busy, gap};
+    };
+    const fr = free(dayN);
+    const gapTxt = g => g ? 'Próximo hueco: ' + hm(g.from) + '–' + hm(g.to) + ' (' + dl(g.to - g.from) + ').' : 'No quedan huecos.';
+    const freeText = dayN < TODAY ? 'Día pasado: se muestra tal como quedó.' :
+      (isToday ? 'Hasta las 22:00 te quedan ' + dl(fr.left) + ' libres. ' : 'Ese día tenés ' + dl(fr.left) + ' libres entre las 07:00 y las 22:00. ') + gapTxt(fr.gap);
+    const frT = free(TODAY);
+
+    // ahora / después
+    const cur = all.find(x => x.st === 'actual');
+    const afterFrom = cur ? cur.b.s + cur.b.d : NOW;
+    const afterItems = timeline(TODAY).filter(r => r.from >= afterFrom).slice(0, 2).map(r => r.gap
+      ? {key:'g' + r.from, time:hm(r.from), label:'Tiempo libre', meta:dl(r.d)}
+      : {key:r.x.b.id, time:hm(r.from), label:r.x.b.t, meta:r.x.kindLabel + ' · ' + r.x.dur});
+    const hero = (cur && isToday) ? {
+      t:cur.b.t, range:cur.range, ln:cur.ln, code:cur.code, line:cur.line, kindLabel:cur.kindLabel, dur:cur.dur,
+      pct:Math.round((NOW - cur.b.s) / cur.b.d * 100), startL:hm(cur.b.s), endL:hm(cur.b.s + cur.b.d),
+      done:dl(NOW - cur.b.s), left:dl(cur.b.s + cur.b.d - NOW), after:afterItems,
+      finish:() => this.toggleFin(cur.b.id), move:() => this.openMove(cur.b.id), pick:cur.pick
+    } : {t:'', range:'', ln:'', code:'', line:'', kindLabel:'', dur:'', pct:0, startL:'', endL:'', done:'', left:'', after:[], finish:null, move:null, pick:null};
+
+    // A
+    const bigOf = (b, st) => {
+      if (st === 'actual') return [String(b.s + b.d - NOW), 'min restantes'];
+      if (st === 'pendiente' && b.day === TODAY) { const m = b.s - NOW; return m < 60 ? [String(m), 'min para empezar'] : [Math.floor(m / 60) + ':' + pad(m % 60), 'h para empezar']; }
+      if (st === 'pendiente') return ['', DAYS[b.day][0] + ' ' + DAYS[b.day][1]];
+      return ['', ''];
+    };
+    const mkRows = (d) => timeline(d, S.filter).map(r => {
+      if (r.gap) { const past = d < TODAY || (d === TODAY && r.to <= NOW); const gs = d === TODAY ? Math.max(r.from, Math.ceil(NOW / 15) * 15) : r.from; return {head:false, empty:false, gap:true, blk:false, key:'g' + r.from, from:hm(r.from), to:hm(r.to), dur:dl(r.d), cls:past ? 'past' : '', canUse:!past && d >= TODAY && r.to - gs >= 15, use:() => this.openGap(d, gs, r.to)}; }
+      const x = r.x, b = x.b;
+      const bg = bigOf(b, x.st);
+      return {head:false, empty:false, gap:false, blk:true, big:bg[0], unit:bg[1], live:x.st === 'actual', pct:Math.round((NOW - b.s) / b.d * 100), done:dl(Math.max(0, NOW - b.s)),
+        finish:() => this.toggleFin(b.id), move:() => this.openMove(b.id),
+        dragStart:(e) => { this._drag = b.id; try { e.dataTransfer.setData('text/plain', b.id); e.dataTransfer.effectAllowed = 'move'; } catch (err) {} }, key:b.id, from:hm(b.s), to:hm(b.s + b.d), t:b.t, kindLabel:x.kindLabel, kdCls:x.kdCls, task:x.tk ? x.tk.t : '',
+        ln:x.ln, code:x.code, line:x.line, dur:x.dur, cd:whenShort(b, x.st), pill:x.pill, st:x.st, stLabel:x.stLabel, sel:x.sel, pick:x.pick,
+        cls:[x.st === 'actual' ? 'cur' : '', (x.st === 'hecho' || x.st === 'paso') ? 'past' : '', x.sel ? 'sel' : ''].join(' ')};
+    });
+
+    const rowsA = mkRows(dayN);
+    const emptyText = S.filter ? 'Nada de este proyecto o área en este día.' : 'Nada programado: día libre.';
+    const emptyRow = k => ({head:false, empty:true, gap:false, blk:false, key:k, emptyText});
+    const weekRows = [];
+    DAYS.forEach((dn, d) => {
+      const n = dayItems(d).length, cnt = n === 0 ? 'Sin actividades' : (n === 1 ? '1 actividad' : n + ' actividades');
+      weekRows.push({head:true, empty:false, gap:false, blk:false, key:'h' + d, title:LONG[d] + ' ' + dn[1], today:d === TODAY,
+        sum:d < TODAY ? cnt : cnt + ' · ' + dl(free(d).left) + ' libres', open:() => this.setState({day:d, aMode:'dia'}),
+        over:(e) => e.preventDefault(), drop:(e) => { e.preventDefault(); const id = this._drag; this._drag = null; if (id) this.moveTo(id, d); }});
+      const rr = mkRows(d).filter(r => !r.gap);
+      if (rr.length) rr.forEach(r => weekRows.push(r)); else weekRows.push(emptyRow('e' + d));
+    });
+    const rowsShown = S.aMode === 'semana' ? weekRows : (rowsA.length ? rowsA : [emptyRow('e')]);
+    const aModes = [['dia', 'Día'], ['semana', 'Semana']].map(v => ({key:v[0], label:v[1], on:S.aMode === v[0], pick:() => this.setState({aMode:v[0]})}));
+    const lineChips = [{key:'all', label:'Todo', hasBadge:false, ln:'', code:'', on:!S.filter, pick:() => this.setState({filter:null})}]
+      .concat(Object.keys(LINES).map(k => ({key:k, label:LINES[k].name, hasBadge:true, ln:'ln-' + k, code:LINES[k].code, on:S.filter === k, pick:() => this.setState({filter:S.filter === k ? null : k})})));
+    const wstrip = DAYS.map((dn, i) => ({key:'w' + i, name:dn[0] + ' ' + dn[1], today:i === TODAY, cls:i === TODAY ? 'today' : '',
+      segs:dayItems(i).map(x => ({key:x.b.id, l:Math.max(0, (x.b.s - 420) / 9), w:Math.max(1.5, x.b.d / 9), cls:x.ln + (x.ev ? ' ev' : '')})),
+      nowL:(NOW - 420) / 9, sum:i < TODAY ? dayItems(i).length + ' act.' : dl(free(i).left) + ' libres', pick:() => this.setState({day:i, aMode:'dia'}),
+      over:(e) => e.preventDefault(), drop:(e) => { e.preventDefault(); const id = this._drag; this._drag = null; if (id) this.moveTo(id, i); }}));
+    const nextUp = dayItems(TODAY).filter(x => x.st === 'pendiente')[0] || null;
+    const ticker = nextUp ? {time:hm(nextUp.b.s), t:nextUp.b.t, cd:dl(nextUp.b.s - NOW), note:(frT.gap && frT.gap.to <= nextUp.b.s) ? 'Antes tenés ' + dl(frT.gap.to - frT.gap.from) + ' libres.' : ''} : {time:'', t:'', cd:'', note:''};
+    const gp = S.gap, gl = gp ? gp.e - gp.s : 0;
+    const gsugs = gp ? tasks.filter(t => !t.done && t.est <= gl).map(t => ({key:t.id, t:t.t, ln:'ln-' + t.line, code:LINES[t.line].code, line:LINES[t.line].name, est:dl(t.est), due:t.due, pick:() => this.useGap(t.id)})) : [];
+    const gapM = {dur:dl(gl), when:gp ? LONG[gp.day] + ' ' + DAYS[gp.day][1] : '', range:gp ? hm(gp.s) + '–' + hm(gp.e) : '', sugs:gsugs, hasSugs:gsugs.length > 0, noSugs:gsugs.length === 0, leave:this.leaveGap};
+
+    // B
+    const bi = dayItems(dayN), K = 1.3, OFF = 14;
+    const wS = Math.min(480, bi.length ? Math.floor(Math.min(...bi.map(x => x.b.s)) / 60) * 60 : 480);
+    const wE = Math.max(1140, bi.length ? Math.ceil(Math.max(...bi.map(x => x.b.s + x.b.d)) / 60) * 60 : 1140);
+    const yOf = m => Math.round((m - wS) * K + OFF);
+    const hoursB = []; for (let m = wS; m <= wE; m += 60) hoursB.push({key:m, top:yOf(m), label:hm(m)});
+    const itemsB = bi.map(x => {
+      const b = x.b, top = yOf(b.s), h = Math.round(b.d * K), lh = Math.max(h, 36);
+      return {key:b.id, top, h, lh, sy:top + 2, cy:top + 13, sel:x.sel, pick:x.pick, t:b.t, range:x.range, dur:x.dur, kindLabel:x.kindLabel, kdCls:x.kdCls,
+        ln:x.ln, code:x.code, line:x.line, st:x.st, stLabel:x.stLabel, showPill:x.pill, task:x.tk ? x.tk.t : '',
+        cls:[x.ln, 'lane' + LINES[b.line].lane, x.ev ? 'ev' : '', 'st-' + x.st, x.sel ? 'sel' : '', lh < 46 ? 'short' : ''].join(' ')};
+    });
+    const gapsB = timeline(dayN).filter(r => r.gap && r.d >= 25).map(r => ({key:'g' + r.from, top:yOf(r.from) + 1, h:Math.round(r.d * K) - 2, dur:dl(r.d), from:hm(r.from), to:hm(r.to)}));
+
+    // C
+    const CK = 56 / 60, CS = 420, CE = 1320;
+    const hoursC = []; for (let m = CS; m <= CE; m += 60) hoursC.push({key:m, top:Math.round((m - CS) * CK), label:hm(m)});
+    const cols = DAYS.map((dn, i) => ({
+      key:'d' + i, name:dn[0] + ' ' + dn[1], today:i === TODAY, cls:[i === TODAY ? 'today' : '', i === dayN ? 'isSel' : ''].join(' '),
+      items:dayItems(i).map(x => { const b = x.b, h = Math.max(Math.round(b.d * CK) - 2, 24);
+        return {key:b.id, top:Math.round((b.s - CS) * CK) + 1, h, sel:x.sel, pick:x.pick, t:b.t, range:x.range, line:x.line, code:x.code, ln:x.ln,
+          cls:[x.ln, x.ev ? 'ev' : '', 'st-' + x.st, h >= 40 ? 'tall' : '', h >= 54 ? 'tall2' : ''].join(' ')}; })
+    }));
+
+    // tareas
+    const tasksV = tasks.map(t => {
+      const bs = blocks.filter(b => b.task === t.id).sort((a, c) => a.day - c.day || a.s - c.s), L = LINES[t.line];
+      return {key:t.id, t:t.t, ln:'ln-' + t.line, code:L.code, line:L.name, due:t.done ? 'Completada' : t.due + ' · ~' + dl(t.est), done:t.done, cls:t.done ? 'done' : '',
+        blocksText:bs.length ? (bs.length === 1 ? '1 bloque' : bs.length + ' bloques') + ': ' + bs.map(b => DAYS[b.day][0] + ' ' + DAYS[b.day][1] + ' · ' + hm(b.s) + '–' + hm(b.s + b.d)).join(' · ') : 'Sin bloques programados',
+        schedule:() => this.openNew(t.id), toggle:() => this.toggleTask(t.id), toggleLabel:t.done ? 'Reabrir tarea' : 'Marcar tarea como completada'};
+    });
+
+    // detalle
+    const sx = all.find(x => x.b.id === S.sel);
+    const emptyD = {t:'', kindLabel:'', kdCls:'', st:'pendiente', stLabel:'', ln:'', code:'', line:'', when:'', hasTask:false, noTask:false, isEv:false, noun:'bloque', canFinish:false, finishLabel:'', finish:null, moveLabel:'', move:null, prev:null, next:null,
+      task:{t:'', due:'', stateLabel:'', stCls:'', others:[], toggle:null, toggleLabel:''}};
+    let d = emptyD;
+    if (sx) {
+      const b = sx.b, tk = sx.tk;
+      d = {t:b.t, kindLabel:sx.kindLabel, kdCls:sx.kdCls, st:sx.st, stLabel:sx.stLabel, ln:sx.ln, code:sx.code, line:sx.line,
+        when:LONG[b.day] + ' ' + DAYS[b.day][1] + ' · ' + sx.range + ' · ' + sx.dur,
+        hasTask:!!tk, noTask:!tk && !sx.ev, isEv:sx.ev, noun:sx.ev ? 'evento' : 'bloque', canFinish:!sx.ev,
+        finishLabel:b.fin ? 'Reabrir bloque' : 'Terminar bloque', finish:() => this.toggleFin(b.id),
+        moveLabel:sx.st === 'vencido' ? 'Reprogramar' : 'Cambiar horario', move:() => this.openMove(b.id), prev:() => this.moveDay(b.id, -1), next:() => this.moveDay(b.id, 1),
+        task:tk ? {t:tk.t, due:tk.due, stateLabel:tk.done ? 'Completada' : 'Pendiente', stCls:tk.done ? 'st-hecho' : 'st-pendiente',
+          toggle:() => this.toggleTask(tk.id), toggleLabel:tk.done ? 'Reabrir tarea' : 'Marcar tarea como completada',
+          others:blocks.filter(o => o.task === tk.id).sort((a, c) => a.day - c.day || a.s - c.s).map(o => ({key:o.id, here:o.id === b.id,
+            label:DAYS[o.day][0] + ' ' + DAYS[o.day][1] + ' · ' + hm(o.s) + '–' + hm(o.s + o.d) + ' (' + STL[statusOf(o)] + ')' + (o.id === b.id ? ' ← este' : ''),
+            pick:() => this.pickBlock(o.id)}))} : emptyD.task};
+    }
+
+    // formulario
+    const fRaw = S.form;
+    const ff = fRaw || {mode:'new', taskId:tasks[0] ? tasks[0].id : '', blockId:null, day:TODAY, time:960, dur:60};
+    const fb = ff.blockId ? blocks.find(x => x.id === ff.blockId) : null;
+    const clash = blocks.filter(x => x.day === ff.day && x.id !== ff.blockId && x.s < ff.time + ff.dur && ff.time < x.s + x.d);
+    const past = ff.day === TODAY && ff.time < NOW;
+    const f = {
+      isNew:ff.mode === 'new', isMove:ff.mode === 'move',
+      title:ff.mode === 'new' ? 'Programar un bloque' : (fb && statusOf(fb) === 'vencido' ? 'Reprogramar bloque' : 'Cambiar horario'),
+      blockTitle:fb ? fb.t : '', taskId:ff.taskId,
+      taskOpts:tasks.filter(t => !t.done).map(t => ({id:t.id, t:t.t})),
+      setTask:(e) => this.setForm({taskId:e.target.value}), setTime:(e) => this.setForm({time:parseInt(e.target.value, 10)}),
+      days:[2, 3, 4].map(i => ({key:'fd' + i, label:DAYS[i][0] + ' ' + DAYS[i][1], on:ff.day === i, pick:() => this.setForm({day:i})})),
+      time:ff.time,
+      durs:[30, 45, 60, 90, 120].map(m => ({key:'fm' + m, label:dl(m), on:ff.dur === m, pick:() => this.setForm({dur:m})})),
+      end:hm(ff.time + ff.dur), past,
+      conflict:clash.length ? 'Se cruza con ' + clash.map(c => '«' + c.t + '» (' + hm(c.s) + '–' + hm(c.s + c.d) + ')').join(' y ') + '. Podés programarlo igual.' : '',
+      blocked:past || (ff.mode === 'new' && !ff.taskId), cta:ff.mode === 'new' ? 'Programar bloque' : 'Guardar horario',
+      submit:this.submit, cancel:this.cancelForm
+    };
+
+    const heading = (view === 'C' || (view === 'A' && S.aMode === 'semana')) ? 'Esta semana' : (isToday ? 'Hoy · ' : '') + LONG[dayN] + ' ' + DAYS[dayN][1];
+    const blurbs = {
+      A:S.aMode === 'semana' ? 'La semana completa en orden. Elegí un bloque para moverlo de día o cambiarle el horario; filtrá por proyecto para ver solo una línea de trabajo.' : 'Lo que viene, en orden. Cada fila dice cuándo empieza, cuánto dura, a qué proyecto pertenece y cuánto falta.',
+      B:'El día como una línea: cada proyecto tiene su carril, el largo de la barra es la duración y los tramos punteados son tiempo libre.',
+      C:'La semana en bloques proporcionales, tus tareas a la izquierda y, arriba, lo que pasa ahora y después.'
+    };
+    const setTheme = t => this.setState({theme:t}), setView = v => this.setState({view:v}), setPhone = p => this.setState({phone:p});
+    const overdue = all.filter(x => x.st === 'vencido').map(x => ({key:x.b.id, t:x.b.t, when:LONG[x.b.day] + ' ' + hm(x.b.s) + ', ' + x.dur, move:() => this.openMove(x.b.id)}));
+    const panelEyebrow = S.form ? (S.form.mode === 'new' ? 'Programar' : 'Reprogramar') : (S.gap ? 'Hueco libre' : 'Detalle');
+
+    return {
+      theme:S.theme, view,
+      views:[['A','A · Panel de salidas'], ['B','B · Líneas del día'], ['C','C · Agenda híbrida']].map(v => ({key:v[0], label:v[1], on:view === v[0], pick:() => setView(v[0])})),
+      themes:[['dark','Oscuro'], ['light','Claro']].map(v => ({key:v[0], label:v[1], on:S.theme === v[0], pick:() => setTheme(v[0])})),
+      devices:[[false,'Escritorio'], [true,'Móvil']].map(v => ({key:String(v[0]), label:v[1], on:S.phone === v[0], pick:() => setPhone(v[0])})),
+      reset:this.reset, toast:S.toast, clearToast:this.clearToast,
+      stageClass:S.phone ? 'phoneStage' : '', frameClass:S.phone ? 'phone' : '',
+      nav:NAV.map(n => ({key:n[0], label:n[0], d:n[1], cls:n[0] === 'Calendario' ? 'on' : '', cur:n[0] === 'Calendario' ? 'page' : undefined,
+        go:() => n[0] === 'Calendario' ? this.setState({view:view}) : this.say('Ilustrativo: «' + n[0] + '» no está incluido en este prototipo.')})),
+      heading, blurb:blurbs[view],
+      chipsClass:view === 'C' ? 'onlym' : (view === 'A' && S.aMode === 'semana' ? 'hide' : ''),
+      dayChips:DAYS.map((dn, i) => ({key:'c' + i, label:dn[0] + ' ' + dn[1], today:i === TODAY, on:i === dayN, pick:() => this.setState({day:i})})),
+      hasOverdue:overdue.length > 0, overdue,
+      isA:view === 'A', isB:view === 'B', isC:view === 'C',
+      hasHero:false, hero, hasTicker:!!(nextUp && isToday && S.aMode === 'dia'), ticker, rowsShown, aModes, lineChips, isWeek:S.aMode === 'semana', wstrip,
+      freeText:(view === 'A' && S.aMode === 'semana') ? 'Tocá un bloque para moverlo de día, o un día para verlo solo.' : freeText,
+      railH:yOf(wE) + 16, hoursB, lanes:[0, 1, 2, 3, 4].map(i => ({key:'l' + i, cls:'lane' + i})),
+      showNowB:isToday && NOW >= wS && NOW <= wE, nowTopB:yOf(NOW), gapsB, itemsB,
+      legendLines:Object.keys(LINES).map(k => ({key:k, ln:'ln-' + k, code:LINES[k].code, name:LINES[k].name})),
+      hasCur:!!cur, noCur:!cur,
+      cur:cur ? {t:cur.b.t, range:cur.range, left:dl(cur.b.s + cur.b.d - NOW), ln:cur.ln, code:cur.code, line:cur.line} : {t:'', range:'', left:'', ln:'', code:'', line:''},
+      afterC:afterItems, freeToday:dl(frT.left), gapToday:gapTxt(frT.gap),
+      wkH:Math.round((CE - CS) * CK), hoursC, nowTopC:Math.round((NOW - CS) * CK), cols,
+      tasksTitle:view === 'C' ? 'Bandeja de tareas' : 'Tareas por hacer', tasksV,
+      sheetClass:S.sheet ? 'open' : '', panelEyebrow, closePanel:this.closePanel,
+      hasForm:!!fRaw, f, timeOpts:TIMES, showGap:!fRaw && !!S.gap, gapM,
+      showDetail:!fRaw && !S.gap && !!sx, showEmpty:!fRaw && !S.gap && !sx, d, illustrative:this.illustrative
+    };
+  }
+}
+</script>
+</body>
+</html>
