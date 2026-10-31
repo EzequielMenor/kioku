@@ -13,6 +13,7 @@ import { SessionRegistry } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore } from "../assistant/undo.ts";
 import { OpsLedger, validOp } from "./ops.ts";
+import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
 import { mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
@@ -112,6 +113,7 @@ export async function startServer(
   const sessions = new SessionRegistry();
   const undo = new UndoStore(j);
   const ops = new OpsLedger(j.vault);
+  const mobileOps = new MobileOperations(j);
   const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .kioku/assistant.json
   const assistantTools = new AssistantTools(j, undo, { exclude });
   const loadExclude = async () => {
@@ -288,6 +290,16 @@ export async function startServer(
       }
     } else if (m === "POST" || m === "PUT") {
       switch (p) {
+        case "/api/mobile/operation": {
+          try {
+            const result = await mobileOps.run(body, (target) => role !== "mobile" || !isPrivate(target, mobileExclude));
+            return result.outcome === "applied" ? send(res, 200, result) : send(res, 409, { code: "mobile-conflict", error: "La nota cambió; se guardó una copia de conflicto móvil", result });
+          } catch (e) {
+            const status = operationErrorStatus(e);
+            if (status) throw new HttpError(status, (e as Error).message);
+            throw e;
+          }
+        }
         case "/api/capture": {
           const text = str(body.text, "text");
           const op = req.headers["x-kioku-op"];
