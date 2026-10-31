@@ -7,6 +7,10 @@ import { createEditor, splitNote, type EditorHandle } from "./editor.ts";
 import { useApi } from "./hooks.ts";
 import type { NoteInfo } from "./types.ts";
 import { parseValue } from "./cell-values.ts";
+import { loadMutations, persistDraft, readDraft, setTaskStatus, submitMutation } from "./offline/runtime.ts";
+import { parseNote } from "../../src/core/markdown.ts";
+import { materializeTask, reconcileTaskAcknowledgement } from "./offline/mobile-editing.ts";
+import type { TaskStatus } from "./offline/store.ts";
 
 type SaveState = "saved" | "dirty" | "saving" | "conflict" | "error";
 
@@ -75,7 +79,97 @@ function ExtraProps({ fm, type, setProp }: { fm: Record<string, unknown>; type: 
 const TASK_STATUS = ["todo", "doing", "done", "dropped"];
 const PROJECT_STATUS = ["active", "paused", "done", "someday"];
 
-export function NoteView({ path, rev, go, embedded }: { path: string; rev: number; go(route: string): void; embedded?: boolean }) {
+export function NoteView(props: { path: string; rev: number; go(route: string): void; embedded?: boolean }) {
+  return isMobile() ? <MobileNoteView key={props.path} {...props} /> : <DesktopNoteView {...props} />;
+}
+
+function MobileNoteView({ path, go }: { path: string; rev: number; go(route: string): void; embedded?: boolean }) {
+  const host = useRef<HTMLDivElement>(null);
+  const [info, setInfo] = useState<NoteInfo | null>(null);
+  const [label, setLabel] = useState("Cargando…");
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("todo");
+  useEffect(() => {
+    let dead = false, timer = 0, generation = 0, queued = 0;
+    let editor: EditorHandle | null = null, fm = "", hash = "", latest = "";
+    const showError = (e: unknown) => { if (!dead) { setLabel("Error local"); setMessage(e instanceof Error ? e.message : String(e)); } };
+    const enqueue = () => {
+      clearTimeout(timer);
+      if (!generation || generation === queued) return;
+      const version = generation, text = latest;
+      queued = version;
+      void submitMutation({ kind: "edit", path, text, baseHash: hash }).then(() => { if (!dead && version === generation) setLabel("Pendiente de sincronizar"); }, e => { if (queued === version) queued = 0; showError(e); });
+    };
+    const change = () => {
+      if (!editor) return;
+      latest = fm + editor.getBody(); generation++;
+      const version = generation;
+      if (!dead) setLabel("Guardando en el dispositivo…");
+      void persistDraft(path, latest, hash).then(() => { if (!dead && generation === version) setLabel("Guardado en el dispositivo"); }, showError);
+      clearTimeout(timer); timer = window.setTimeout(enqueue, 800);
+    };
+    (async () => {
+      const d = await api<NoteInfo>("GET", `/api/note?path=${encodeURIComponent(path)}`);
+      const draft = await readDraft(path);
+      if (dead || !host.current) return;
+      const text = draft?.text ?? d.text;
+      const parts = splitNote(text); fm = parts.fm; hash = draft?.baseHash ?? d.hash; latest = text;
+      const parsed = parseNote(text, path);
+      setStatus(String(parsed.frontmatter.status ?? "todo")); setInfo(d);
+      const operations = await loadMutations();
+      if (dead || !host.current) return;
+      setLabel(operations.some(o => o.body.path === path && o.state === "conflict") ? "Conflicto" : draft ? "Pendiente de sincronizar" : "Guardado");
+      editor = createEditor(host.current, parts.body, { onChange: change, onSave: enqueue, onFollow: async target => {
+        const r = await api<{ path: string | null }>("GET", `/api/resolve?q=${encodeURIComponent(target)}`);
+        if (r.path) go(`/nota/${r.path}`);
+      } });
+      if (draft && !operations.some(o => o.body.path === path && o.state !== "applied" && o.body.text === draft.text)) { generation = 1; enqueue(); }
+      void api("POST", "/api/note/open", { path }).catch(() => {});
+    })().catch(showError);
+    const onTask = async (e: Event) => {
+      const value = (e as CustomEvent<TaskStatus>).detail;
+      try {
+        clearTimeout(timer);
+        if (generation && generation !== queued) enqueue();
+        if (!editor) return;
+        latest = materializeTask(fm + editor.getBody(), path, value);
+        fm = splitNote(latest).fm;
+        if (!dead) { setStatus(value); setLabel("Guardando en el dispositivo…"); }
+        await setTaskStatus(path, value, { text: latest, baseHash: hash });
+        if (!dead) setLabel("Pendiente de sincronizar");
+      } catch (err) { showError(err); }
+    };
+    const onMutations = (e: Event) => {
+      const operations = (e as CustomEvent<import("./offline/store.ts").StoredMutation[]>).detail.filter(o => o.body.path === path);
+      for (const op of operations) if (op.state === "applied" && op.result && op.body.baseHash === hash) {
+        if (op.body.kind === "task" && op.result.text) {
+          latest = reconcileTaskAcknowledgement(fm + (editor?.getBody() ?? splitNote(latest).body), op.result.text, op.body.status);
+          fm = splitNote(latest).fm;
+        }
+        hash = op.result.hash;
+        if (generation > queued) void persistDraft(path, latest, hash).catch(showError);
+      }
+      if (operations.some(o => o.state === "conflict")) setLabel("Conflicto");
+      else if (operations.some(o => o.state === "failed")) setLabel("Error al sincronizar");
+      else if (operations.some(o => o.state === "pending")) setLabel("Pendiente de sincronizar");
+      else if (queued === generation) setLabel("Guardado");
+    };
+    window.addEventListener("kioku:mutations", onMutations);
+    host.current?.addEventListener("kioku-task-status", onTask);
+    const node = host.current;
+    return () => { enqueue(); dead = true; clearTimeout(timer); window.removeEventListener("kioku:mutations", onMutations); node?.removeEventListener("kioku-task-status", onTask); editor?.destroy(); };
+  }, [path]);
+  const n = info?.note;
+  return <div class="note-layout"><div class="note-main"><header class="note-head"><div class="crumbs">{path}</div><div class="save" title={message}>{label}</div></header>
+    {message && <div class="banner warn" role="alert">{message}</div>}
+    {label === "Conflicto" && <div class="banner warn">El original se conservó. Revisa la copia y resuelve el conflicto en Más.</div>}
+    {n && (n.type === "task" || n.type === "capture") && <h1 class="note-title">{n.title}</h1>}
+    <div class="editor" ref={host} /></div><aside class="note-side"><section><h3>Propiedades</h3>
+    {n?.type === "task" && <label>Estado <select value={status} onChange={e => host.current?.dispatchEvent(new CustomEvent("kioku-task-status", { detail: e.currentTarget.value }))}>{TASK_STATUS.map(x => <option key={x}>{x}</option>)}</select></label>}
+    <p class="muted small">Las demás propiedades no se pueden cambiar desde el móvil sin conexión.</p></section></aside></div>;
+}
+
+function DesktopNoteView({ path, rev, go, embedded }: { path: string; rev: number; go(route: string): void; embedded?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const s = useRef({ fm: "", hash: "", dirty: false, timer: 0, saving: false, editor: null as EditorHandle | null });
   const [state, setState] = useState<SaveState>("saved");

@@ -9,9 +9,12 @@ import { openIdbStore } from "./idb-store.ts";
 import { CaptureQueue, SendError, backoffMs } from "./queue.ts";
 import { makeOfflineReader } from "./reader.ts";
 import { syncReplica } from "./replica.ts";
-import { MemoryStore, type QueuedCapture, type Store } from "./store.ts";
+import { MemoryStore, type Draft, type QueuedCapture, type Store, type StoredMutation, type TaskStatus } from "./store.ts";
+import { MutationQueue, type MutationInput } from "./mutations.ts";
+import { materializeTask, requireDurable, sendMobileOperation } from "./mobile-editing.ts";
+import type { NoteInfo } from "../types.ts";
 
-export interface OfflineState { online: boolean; pending: number; failed: number; lastSync: number | null; syncing: boolean }
+export interface OfflineState { online: boolean; pending: number; failed: number; mutations: number; durable: boolean; lastSync: number | null; syncing: boolean }
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
@@ -26,7 +29,7 @@ export function formatAgo(from: number, now: number): string {
 
 // ───────────── estado observable ─────────────
 
-let state: OfflineState = { online: typeof navigator === "undefined" || navigator.onLine !== false, pending: 0, failed: 0, lastSync: null, syncing: false };
+let state: OfflineState = { online: typeof navigator === "undefined" || navigator.onLine !== false, pending: 0, failed: 0, mutations: 0, durable: false, lastSync: null, syncing: false };
 const listeners = new Set<() => void>();
 function set(patch: Partial<OfflineState>): void {
   state = { ...state, ...patch };
@@ -45,24 +48,28 @@ export function useOffline(): OfflineState {
 
 // ───────────── almacén y cola ─────────────
 
-interface Ready { store: Store; queue: CaptureQueue }
+interface Ready { store: Store; queue: CaptureQueue; mutations: MutationQueue; durable: boolean }
 let ready: Promise<Ready> | null = null;
 
 /** Abre IndexedDB una sola vez; si el navegador no la ofrece (modo privado…) se trabaja en memoria. */
 function ensure(): Promise<Ready> {
   ready ??= (async () => {
-    const store = await openIdbStore().catch(() => new MemoryStore());
-    return { store, queue: new CaptureQueue(store) };
+    let durable = true;
+    const store = await openIdbStore().catch(() => { durable = false; return new MemoryStore(); });
+    set({ durable });
+    return { store, queue: new CaptureQueue(store), mutations: new MutationQueue(store), durable };
   })();
   return ready;
 }
 
 async function refresh(): Promise<void> {
-  const { store, queue } = await ensure();
+  const { store, queue, mutations } = await ensure();
   const list = await queue.list();
+  const operations = await mutations.list();
   set({
     pending: list.filter((c) => c.state === "pending").length,
     failed: list.filter((c) => c.state === "failed").length,
+    mutations: operations.filter((o) => o.state !== "applied").length,
     lastSync: (await store.getMeta<number>("lastSync")) ?? null,
   });
 }
@@ -70,6 +77,48 @@ async function refresh(): Promise<void> {
 export async function loadQueue(): Promise<QueuedCapture[]> { return (await ensure()).queue.list(); }
 export async function retryCapture(opId: string): Promise<void> { await (await ensure()).queue.retry(opId); await refresh(); void flushQueue(); }
 export async function discardCapture(opId: string): Promise<void> { await (await ensure()).queue.discard(opId); await refresh(); }
+
+// Serializa las escrituras del editor por ruta, incluso al cambiar de pantalla.
+const pathWrites = new Map<string, Promise<unknown>>();
+function serial<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const previous = pathWrites.get(path) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(fn);
+  pathWrites.set(path, next);
+  void next.finally(() => { if (pathWrites.get(path) === next) pathWrites.delete(path); }).catch(() => {});
+  return next;
+}
+export async function readDraft(path: string): Promise<Draft | undefined> { await pathWrites.get(path)?.catch(() => {}); return (await ensure()).mutations.draft(path); }
+export function persistDraft(path: string, text: string, baseHash: string): Promise<void> {
+  return serial(path, async () => { const r = await ensure(); requireDurable(r.durable); await r.store.putDraft({ path, text, baseHash, updatedAt: Date.now() }); });
+}
+export function submitMutation(input: MutationInput): Promise<void> {
+  return serial(input.path, async () => { const r = await ensure(); requireDurable(r.durable); await r.mutations.add(input); await refresh(); void flushMutations(); });
+}
+export async function loadMutations(): Promise<StoredMutation[]> { return (await ensure()).mutations.list(); }
+export async function retryMutation(id: string): Promise<void> { await (await ensure()).mutations.retry(id); await refresh(); void flushMutations(); }
+export function resetMutationPath(path: string): Promise<void> {
+  return serial(path, async () => { await (await ensure()).mutations.resetPath(path); await refresh(); });
+}
+export async function setTaskStatus(path: string, status: TaskStatus, snapshot?: { text: string; baseHash: string }): Promise<unknown> {
+  if (!isMobile()) return api("POST", "/api/task/status", { path, status });
+  return serial(path, async () => {
+    const r = await ensure(); requireDurable(r.durable);
+    const draft = await r.mutations.draft(path);
+    const note = snapshot ?? draft ?? await api<NoteInfo>("GET", `/api/note?path=${encodeURIComponent(path)}`).then(n => ({ text: n.text, baseHash: n.hash }));
+    await r.mutations.add({ kind: "task", path, text: materializeTask(note!.text, path, status), baseHash: note!.baseHash, status });
+    await refresh(); void flushMutations();
+  });
+}
+let mutationAttempt = 0, mutationTimer = 0;
+async function flushMutations(): Promise<void> {
+  const r = await ensure();
+  clearTimeout(mutationTimer);
+  const result = await r.mutations.flush(sendMobileOperation);
+  window.dispatchEvent(new CustomEvent("kioku:mutations", { detail: await r.mutations.list() }));
+  await refresh();
+  if (result.stopped) mutationTimer = window.setTimeout(() => void flushMutations(), backoffMs(mutationAttempt++));
+  else mutationAttempt = 0;
+}
 
 const postCapture = (text: string, opId: string) => api<CaptureResult>("POST", "/api/capture", { text }, { "x-kioku-op": opId });
 
@@ -131,6 +180,7 @@ export async function syncNow(): Promise<void> {
   const { store } = await ensure();
   set({ syncing: true });
   try {
+    await flushMutations();
     const r = await syncReplica(store, (p) => api("GET", p));
     set({ lastSync: r.at, online: true });
     // Si algo dejó de estar visible (borrado o hecho privado), las lecturas guardadas podrían seguir mostrándolo.
@@ -148,6 +198,7 @@ const cycle = async () => { await flushQueue(); await syncNow(); };
 /** Vacía la réplica y las lecturas guardadas (clave revocada o inválida). Las capturas aún sin enviar se conservan. */
 export async function wipeOffline(): Promise<void> {
   clearTimeout(retryTimer);
+  clearTimeout(mutationTimer);
   await caches.delete("kioku-api").catch(() => false);
   if (!ready && !isMobile()) return;
   const { store } = await ensure();
