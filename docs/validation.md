@@ -69,6 +69,13 @@
 - **iPhone real:** que iOS no expulse el almacenamiento (se pide `storage.persist()`; si lo hace, se vuelve a sincronizar al abrir), que el envío ocurra al abrir la PWA con red (iOS no sincroniza en segundo plano) y «Sin conexión» real en modo avión. Cerrar y abrir la PWA basta; no hace falta reinstalar.
 - Evicción de almacenamiento y bloqueo de pestañas de IndexedDB: no reproducibles en Chromium.
 
+## Edición móvil sin conexión (0.7.0, JARV-15)
+
+- Pruebas deterministas cubren transporte, instantáneas, dependencias y conservación de borradores. Tras corregir la pérdida de `done_at` y la carrera entre confirmación y alta de una edición, el padre observó 31/31 pruebas focalizadas y `npm run typecheck` con salida 0.
+- La suite integrada anterior a esa última corrección tuvo 290 pruebas aprobadas y 1 omitida (Hermes ausente en el HOME temporal). El build final del código corregido pasó con `GOMAXPROCS=2` (salida 0, app ~760 KB). La suite final alcanzó el límite de 180 s: salida 124, 35 archivos de pruebas cancelados, sin GREEN. Ese resultado no reemplaza ni extiende el éxito anterior a la corrección; no hubo reintento automático.
+- **Rechequeo independiente indisponible:** los dos comandos de pruebas abortaron antes de ejecutar aserciones (salida 134, fallo al crear hilos); `typecheck` no pudo arrancar (salida 254, `fork: Resource temporarily unavailable`). La inspección estática no es un GREEN independiente.
+- **Pendiente:** comprobación integrada en navegador de IndexedDB, reconexión, conflicto y resolución; también iPhone real y evicción de almacenamiento. El único intento de Chromium no abrió DevTools; no se conserva un diagnóstico concluyente de su salida. No hubo reintentos. No se considera validado para publicación ni se ha verificado sincronización en segundo plano.
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.
