@@ -563,10 +563,11 @@ export class Kioku {
     for (const key of ["title", "due", "estimate"]) if (key in props && (props[key] ?? null) === (key === "title" ? note.title : current(key))) delete props[key];
     // El mismo proyecto escrito de otra forma (`[[Título]]` de una captura) no cuenta como cambio.
     if ("project" in props && (props.project === null ? !current("project") : this.projectOf(note) === this.index.resolve(relationTarget(props.project) ?? ""))) delete props.project;
-    if (!Object.keys(props).length) return note;
+    // El hash se exige antes de decidir que no hay nada que escribir: un cambio nulo con un hash viejo también es un conflicto.
     if (typeof hash !== "string" || !hash) throw new VaultError("invalid", "Falta el hash de la tarea");
     const cur = await this.vault.read(rel);
     if (cur.hash !== hash) throw new VaultError("conflict", "La tarea cambió: recargá antes de modificarla");
+    if (!Object.keys(props).length) return note;
     let text: string;
     try { text = setFrontmatter(cur.text, props); } catch (e) { throw new VaultError("invalid", (e as Error).message); }
     return (await this.saveNote(rel, text, hash)).note;

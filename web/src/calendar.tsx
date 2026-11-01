@@ -867,7 +867,15 @@ function TaskEdit({ task, projects, onSave, onCancel }: { task: CalendarTask; pr
 
 function TaskRow({ task, projects, readOnly, onSave, onSchedule }: { task: CalendarTask; projects: CalendarProject[]; readOnly: boolean; onSave(task: CalendarTask, patch: TaskPatch): Promise<boolean>; onSchedule(task: CalendarTask): void }) {
   const [editing, setEditing] = useState(false);
-  if (editing) return <li class="cal-task editing"><TaskEdit task={task} projects={projects} onSave={(patch) => onSave(task, patch)} onCancel={() => setEditing(false)} /></li>;
+  // Cerrar la edición desmonta el botón «Editar» que la abrió: al volver a pintarse la fila, el foco pasa al botón nuevo de esta misma fila.
+  const editButton = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (editing || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    editButton.current?.focus();
+  }, [editing]);
+  if (editing) return <li class="cal-task editing"><TaskEdit task={task} projects={projects} onSave={(patch) => onSave(task, patch)} onCancel={() => { restoreFocus.current = true; setEditing(false); }} /></li>;
   const meta = [task.status === "doing" ? "En curso" : null, task.projectTitle, task.estimate ? `~${formatDuration(task.estimate)}` : null, task.due ? `vence ${task.due}` : null].filter(Boolean);
   return (
     <li class="cal-task" draggable
@@ -876,7 +884,7 @@ function TaskRow({ task, projects, readOnly, onSave, onSchedule }: { task: Calen
       <span class="cal-tbody"><b>{task.title}</b>{meta.length > 0 && <small>{meta.join(" · ")}</small>}</span>
       <span class="cal-tacts">
         <button class="mini" aria-label={`Programar «${task.title}» en el calendario`} onClick={() => onSchedule(task)}>Programar</button>
-        {!readOnly && <button class="mini" aria-label={`Editar «${task.title}»`} onClick={() => setEditing(true)}>Editar</button>}
+        {!readOnly && <button ref={editButton} class="mini" aria-label={`Editar «${task.title}»`} onClick={() => setEditing(true)}>Editar</button>}
       </span>
     </li>
   );

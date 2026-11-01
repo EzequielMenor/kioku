@@ -112,22 +112,24 @@ export class Calendar {
   /** Enlaza una tarea existente a un bloque o evento, la cambia o la quita (`null`); no toca la tarea ni la finalización de la actividad. */
   async linkTask(path: string, taskPath: string | null, hash: string): Promise<CalendarItem> {
     const b = this.item(path);
-    let link: string | null = null;
+    let link: string | null = null, task: string | null = null;
     if (taskPath !== null) {
       const n = typeof taskPath === "string" && !/[\[\]#|\n\r]/.test(taskPath) ? this.host.index.getNote(taskPath) : null;
       if (!n || n.type !== "task") throw new VaultError("invalid", "La tarea no existe o no es válida");
-      if (b.taskPath === n.path) return b;
+      task = n.path;
       link = "[[" + n.path.replace(/\.md$/i, "") + "]]";
-    } else if (!b.task) return b;
-    await this.patch(path, { task: link }, hash);
+    }
+    // El hash se comprueba también cuando el enlace ya está como se pide (o ya no hay enlace): el cambio nulo no se salta la validación.
+    const current = await this.current(path, hash);
+    if (task === null ? !b.task : b.taskPath === task) return b;
+    await this.host.saveNote(path, setFrontmatter(current.text, { task: link }), hash);
     return this.item(path);
   }
 
   /** Crea una tarea nueva (título literal) y la enlaza a la actividad. La actividad y su `hash` se comprueban antes de crear nada. */
   async linkNewTask(path: string, task: TaskInput, hash: string): Promise<CalendarItem> {
     this.item(path);
-    if (typeof hash !== "string" || !hash) throw new VaultError("invalid", "Falta el hash de la actividad");
-    if ((await this.host.readNote(path)).hash !== hash) throw new VaultError("conflict", "La actividad cambió: recargá antes de modificarla");
+    await this.current(path, hash);
     const created = await this.host.createTask(task);
     return this.linkTask(path, created.path, hash);
   }
@@ -185,10 +187,16 @@ export class Calendar {
     return this.item(path);
   }
 
-  private async patch(path: string, props: Record<string, unknown>, hash: string): Promise<void> {
+  /** El texto vigente de la actividad, si `hash` es el suyo; sin hash es `invalid` y con uno viejo `conflict`. */
+  private async current(path: string, hash: string) {
     if (typeof hash !== "string" || !hash) throw new VaultError("invalid", "Falta el hash de la actividad");
     const current = await this.host.readNote(path);
     if (current.hash !== hash) throw new VaultError("conflict", "La actividad cambió: recargá antes de modificarla");
+    return current;
+  }
+
+  private async patch(path: string, props: Record<string, unknown>, hash: string): Promise<void> {
+    const current = await this.current(path, hash);
     await this.host.saveNote(path, setFrontmatter(current.text, props), hash);
   }
 }

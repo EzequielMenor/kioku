@@ -354,6 +354,50 @@ test("API: enlazar tarea a un evento (existente o nueva) y quitarla", async () =
   } finally { await t.done(); }
 });
 
+test("API: un cambio nulo exige igualmente un hash válido y vigente (400 sin hash o vacío, 409 si está viejo); el nulo vigente no escribe", async () => {
+  const t = await setup();
+  try {
+    const task = await t.call("POST", "/api/task/create", { title: "Pintar", estimate: 30 });
+    const ev = await t.call("POST", "/api/calendar/create", { ...EVENT, kind: "event", taskPath: "Tareas/Escribir.md" });
+    const stale = "0".repeat(64);
+    const same = { path: task.json.path, title: "Pintar" };
+    const bad: [string, string, Record<string, unknown>, number, unknown][] = [
+      ["task/update título igual, hash viejo", "/api/task/update", { ...same, hash: stale }, 409, { error: "La tarea cambió: recargá antes de modificarla", code: "conflict" }],
+      ["task/update título igual, hash vacío", "/api/task/update", { ...same, hash: "" }, 400, { error: "Falta el hash de la tarea", code: "invalid" }],
+      ["task/update título igual, sin hash", "/api/task/update", { ...same }, 400, { error: "Falta «hash»" }],
+      ["task/update sin cambios, hash viejo", "/api/task/update", { path: task.json.path, hash: stale }, 409, { error: "La tarea cambió: recargá antes de modificarla", code: "conflict" }],
+      ["task/update campos iguales, hash vacío", "/api/task/update", { ...same, estimate: 30, due: null, hash: "" }, 400, { error: "Falta el hash de la tarea", code: "invalid" }],
+      ["link misma tarea, hash viejo", "/api/calendar/link", { path: ev.json.path, taskPath: "Tareas/Escribir.md", hash: stale }, 409, { error: "La actividad cambió: recargá antes de modificarla", code: "conflict" }],
+      ["link misma tarea, hash vacío", "/api/calendar/link", { path: ev.json.path, taskPath: "Tareas/Escribir.md", hash: "" }, 400, { error: "Falta el hash de la actividad", code: "invalid" }],
+      ["link misma tarea, sin hash", "/api/calendar/link", { path: ev.json.path, taskPath: "Tareas/Escribir.md" }, 400, { error: "Falta «hash»" }],
+    ];
+    const before = snapshot(t);
+    for (const [name, url, body, status, expected] of bad) {
+      const r = await t.call("POST", url, body);
+      assert.equal(r.status, status, `${name}: ${r.text}`);
+      assert.deepEqual(r.json, expected, name);
+      assert.equal(snapshot(t), before, `${name}: no escribe nada`);
+    }
+    // Una actividad ya sin tarea: quitar el enlace tampoco salta la comprobación.
+    const loose = await t.call("POST", "/api/calendar/create", { ...EVENT, id: "tarea-cal-003", kind: "event" });
+    const before2 = snapshot(t);
+    const absent = await t.call("POST", "/api/calendar/link", { path: loose.json.path, taskPath: null, hash: stale });
+    assert.deepEqual([absent.status, absent.json], [409, { error: "La actividad cambió: recargá antes de modificarla", code: "conflict" }]);
+    const empty = await t.call("POST", "/api/calendar/link", { path: loose.json.path, taskPath: null, hash: "" });
+    assert.deepEqual([empty.status, empty.json], [400, { error: "Falta el hash de la actividad", code: "invalid" }]);
+    assert.equal(snapshot(t), before2);
+
+    // Con el hash vigente el cambio nulo sigue siendo 200 y no escribe.
+    const ok = await t.call("POST", "/api/task/update", { ...same, hash: task.json.hash });
+    assert.deepEqual([ok.status, ok.json], [200, task.json]);
+    const okLink = await t.call("POST", "/api/calendar/link", { path: ev.json.path, taskPath: "Tareas/Escribir.md", hash: ev.json.hash });
+    assert.deepEqual([okLink.status, okLink.json], [200, ev.json]);
+    const okAbsent = await t.call("POST", "/api/calendar/link", { path: loose.json.path, taskPath: null, hash: loose.json.hash });
+    assert.deepEqual([okAbsent.status, okAbsent.json], [200, loose.json]);
+    assert.equal(snapshot(t), before2, "los cambios nulos vigentes no tocan Markdown, registro ni contador");
+  } finally { await t.done(); }
+});
+
 test("API móvil: las rutas nuevas son solo de escritorio y no cambian nada; la lectura sigue sin filtrar lo privado", async () => {
   const t = await setup();
   try {
@@ -478,4 +522,9 @@ test("interfaz: panel de pendientes con crear/editar en el sitio, alternativa de
   assert.doesNotMatch(ui, /offline\/(runtime|store|queue)/);
   // `min=1` con `step=5` haría inválido «20»: el navegador bloquearía el envío sin decir nada.
   assert.doesNotMatch(ui, /type="number"[^>]*\bstep=/);
+  // Esc en «Editar» desmonta el botón que abrió el formulario: el foco vuelve al botón nuevo de la misma fila, sin temporizadores.
+  const row = ui.slice(ui.indexOf("function TaskRow("), ui.indexOf("/** Tareas pendientes junto al calendario"));
+  assert.match(row, /editButton/, "la fila guarda una referencia a su botón Editar");
+  assert.match(row, /useEffect\(/);
+  assert.doesNotMatch(row, /setTimeout|requestAnimationFrame/);
 });
