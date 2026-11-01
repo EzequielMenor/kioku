@@ -123,6 +123,14 @@
 
 **Límites conservados:** sin Firefox/Safari, dispositivo táctil real ni auditoría de contraste no textual/global. Crear-y-enlazar puede dejar una tarea pendiente si una escritura externa cambia el evento entre ambos pasos: se detecta con 409, la tarea sigue visible y se puede enlazar con hash fresco. Mover al pasado sigue avisando sin bloquear (discrepancia histórica JARV-21). ASSESS nativo no evaluable mientras había untracked: no se declara aprobación de revisión nativa; la verificación independiente requerida por riesgo de privacidad sí se completó.
 
+## Calendario: seguimiento de uso cotidiano (S9–S10)
+
+- Recorrido inicial de caja negra con Chromium real, sin leer código: crear tres tareas, programar desde Día/Semana con «Programar», editar título/horario, terminar un bloque, completar en Tareas, recargar y revisar a 390 px. Confirmó dos fricciones: no poder completar desde el lateral y vencimientos ISO. Las observaciones de minutos recortados en campos horarios y tareas después de la cuadrícula móvil quedaron como propuestas, sin implementación.
+- Mejoras: botón «Completar» en el lateral con la operación existente, fechas respecto a hoy del servidor (no al día seleccionado). RED de ambas reglas, luego 25/25 pruebas enfocadas; padre 384/384 sin omisiones, `npm run typecheck`, `npm run build:web` y `git diff --check` en verde.
+- Segundo recorrido real de UI: ayer/hoy/mañana legibles y estables al avanzar tres días; acciones/etiquetas visibles a 390 px; completar con ratón y Tab/Enter reduce pendientes; recargar mantiene tareas completadas y bloque vinculado pendiente. Sin conexión conserva tarea/contador y comunica que no guardó nada. Doble activación no completó otra tarea.
+- Foco: por teclado pasa a otra acción útil; al completar la última con un clic va al encabezado del panel. **Salvedad:** doble clic rápido en una fila que desaparece puede dejar foco en BODY; límite observado sin fallo de datos, no se afirma conservación universal del foco.
+- Evidencia de capturas de esta sesión: `/tmp/kioku-ux-h9042t` y `/tmp/kioku-ux-followup-wGakUk`. Exploración guiada por agente, no investigación con participantes humanos. Sin cambios de API, permisos, almacenamiento, campos horarios ni colocación móvil.
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.

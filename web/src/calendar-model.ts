@@ -289,6 +289,17 @@ export interface TaskValues { title: string; due?: string; estimate?: number; pr
 /** Lo que se envía al editar: solo lo que cambió; `null` quita el valor. */
 export interface TaskPatch { title?: string; due?: string | null; estimate?: number | null; projectPath?: string | null }
 
+/** Fecha de vencimiento del panel, relativa al día actual y no al día mostrado en la agenda. */
+export function taskDueLabel(due: string, today: string): string {
+  const days = diffDays(today, due);
+  const date = `${dayMonth(due)} de ${due.slice(0, 4)}`;
+  if (days < 0) return `vencida · ${date}`;
+  if (days === 0) return "vence hoy";
+  if (days === 1) return "vence mañana";
+  if (days < 7) return `vence ${weekdayName(due)}`;
+  return `vence ${date}`;
+}
+
 /** Pendientes (por hacer o en curso): las que vencen antes primero, luego prioridad y título; sin fecha al final. */
 export const pendingTasks = (tasks: CalendarTask[]): CalendarTask[] => tasks
   .filter((t) => t.status === "todo" || t.status === "doing")

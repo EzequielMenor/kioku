@@ -5,6 +5,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 ## Sin publicar
 
 ### Calendario
+- **Uso diario del lateral** (JARV-27): completar una tarea sin salir del calendario, sin terminar su bloque; vencimientos legibles («hoy», «mañana», día de semana o fecha) relativos al día actual, no al día seleccionado.
 - **Tareas simples desde el calendario** (JARV-27): título literal, fecha/estimación/proyecto opcionales, panel de pendientes con edición inline, arrastre a Día/Semana y alternativa «Programar». El detalle permite enlazar o crear una tarea también dentro de un evento. Las escrituras nuevas son solo de escritorio y en línea; tarea y bloque conservan su finalización independiente.
 - **Prioridades con nombres** (JARV-28): Alta / Media / Baja y Sin prioridad en las propiedades; etiquetas legibles en listas, tabla y tablero. Se conservan los datos numéricos y los atajos de captura `p1/p2/p3`.
 - **Guardas y teclado** (JARV-27): las nuevas operaciones de editar/enlazar validan el hash incluso si no hay cambios; cancelar la edición de una tarea devuelve el foco al botón «Editar» de la misma fila.

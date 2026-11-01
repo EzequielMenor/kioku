@@ -428,6 +428,44 @@ test("API móvil: las rutas nuevas son solo de escritorio y no cambian nada; la 
   } finally { await t.done(); }
 });
 
+test("API: completar una tarea la quita de pendientes sin cambiar su bloque enlazado", async () => {
+  const t = await setup();
+  try {
+    const block = await t.call("POST", "/api/calendar/create", { ...BLOCK, taskPath: "Tareas/Escribir.md" });
+    assert.equal(block.status, 200, block.text);
+    const url = "/api/calendar?from=2026-10-28&to=2026-10-28";
+    const before = await t.call("GET", url);
+    assert.ok(pendingTasks(before.json.tasks).some((x) => x.path === "Tareas/Escribir.md"));
+    const done = await t.call("POST", "/api/task/status", { path: "Tareas/Escribir.md", status: "done" });
+    assert.equal(done.status, 200, done.text);
+    const after = await t.call("GET", url);
+    assert.ok(!pendingTasks(after.json.tasks).some((x) => x.path === "Tareas/Escribir.md"));
+    assert.deepEqual(after.json.items.find((x: CalendarEntry) => x.path === block.json.path), before.json.items.find((x: CalendarEntry) => x.path === block.json.path));
+  } finally { await t.done(); }
+});
+
+test("panel: completar es una acción accesible que reutiliza la escritura existente", () => {
+  const ui = src("calendar.tsx");
+  const row = ui.slice(ui.indexOf("function TaskRow("), ui.indexOf("/** Tareas pendientes junto al calendario"));
+  assert.match(row, /aria-label=\{`Completar «\$\{task.title\}»`\}/);
+  assert.match(row, /onComplete\(task.path\)/);
+  assert.match(ui, /<TaskPanel[^>]*onComplete=\{completeTask\}/);
+  assert.equal((ui.match(/\/api\/task\/status/g) ?? []).length, 1);
+});
+
+test("panel: fechas legibles relativas al día real, con límites y cambio de año", async () => {
+  const model = await import("../web/src/calendar-model.ts");
+  const label = (model as unknown as { taskDueLabel(due: string, today: string): string }).taskDueLabel;
+  assert.equal(label("2026-12-30", "2026-12-31"), "vencida · 30 de diciembre de 2026");
+  assert.equal(label("2026-12-31", "2026-12-31"), "vence hoy");
+  assert.equal(label("2027-01-01", "2026-12-31"), "vence mañana");
+  assert.equal(label("2027-01-06", "2026-12-31"), "vence miércoles");
+  assert.equal(label("2027-01-07", "2026-12-31"), "vence 7 de enero de 2027");
+  const ui = src("calendar.tsx");
+  assert.match(ui, /<TaskPanel[^>]*today=\{today\}/);
+  assert.match(ui, /taskDueLabel\(task.due, today\)/);
+});
+
 // ───────────── Interfaz: lógica pura ─────────────
 
 const task = (over: Partial<CalendarTask> & { path: string }): CalendarTask => ({
