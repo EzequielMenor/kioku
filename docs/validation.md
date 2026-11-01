@@ -97,6 +97,32 @@
 - UI con daemon temporal + Chromium headless (playwright, vault temporal), eventos de puntero reales: arrastrar en un hueco crea un evento con inicio y fin ajustados; un clic da un borrador de 60 min; Esc lo cancela; «gym mañana 18-19» se interpreta y se crea, y una línea sin hora no crea nada; el panel guarda título, tipo y fin; «Duplicar» crea la copia; «Borrar» + «Deshacer» devuelve el archivo idéntico; mover y redimensionar (borde superior e inferior) reescriben el archivo, Esc a mitad de arrastre no escribe y un clic no escribe; sin desbordamiento a 390 px y sin errores de consola.
 - Sin verificar: tacto (en pantallas táctiles el arrastre en la cuadrícula cede al desplazamiento; ahí se crea con un toque y se edita en el panel), teclado para mover/redimensionar (el panel y «Un día antes / después» son la alternativa), tema claro de la cuadrícula.
 
+## Calendario: completitud UX v2 (JARV-27, JARV-28, JARV-29) — verificada localmente
+
+**Estado:** alcance acordado verificado localmente en `34ce465`, `ab63b1e` y corrección `d8d8244`. Sin publicación, integración ni despliegue. No se dan por completados JARV-21, JARV-24 ni la épica JARV-17: conservan sus límites históricos; JARV-22 y JARV-23 (offline/asistente) quedan fuera.
+
+**Evidencia reportada en el documento de tarea (no reejecutada en la tarea de documentación):**
+- Línea base previa al trabajo de completitud: `npm test` 356/356, `npm run typecheck` y `npm run build:web` en verde.
+- Semana L–D (S2, T1): reproducción inline en Chromium, job-3, exit 0. Por defecto la semana muestra lunes a domingo; ocultar el fin de semana muestra L–V; restaurar la semana completa sobrevive a recargar.
+- Prioridades (S6, T3, `34ce465`): 3/3 pruebas focalizadas y 359/359 de la suite con typecheck en verde; build del padre exit 0. Chromium del padre (job-5) comprueba Alta/Media/Baja/Sin prioridad, persistencia numérica mediante la API pública, recarga y ausencia de desborde a 390 px.
+
+**Verificación independiente inicial (JARV-27):** 119/119 pruebas focalizadas, tipos y build en verde. Privacidad de proyectos/eventos y permisos de rutas nuevas comprobados. Arrastre nativo con ratón (eventos confiables, no `drop` sintético) crea bloques enlazados en Día y Semana. Creación literal, opcionales y edición inline, enlace existente/nuevo en eventos y finalización independiente comprobados. Programar con Enter, Tab/Shift+Tab y Esc de hojas modales pasan. A 1600/390 px, tinta/papel, no hay desborde; contraste medido de los textos nuevos ≥4,5 (mínimos 4,59 y 5,44).
+
+**Bloqueos corregidos y revalidados (`d8d8244`):** hash obsoleto/vacío aceptado en operaciones nuevas sin cambios y pérdida de foco con Esc en edición inline. RED/GREEN observados en API y Chromium. Recheck independiente: 38/38 pruebas, build y script HTTP/CDP exit 0; doce combinaciones de hash obsoleto/vacío/ausente/vigente rechazan con 409/400/400 o aceptan con 200, siempre sin cambiar Markdown, logs ni contadores en no-op. Tab/Tab/Enter/Esc en la segunda fila vuelve al nuevo botón Editar de esa misma fila, no a BODY ni a la primera. Sin bloqueos restantes.
+
+**Checklist de cierre:**
+- [x] `npm test` tras la corrección: 381/381, sin omisiones (padre, job-7; pruebas con bóvedas temporales).
+- [x] `npm run typecheck` (padre, job-7).
+- [x] `npm run build:web` y `git diff --check` (padre, job-7).
+- [x] Chromium: crear tarea con título literal, opcionales fecha/estimación/proyecto y edición en la fila (S3); creación de eventos con horario y campos opcionales mantiene la evidencia de JARV-26.
+- [x] Chromium: arrastre nativo de tarea pendiente al calendario Día/Semana crea bloques enlazados con hora (S4).
+- [x] Chromium: enlazar una tarea existente o crear una nueva desde un evento; completar tarea y bloque sigue siendo independiente (S5).
+- [x] Chromium: selector Alta / Media / Baja con un toque, visible sin color, y datos 1 / 2 / 3 compatibles; atajos `p1/p2/p3` conservados por las pruebas (S6).
+- [x] Chromium: Semana L–D por defecto, opción L–V y restauración de la semana completa tras recargar; campos de 24 h comprobados (S2, S7).
+- [x] Teclado, 390 px y contraste de textos nuevos (S8, T5). El arrastre de tareas a Día/Semana tiene prueba nativa; el anterior arrastre de actividades entre días conserva su límite histórico.
+
+**Límites conservados:** sin Firefox/Safari, dispositivo táctil real ni auditoría de contraste no textual/global. Crear-y-enlazar puede dejar una tarea pendiente si una escritura externa cambia el evento entre ambos pasos: se detecta con 409, la tarea sigue visible y se puede enlazar con hash fresco. Mover al pasado sigue avisando sin bloquear (discrepancia histórica JARV-21). ASSESS nativo no evaluable mientras había untracked: no se declara aprobación de revisión nativa; la verificación independiente requerida por riesgo de privacidad sí se completó.
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.

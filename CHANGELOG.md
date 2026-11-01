@@ -5,6 +5,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 ## Sin publicar
 
 ### Calendario
+- **Tareas simples desde el calendario** (JARV-27): título literal, fecha/estimación/proyecto opcionales, panel de pendientes con edición inline, arrastre a Día/Semana y alternativa «Programar». El detalle permite enlazar o crear una tarea también dentro de un evento. Las escrituras nuevas son solo de escritorio y en línea; tarea y bloque conservan su finalización independiente.
+- **Prioridades con nombres** (JARV-28): Alta / Media / Baja y Sin prioridad en las propiedades; etiquetas legibles en listas, tabla y tablero. Se conservan los datos numéricos y los atajos de captura `p1/p2/p3`.
+- **Guardas y teclado** (JARV-27): las nuevas operaciones de editar/enlazar validan el hash incluso si no hay cambios; cancelar la edición de una tarea devuelve el foco al botón «Editar» de la misma fila.
 - **Crear y editar eventos en el sitio** (JARV-26). La vista Día tiene una cuadrícula horaria: arrastra en un hueco (o haz clic) y escribe el título + Enter, o usa la línea «Añadir rápido» con texto natural («gym mañana 18-19»). Un clic abre el panel con todos los campos editables; las actividades se mueven arrastrando, se redimensionan por el borde (pasos de 15 min, Esc cancela), se duplican y se borran con «Deshacer». La lista sigue disponible como vista alternativa. Nuevas rutas de escritorio `/api/calendar/update|delete|restore`.
 - **Hora en 24 h y semana completa** (JARV-25). Los campos de inicio y fin separan fecha y hora (HH:mm), así que ya no aparece AM/PM. La vista Semana muestra de lunes a domingo; se puede ocultar el fin de semana y empezar la semana en domingo (se recuerda en el navegador).
 
