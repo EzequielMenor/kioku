@@ -1,6 +1,7 @@
 // Vistas tipo base de datos sobre las propiedades de las tareas (frontmatter): Tabla y Tablero.
 import { useState } from "preact/hooks";
 import { api } from "./api.ts";
+import { priorityLabel } from "./priority.ts";
 import type { TaskRow, TaskStatus } from "./types.ts";
 
 type Guard = <T>(fn: () => Promise<T>) => Promise<T | undefined>;
@@ -58,7 +59,7 @@ export function TaskTable({ tasks, today, guard, fmt }: Props) {
                   </select>
                 </td>
                 <td class={!closed && t.due && today && t.due < today ? "bad-text" : ""}>{t.due ? fmt(t.due, today) : <span class="muted">—</span>}</td>
-                <td>{t.priority ? `p${t.priority}` : <span class="muted">—</span>}</td>
+                <td>{t.priority ? priorityLabel(t.priority) : <span class="muted">—</span>}</td>
               </tr>
             );
           })}
@@ -94,7 +95,7 @@ export function TaskBoard({ tasks, today, guard, fmt }: Props) {
                 <article key={t.path} class="kcard" draggable onDragStart={(e) => e.dataTransfer?.setData("text/plain", t.path)}>
                   <a href={`#/nota/${enc(t.path)}`}>{t.title}</a>
                   <div class="meta">
-                    {t.priority && <span class="chip">p{t.priority}</span>}
+                    {t.priority && <span class="chip">{priorityLabel(t.priority)}</span>}
                     {t.due && <span class={`chip ${overdue ? "bad" : ""}`}>{fmt(t.due, today)}</span>}
                     {t.projectPath && <a class="chip link" href={`#/proyecto/${enc(t.projectPath)}`}>{t.projectTitle}</a>}
                     <select class="cell-select kmove" value={t.status} aria-label={`Mover «${t.title}»`}

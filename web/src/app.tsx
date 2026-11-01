@@ -14,6 +14,7 @@ import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
 import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submit, syncNow, useOffline, wipeOffline, type OfflineState } from "./offline/runtime.ts";
 import type { QueuedCapture } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
+import { priorityLabel } from "./priority.ts";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
 import type {
   CaptureResult, FocusState, NoteListItem, Proposal, ResumeCard, SearchHit, TaskRow, TodayView,
@@ -302,7 +303,7 @@ function TaskLine({ t, today, go, guard, onFocus }: { t: TaskRow; today?: string
         onChange={(e) => void guard(() => api("POST", "/api/task/status", { path: t.path, status: e.currentTarget.checked ? "done" : "todo" }))} />
       <a class="ttitle" href={`#/nota/${enc(t.path)}`}>{t.title}</a>
       {t.status === "doing" && <span class="chip accent">en curso</span>}
-      {t.priority && <span class="chip">p{t.priority}</span>}
+      {t.priority && <span class="chip">{priorityLabel(t.priority)}</span>}
       {t.due && <span class={`chip ${overdue ? "bad" : ""}`}>{relDate(t.due, today)}</span>}
       {t.projectPath && <a class="chip link" href={`#/proyecto/${enc(t.projectPath)}`}>{t.projectTitle}</a>}
       {onFocus && !done && <button class="mini" onClick={onFocus} title="Empezar foco">▶</button>}

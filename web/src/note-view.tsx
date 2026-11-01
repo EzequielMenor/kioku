@@ -7,6 +7,7 @@ import { createEditor, splitNote, type EditorHandle } from "./editor.ts";
 import { useApi } from "./hooks.ts";
 import type { NoteInfo } from "./types.ts";
 import { parseValue } from "./cell-values.ts";
+import { PrioritySelector } from "./priority.tsx";
 
 type SaveState = "saved" | "dirty" | "saving" | "conflict" | "error";
 
@@ -233,9 +234,7 @@ export function NoteView({ path, rev, go, embedded }: { path: string; rev: numbe
                   <dt>Fecha</dt>
                   <dd><input type="date" value={String(fm.due ?? "")} onChange={(e) => void setProp({ due: e.currentTarget.value || null })} /></dd>
                   <dt>Prioridad</dt>
-                  <dd><select value={String(fm.priority ?? "")} onChange={(e) => void setProp({ priority: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-                    <option value="">—</option><option value="1">p1</option><option value="2">p2</option><option value="3">p3</option>
-                  </select></dd>
+                  <dd><PrioritySelector value={fm.priority} onChange={(priority) => void setProp({ priority: priority })} /></dd>
                   <dt>Proyecto</dt><dd>{String(fm.project ?? "—")}</dd>
                 </>
               )}

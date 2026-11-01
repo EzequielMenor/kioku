@@ -1,0 +1,15 @@
+.priority-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.priority-selector button {
+  min-height: 2.75rem;
+}
+
+.priority-selector button[aria-pressed="true"] {
+  outline: 2px solid currentColor;
+  outline-offset: -3px;
+  font-weight: 700;
+}
