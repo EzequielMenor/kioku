@@ -1,5 +1,5 @@
 /* Calendario — «panel de salidas» (propuesta A). Solo tokens de app.css y las fuentes empaquetadas: ninguna petición externa. */
-.cal { max-width: 1120px; }
+.cal { max-width: 1400px; }
 .cal .row { margin-top: 0; }
 .cal h1:focus { outline: none; }
 .cal-tools { justify-content: flex-end; }
@@ -195,3 +195,36 @@ a.cal-ttl:hover { color: var(--accent); }
 .cal-rz.top { top: 0; }
 .cal-rz.bottom { bottom: 0; }
 .cal-ev.movable:hover .cal-rz::after { content: ""; position: absolute; left: 40%; right: 40%; top: 3px; height: 2px; border-radius: 1px; background: currentColor; opacity: 0.45; }
+
+/* Tareas: panel lateral de pendientes, formularios y enlace dentro de una actividad */
+.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.cal-body { min-width: 0; }
+.cal-tasks { position: sticky; top: 12px; display: grid; gap: 10px; max-height: calc(100vh - 24px); overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.cal-tasks h2 { margin: 0; font-size: 16px; }
+.cal-tnew, .cal-tedit, .cal-lnew { display: grid; gap: 8px; min-width: 0; }
+.cal-tnew label, .cal-tedit label, .cal-lnew label, .cal-lrow label, .cal-tfields label { display: grid; gap: 4px; font-size: 13px; color: var(--fg2); min-width: 0; }
+.cal-tnew input, .cal-tedit input, .cal-tedit select, .cal-lnew input:not([type=radio]), .cal-tfields input, .cal-tfields select, .cal-lrow select { width: 100%; min-width: 0; }
+.cal-tnew summary, .cal-lnew summary { cursor: pointer; font-size: 13px; color: var(--fg2); }
+.cal-tnew summary:focus-visible, .cal-lnew summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cal-tfields { display: grid; gap: 8px; margin-top: 8px; }
+.cal-tlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cal-task { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; align-items: start; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raised); cursor: grab; }
+.cal-task.editing { display: block; cursor: default; }
+.cal-grip { color: var(--muted); line-height: 1.4; user-select: none; }
+.cal-tbody { display: grid; gap: 2px; min-width: 0; }
+.cal-tbody b { font-weight: 600; overflow-wrap: anywhere; }
+.cal-tbody small { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.cal-tacts { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; }
+.cal-linker label { display: grid; gap: 4px; font-size: 13px; color: var(--fg2); }
+.cal-lrow { display: flex; align-items: end; gap: 8px; }
+.cal-lrow label { flex: 1 1 auto; min-width: 0; }
+.cal-lrow select { width: 100%; min-width: 0; }
+
+/* Soltar una tarea en la cuadrícula o en una lista de día */
+.cal-gdrop { position: absolute; left: 0; right: 0; z-index: 4; border-top: 2px dashed var(--accent); pointer-events: none; }
+.cal-gdrop span { position: absolute; right: 4px; top: 2px; padding: 0 6px; border-radius: 4px; background: var(--accent); color: var(--accent-fg); font-size: 12px; font-variant-numeric: tabular-nums; }
+.cal-board > div.over { outline: 2px dashed var(--accent); outline-offset: -2px; }
+@media (max-width: 960px) {
+  .cal-layout { grid-template-columns: minmax(0, 1fr); }
+  .cal-tasks { position: static; max-height: none; }
+}

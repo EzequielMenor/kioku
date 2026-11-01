@@ -1,7 +1,7 @@
 // Cuadrícula horaria del día y línea de creación rápida. La lógica (posiciones, ajuste a 15 min) vive en calendar-grid.ts.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { parseQuickAdd } from "../../src/core/quick-add.ts";
-import { areaLabel, formatDuration } from "./calendar-model.ts";
+import { TASK_MIME, areaLabel, formatDuration, minuteStamp } from "./calendar-model.ts";
 import { createRange, gridWindow, layoutDay, minuteToY, moveRange, resizeRange, yToMinute } from "./calendar-grid.ts";
 import type { CalendarEntry } from "./types.ts";
 
@@ -16,10 +16,12 @@ interface Draft { a: number; b: number; held: boolean; title: string }
 const CLICK_SLOP = 4;
 type Drag = { path: string; mode: "move" | "start" | "end"; pointer: number; y0: number; moved: boolean; start: string; end: string };
 
-export function DayGrid({ day, items, now, today, onOpen, onCreate, onChange }: {
+export function DayGrid({ day, items, now, today, onOpen, onCreate, onChange, onDropTask }: {
   day: string; items: CalendarEntry[]; now: Date; today: string;
   onOpen(path: string): void; onCreate(title: string, start: string, end: string): Promise<boolean>;
   onChange(item: CalendarEntry, start: string, end: string): Promise<boolean>;
+  /** Una tarea del panel se soltó en la cuadrícula: `start` es la hora (ajustada a 15 min) bajo el puntero. */
+  onDropTask?(taskPath: string, start: string): void;
 }) {
   const win = gridWindow(items, day);
   const placed = layoutDay(items, day, win);
@@ -28,12 +30,30 @@ export function DayGrid({ day, items, now, today, onOpen, onCreate, onChange }: 
   const gesture = useRef<{ pointer: number; a: number; b: number } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dropAt, setDropAt] = useState<number | null>(null);
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
   const [preview, setPreview] = useState<{ path: string; start: string; end: string } | null>(null);
   const hours = Array.from({ length: (win.to - win.from) / 60 + 1 }, (_, i) => win.from / 60 + i);
   const nowMin = day === today ? now.getHours() * 60 + now.getMinutes() : null;
-  const minuteAt = (e: PointerEvent) => yToMinute(e.clientY - body.current!.getBoundingClientRect().top, PX, win);
+  const minuteAt = (e: { clientY: number }) => yToMinute(e.clientY - body.current!.getBoundingClientRect().top, PX, win);
+  // Arrastre HTML5 de una tarea del panel (con el ratón): no interfiere con los eventos de puntero de crear, mover y redimensionar.
+  const taskDrag = (e: DragEvent) => !!onDropTask && Array.from(e.dataTransfer?.types ?? []).includes(TASK_MIME);
+  const overTask = (e: DragEvent) => {
+    if (!taskDrag(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    setDropAt(minuteAt(e));
+  };
+  const leaveTask = (e: DragEvent) => { if (!body.current?.contains(e.relatedTarget as Node | null)) setDropAt(null); };
+  const dropTask = (e: DragEvent) => {
+    if (!taskDrag(e)) return;
+    e.preventDefault();
+    const taskPath = e.dataTransfer?.getData(TASK_MIME);
+    const at = minuteAt(e);
+    setDropAt(null);
+    if (taskPath) onDropTask!(taskPath, minuteStamp(day, at));
+  };
 
   useEffect(() => { gesture.current = null; setDraft(null); }, [day]);
   // `autoFocus` solo vale al montar la página: el campo aparece al soltar el puntero, así que se enfoca a mano.
@@ -118,9 +138,11 @@ export function DayGrid({ day, items, now, today, onOpen, onCreate, onChange }: 
       <div class="cal-gutter" aria-hidden="true">
         {hours.slice(0, -1).map((h) => <span key={h} style={{ top: `${minuteToY(h * 60, PX, win)}px` }}>{pad(h % 24)}:00</span>)}
       </div>
-      <div ref={body} class="cal-gbody" role="group" aria-label="Horas del día: arrastra en un hueco para crear una actividad"
-        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>
+      <div ref={body} class="cal-gbody" role="group" aria-label="Horas del día: arrastra en un hueco para crear una actividad o suelta una tarea del panel para programarla"
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}
+        onDragOver={overTask} onDragLeave={leaveTask} onDrop={dropTask}>
         {hours.map((h) => <i key={h} class="cal-hline" style={{ top: `${minuteToY(h * 60, PX, win)}px` }} />)}
+        {dropAt !== null && <i class="cal-gdrop" style={{ top: `${minuteToY(dropAt, PX, win)}px` }}><span>{hm(minuteStamp(day, dropAt))}</span></i>}
         {nowMin !== null && nowMin >= win.from && nowMin <= win.to && <i class="cal-gnow" style={{ top: `${minuteToY(nowMin, PX, win)}px` }} />}
         {placed.map((p) => {
           const item = items.find((i) => i.path === p.path)!;

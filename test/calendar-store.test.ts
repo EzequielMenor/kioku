@@ -68,7 +68,7 @@ test("calendar update changes title, kind, times and keeps the rest of the Markd
     assert.equal(same.hash, u.hash, "sin cambios no se escribe");
     const ev = await j.calendar.update(u.path, { kind: "event" }, u.hash);
     assert.equal(ev.kind, "event");
-    assert.equal(ev.taskPath, null, "un evento no lleva tarea");
+    assert.equal(ev.taskPath, task.path, "un evento conserva el enlace a su tarea");
     await assert.rejects(j.calendar.update(ev.path, { title: "   " }, ev.hash), /título/);
     await assert.rejects(j.calendar.update(ev.path, { end: "2026-10-29T17:00" }, ev.hash), /posterior/);
     await assert.rejects(j.calendar.update(ev.path, { title: "Otro" }, u.hash), /cambió/);

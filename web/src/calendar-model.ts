@@ -273,6 +273,75 @@ export function gapBlock(task: CalendarTask, gap: Gap): Draft {
   return { kind: "block", title: task.title, start: gap.start, end: addMinutes(gap.start, task.estimate ?? 30), taskPath: task.path };
 }
 
+// ───────────── Tareas: panel de pendientes, formulario y arrastre a la agenda ─────────────
+
+/** Tipo del arrastre de una tarea del panel; las actividades se arrastran con `text/plain`. */
+export const TASK_MIME = "application/x-kioku-task";
+/** Duración del bloque de una tarea sin estimación. */
+export const DEFAULT_TASK_MINUTES = 30;
+const MAX_TASK_MINUTES = 24 * 60;
+
+/** Lo escrito en el formulario de una tarea (todo texto; vacío = sin valor). */
+export interface TaskForm { title: string; due: string; estimate: string; projectPath: string }
+export type TaskCheck<T> = { ok: true; value: T } | { ok: false; error: string };
+/** Lo que se envía al crear: solo los campos con valor. */
+export interface TaskValues { title: string; due?: string; estimate?: number; projectPath?: string }
+/** Lo que se envía al editar: solo lo que cambió; `null` quita el valor. */
+export interface TaskPatch { title?: string; due?: string | null; estimate?: number | null; projectPath?: string | null }
+
+/** Pendientes (por hacer o en curso): las que vencen antes primero, luego prioridad y título; sin fecha al final. */
+export const pendingTasks = (tasks: CalendarTask[]): CalendarTask[] => tasks
+  .filter((t) => t.status === "todo" || t.status === "doing")
+  .sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || (a.priority ?? 9) - (b.priority ?? 9) || a.title.localeCompare(b.title));
+
+/** Valida el formulario completo (también lo que no cambió) y devuelve los campos ya convertidos. */
+function readTaskForm(form: TaskForm): TaskCheck<{ title: string; due: string | null; estimate: number | null; projectPath: string | null }> {
+  const title = form.title.trim();
+  if (!title) return { ok: false, error: "Escribe un título." };
+  if (/[\r\n]/.test(title) || title.length > 200) return { ok: false, error: "El título cabe en una línea de hasta 200 caracteres." };
+  const due = form.due.trim();
+  if (due) try { parseLocal(`${due}T00:00`); } catch { return { ok: false, error: "Indica una fecha válida (AAAA-MM-DD)." }; }
+  const text = form.estimate.trim(), estimate = text ? Number(text) : null;
+  if (text && !(/^\d+$/.test(text) && estimate! >= 1 && estimate! <= MAX_TASK_MINUTES)) return { ok: false, error: `La estimación son minutos enteros, de 1 a ${MAX_TASK_MINUTES}.` };
+  return { ok: true, value: { title, due: due || null, estimate, projectPath: form.projectPath || null } };
+}
+
+/** Crear: el título basta; fecha, estimación y proyecto solo viajan si se rellenaron. */
+export function taskInput(form: TaskForm): TaskCheck<TaskValues> {
+  const r = readTaskForm(form);
+  if (!r.ok) return r;
+  const { title, due, estimate, projectPath } = r.value;
+  return { ok: true, value: { title, ...(due ? { due } : {}), ...(estimate !== null ? { estimate } : {}), ...(projectPath ? { projectPath } : {}) } };
+}
+
+/** Editar en el sitio: solo lo que cambió respecto a la tarea; vaciar un campo lo quita (`null`). */
+export function taskChanges(task: Pick<CalendarTask, "title" | "due" | "estimate" | "projectPath">, form: TaskForm): TaskCheck<TaskPatch> {
+  const r = readTaskForm(form);
+  if (!r.ok) return r;
+  const next = r.value, patch: TaskPatch = {};
+  if (next.title !== task.title) patch.title = next.title;
+  if (next.due !== (task.due ?? null)) patch.due = next.due;
+  if (next.estimate !== (task.estimate ?? null)) patch.estimate = next.estimate;
+  if (next.projectPath !== (task.projectPath ?? null)) patch.projectPath = next.projectPath;
+  return { ok: true, value: patch };
+}
+
+/** El bloque que nace al soltar una tarea en la agenda: dura lo que estima (30 min si no estima) y queda enlazado a ella. */
+export function taskDraftBlock(task: Pick<CalendarTask, "title" | "path" | "estimate">, start: string): Draft {
+  return { kind: "block", title: task.title, start, end: addMinutes(start, task.estimate ?? DEFAULT_TASK_MINUTES), taskPath: task.path };
+}
+
+/** Inicio de un bloque soltado en un día sin hora concreta (semana o lista): el primer hueco libre donde cabe; si no, la hora inicial por defecto. */
+export function dropStart(items: CalendarEntry[], day: string, now: Date, minutes: number): string {
+  return openGaps(items, day, now).find((g) => g.minutes >= minutes)?.start ?? defaultSlot(day, now).start;
+}
+
+/** Minutos desde la medianoche de `day` → «YYYY-MM-DDTHH:mm», sin pasar de las 23:45 (un bloque no nace a medianoche). */
+export function minuteStamp(day: string, minute: number): string {
+  const m = Math.max(0, Math.min(24 * 60 - 15, minute));
+  return `${day}T${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
 /** Horas iniciales al crear: el próximo cuarto de hora de hoy, o las 09:00. */
 export function defaultSlot(day: string, now: Date): { start: string; end: string } {
   let start = `${day}T09:00`;

@@ -21,6 +21,37 @@ export const FOLDERS: Record<NoteType, string> = {
 };
 
 /** Claves del sistema: ni las filas nuevas ni el asistente pueden fijarlas. */
+/** Datos de una tarea creada o editada a mano; fecha `YYYY-MM-DD`, estimación en minutos y proyecto como ruta de su nota. */
+export interface TaskInput {
+  title: string;
+  due?: string | null;
+  estimate?: number | null;
+  projectPath?: string | null;
+}
+
+const MAX_TASK_MINUTES = 24 * 60;
+
+function taskTitle(value: unknown): string {
+  const title = typeof value === "string" ? value.trim() : "";
+  if (!title) throw new VaultError("invalid", "Escribí un título");
+  if (/[\r\n]/.test(title)) throw new VaultError("invalid", "El título debe ir en una sola línea");
+  if (title.length > 200) throw new VaultError("invalid", "El título es demasiado largo (máximo 200 caracteres)");
+  return title;
+}
+
+function taskDue(value: unknown): string {
+  const ok = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && localDate(new Date(`${value}T00:00`)) === value;
+  if (!ok) throw new VaultError("invalid", "Fecha inválida (YYYY-MM-DD)");
+  return value as string;
+}
+
+function taskMinutes(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > MAX_TASK_MINUTES) {
+    throw new VaultError("invalid", `La estimación debe ser un número entero de minutos (1–${MAX_TASK_MINUTES})`);
+  }
+  return value;
+}
+
 export const RESERVED_PROPS: ReadonlySet<string> = new Set(["id", "type", "created"]);
 
 /** Valor escalar o lista de escalares: lo único que una celda puede contener (nunca objetos, que son esquema o vistas). */
@@ -505,6 +536,54 @@ export class Kioku {
     const note = await this.setProps(rel, this.taskStatusProps(status));
     await this.log.record("task.status", rel, { status, project: this.projectOf(note) });
     return note;
+  }
+
+  /**
+   * Crea una tarea con el título tal cual (no pasa por la sintaxis de captura: «mañana», «p1», «#etiqueta» o «@proyecto» son texto).
+   * Fecha, estimación (minutos) y proyecto son opcionales; todo se valida antes de escribir.
+   */
+  async createTask(input: TaskInput): Promise<NoteRow> {
+    const title = taskTitle(input.title);
+    const props = this.taskProps(input);
+    const note = await this.createNote({ title, type: "task", fm: { status: "todo", ...props } });
+    await this.log.record("capture", note.path, { kind: "task", project: this.projectOf(note) });
+    return note;
+  }
+
+  /**
+   * Edita una tarea en el sitio: solo cambia lo indicado (`null` quita fecha, estimación o proyecto) y conserva el resto del Markdown.
+   * Un valor igual al actual no escribe nada; con un `hash` viejo falla sin cambiar el fichero.
+   */
+  async updateTask(rel: string, changes: Partial<TaskInput>, hash: string): Promise<NoteRow> {
+    const note = this.index.getNote(rel);
+    if (!note || note.type !== "task" || note.fmError) throw new VaultError("invalid", "No es una tarea válida");
+    const props = this.taskProps(changes);
+    if (changes.title !== undefined) props.title = taskTitle(changes.title);
+    const current = (key: string) => (note.fm[key] === undefined || note.fm[key] === null ? null : note.fm[key]);
+    for (const key of ["title", "due", "estimate"]) if (key in props && (props[key] ?? null) === (key === "title" ? note.title : current(key))) delete props[key];
+    // El mismo proyecto escrito de otra forma (`[[Título]]` de una captura) no cuenta como cambio.
+    if ("project" in props && (props.project === null ? !current("project") : this.projectOf(note) === this.index.resolve(relationTarget(props.project) ?? ""))) delete props.project;
+    if (!Object.keys(props).length) return note;
+    if (typeof hash !== "string" || !hash) throw new VaultError("invalid", "Falta el hash de la tarea");
+    const cur = await this.vault.read(rel);
+    if (cur.hash !== hash) throw new VaultError("conflict", "La tarea cambió: recargá antes de modificarla");
+    let text: string;
+    try { text = setFrontmatter(cur.text, props); } catch (e) { throw new VaultError("invalid", (e as Error).message); }
+    return (await this.saveNote(rel, text, hash)).note;
+  }
+
+  /** Propiedades validadas de fecha, estimación y proyecto (solo las presentes); el título lo trata cada operación. */
+  private taskProps(input: Partial<TaskInput>): Record<string, unknown> {
+    const props: Record<string, unknown> = {};
+    if (input.due !== undefined) props.due = input.due === null ? null : taskDue(input.due);
+    if (input.estimate !== undefined) props.estimate = input.estimate === null ? null : taskMinutes(input.estimate);
+    if (input.projectPath !== undefined) {
+      const ref = input.projectPath;
+      const project = typeof ref === "string" && !/[\[\]#|\n\r]/.test(ref) ? this.index.getNote(ref) : null;
+      if (ref !== null && project?.type !== "project") throw new VaultError("invalid", "El proyecto no existe o no es válido");
+      props.project = project ? "[[" + project.path.replace(/\.md$/i, "") + "]]" : null;
+    }
+    return props;
   }
 
   private projectOf(note: NoteRow): string | null {

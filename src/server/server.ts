@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { Kioku } from "../core/kioku.ts";
+import { Kioku, type TaskInput } from "../core/kioku.ts";
 import { isLocalUrl } from "../core/llm.ts";
 import { VaultError } from "../core/vault.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
@@ -66,6 +66,19 @@ async function listMemory(j: Kioku): Promise<{ path: string; text: string }[]> {
 function str(v: unknown, name: string): string {
   if (typeof v !== "string") throw new HttpError(400, `Falta «${name}»`);
   return v;
+}
+
+/** Campos de tarea del cuerpo JSON. `undefined` = no viene; `null` = quitar el valor (solo tiene efecto al editar). */
+function taskFields(b: Record<string, unknown>): Partial<TaskInput> {
+  const out: Partial<TaskInput> = {};
+  if (b.title !== undefined) out.title = str(b.title, "title");
+  if (b.due !== undefined) out.due = b.due === null ? null : str(b.due, "due");
+  if (b.estimate !== undefined) {
+    if (b.estimate !== null && typeof b.estimate !== "number") throw new HttpError(400, "La estimación debe ser un número de minutos");
+    out.estimate = b.estimate;
+  }
+  if (b.projectPath !== undefined) out.projectPath = b.projectPath === null ? null : userPath(b.projectPath);
+  return out;
 }
 
 async function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
@@ -245,6 +258,7 @@ export async function startServer(
         }
         case "/api/calendar": return send(res, 200, calendarRange(j, q.get("from"), q.get("to")));
         case "/api/calendar/areas": return send(res, 200, j.areas.list());
+        case "/api/calendar/projects": return send(res, 200, j.calendar.projects());
         case "/api/databases": return send(res, 200, j.listDatabases({ skip }));
         case "/api/database": {
           const view = q.get("view");
@@ -336,6 +350,24 @@ export async function startServer(
           if (kind === "area") throw new HttpError(400, "Un área no es una tarea");
           await j.setTaskStatus(rel, st);
           return send(res, 200, { ok: true });
+        }
+        // Crear y editar tareas desde el calendario es solo de escritorio: no están en la lista blanca del móvil.
+        case "/api/task/create": {
+          const n = await j.createTask({ ...taskFields(body), title: str(body.title, "title") });
+          return send(res, 200, { path: n.path, title: n.title, hash: n.hash });
+        }
+        case "/api/task/update": {
+          const n = await j.updateTask(userPath(body.path), taskFields(body), str(body.hash, "hash"));
+          return send(res, 200, { path: n.path, title: n.title, hash: n.hash });
+        }
+        case "/api/calendar/link": {
+          const rel = userPath(body.path), hash = str(body.hash, "hash");
+          const fresh = body.task;
+          if (("taskPath" in body) === (fresh !== undefined)) throw new HttpError(400, "Indica «taskPath» (o null para quitarla) o «task» con una tarea nueva");
+          if (fresh === undefined) return send(res, 200, calendarDto(await j.calendar.linkTask(rel, body.taskPath === null ? null : userPath(body.taskPath), hash)));
+          if (!fresh || typeof fresh !== "object" || Array.isArray(fresh)) throw new HttpError(400, "«task» debe ser un objeto");
+          const fields = fresh as Record<string, unknown>;
+          return send(res, 200, calendarDto(await j.calendar.linkNewTask(rel, { ...taskFields(fields), title: str(fields.title, "title") }, hash)));
         }
         case "/api/calendar/create": {
           const optional = (v: unknown) => (v === undefined || v === null ? undefined : userPath(v));

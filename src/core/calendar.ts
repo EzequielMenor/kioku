@@ -39,7 +39,8 @@ export function parseBlock(fm: Record<string, unknown>): BlockData {
   if (fm.kind !== "block" && fm.kind !== "event") throw new Error("Tipo de actividad inválido");
   const start = parseLocal(fm.start), end = parseLocal(fm.end);
   if (end <= start) throw new Error("El fin debe ser posterior al inicio");
-  if (fm.kind === "event" && (fm.task || fm.done_at)) throw new Error("Un evento no puede tener tarea ni terminarse como bloque");
+  // Un evento puede enlazar una tarea (reunión → preparar), pero no se termina: la tarea y el bloque se completan por separado.
+  if (fm.kind === "event" && fm.done_at) throw new Error("Un evento no se termina como bloque");
   for (const key of ["task", "project", "area", "done_at"] as const) {
     if (fm[key] !== undefined && fm[key] !== null && typeof fm[key] !== "string") throw new Error(`Propiedad inválida: ${key}`);
   }

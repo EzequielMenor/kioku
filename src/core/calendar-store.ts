@@ -1,4 +1,4 @@
-import type { Kioku } from "./kioku.ts";
+import type { Kioku, TaskInput } from "./kioku.ts";
 import { relationTarget } from "./index.ts";
 import { setFrontmatter } from "./markdown.ts";
 import { VaultError } from "./vault.ts";
@@ -56,10 +56,17 @@ export class Calendar {
         if (b.start < addDays(to, 1) + "T00:00" && b.end > from + "T00:00") items.push(b);
       } catch { invalid.push({ path: note.path }); }
     }
-    const tasks = this.host.index.tasks({ status: ["todo", "doing"] }).map((t) => ({
-      ...t, estimate: taskEstimate(this.host.index.getNote(t.path)?.fm.estimate),
-    }));
+    const tasks = this.host.index.tasks({ status: ["todo", "doing"] }).map((t) => {
+      const note = this.host.index.getNote(t.path);
+      return { ...t, estimate: taskEstimate(note?.fm.estimate), hash: note?.hash ?? "" };
+    });
     return { items: items.sort((a, b) => a.start.localeCompare(b.start) || a.path.localeCompare(b.path)), tasks, invalid, now: this.now().toISOString() };
+  }
+
+  /** Proyectos que se ofrecen al crear o editar una tarea, por título. */
+  projects(): { path: string; title: string }[] {
+    return this.host.index.listNotes({ type: "project", limit: 500 }).map(({ path, title }) => ({ path, title }))
+      .sort((a, b) => a.title.localeCompare(b.title, "es", { sensitivity: "base" }) || a.path.localeCompare(b.path));
   }
 
   async create(input: CalendarInput): Promise<CalendarItem> {
@@ -102,6 +109,29 @@ export class Calendar {
     return this.item(path);
   }
 
+  /** Enlaza una tarea existente a un bloque o evento, la cambia o la quita (`null`); no toca la tarea ni la finalización de la actividad. */
+  async linkTask(path: string, taskPath: string | null, hash: string): Promise<CalendarItem> {
+    const b = this.item(path);
+    let link: string | null = null;
+    if (taskPath !== null) {
+      const n = typeof taskPath === "string" && !/[\[\]#|\n\r]/.test(taskPath) ? this.host.index.getNote(taskPath) : null;
+      if (!n || n.type !== "task") throw new VaultError("invalid", "La tarea no existe o no es válida");
+      if (b.taskPath === n.path) return b;
+      link = "[[" + n.path.replace(/\.md$/i, "") + "]]";
+    } else if (!b.task) return b;
+    await this.patch(path, { task: link }, hash);
+    return this.item(path);
+  }
+
+  /** Crea una tarea nueva (título literal) y la enlaza a la actividad. La actividad y su `hash` se comprueban antes de crear nada. */
+  async linkNewTask(path: string, task: TaskInput, hash: string): Promise<CalendarItem> {
+    this.item(path);
+    if (typeof hash !== "string" || !hash) throw new VaultError("invalid", "Falta el hash de la actividad");
+    if ((await this.host.readNote(path)).hash !== hash) throw new VaultError("conflict", "La actividad cambió: recargá antes de modificarla");
+    const created = await this.host.createTask(task);
+    return this.linkTask(path, created.path, hash);
+  }
+
   async move(path: string, start: string, end: string, hash: string): Promise<CalendarItem> {
     const b = this.item(path);
     try { parseBlock({ ...b, start, end }); } catch (e) { throw new VaultError("invalid", (e as Error).message); }
@@ -110,7 +140,7 @@ export class Calendar {
     return this.item(path);
   }
 
-  /** Cambia título, tipo, inicio o fin (lo no indicado queda igual). Un evento no lleva tarea: al pasar a evento se suelta. Todo se valida antes de escribir. */
+  /** Cambia título, tipo, inicio o fin (lo no indicado queda igual). Un evento conserva su tarea, pero no se termina: al pasar a evento se suelta la finalización. Todo se valida antes de escribir. */
   async update(path: string, changes: { title?: string; kind?: "block" | "event"; start?: string; end?: string }, hash: string): Promise<CalendarItem> {
     const b = this.item(path);
     const props: Record<string, unknown> = {};
@@ -120,10 +150,10 @@ export class Calendar {
       if (title !== b.title) props.title = title;
     }
     const next = { kind: changes.kind ?? b.kind, start: changes.start ?? b.start, end: changes.end ?? b.end };
-    try { parseBlock({ ...b, ...next, ...(next.kind === "event" ? { task: undefined, done_at: undefined } : {}) }); } catch (e) { throw new VaultError("invalid", (e as Error).message); }
+    try { parseBlock({ ...b, ...next, ...(next.kind === "event" ? { done_at: undefined } : {}) }); } catch (e) { throw new VaultError("invalid", (e as Error).message); }
     if (next.kind !== b.kind) {
       props.kind = next.kind;
-      if (next.kind === "event") { props.task = null; props.done_at = null; }
+      if (next.kind === "event") props.done_at = null;
     }
     if (next.start !== b.start) props.start = next.start;
     if (next.end !== b.end) props.end = next.end;

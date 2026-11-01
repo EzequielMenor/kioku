@@ -12,7 +12,8 @@ test("calendar validates local minutes, kind, ordered interval and estimates", (
   }
   assert.throws(() => block("2026-10-28T11:00"), /posterior/);
   assert.throws(() => block(undefined, undefined, "other"), /Tipo/);
-  assert.throws(() => parseBlock({ ...block(), kind: "event", task: "[[X]]" }), /evento/);
+  assert.equal(parseBlock({ ...block(), kind: "event", task: "[[X]]" }).task, "[[X]]", "un evento puede enlazar una tarea");
+  assert.throws(() => parseBlock({ ...block(), kind: "event", done_at: "2026-10-28T10:30:00Z" }), /evento/);
   assert.deepEqual([taskEstimate(30), taskEstimate(0), taskEstimate(-1), taskEstimate("30"), taskEstimate(1.5)], [30, null, null, null, null]);
 });
 

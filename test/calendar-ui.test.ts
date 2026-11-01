@@ -25,7 +25,7 @@ const block = (from: string, to: string, over: Partial<CalendarEntry> = {}) => o
 function task(over: Partial<CalendarTask> & { path: string }): CalendarTask {
   return {
     title: "Tarea", status: "todo", projectPath: null, projectTitle: null, due: null, priority: null, doneAt: null, mtime: 0, focus: null,
-    estimate: 30, ...over,
+    estimate: 30, hash: "h", ...over,
   };
 }
 const rowText = (rows: ReturnType<typeof dayTimeline>) =>
@@ -293,7 +293,7 @@ test("calendario: sin peticiones externas, sin cola sin conexión y solo con las
   const ui = src("calendar.tsx");
   assert.doesNotMatch(ui, /offline\/(runtime|store|queue)/, "las escrituras del calendario no pasan por la cola sin conexión");
   const routes = [...ui.matchAll(/["'`](\/api\/[^"'`?$]+)/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(routes)].sort(), ["/api/calendar", "/api/calendar/area", "/api/calendar/areas/create", "/api/calendar/areas/update", "/api/calendar/create", "/api/calendar/delete", "/api/calendar/finish", "/api/calendar/move", "/api/calendar/restore", "/api/calendar/update", "/api/task/status"]);
+  assert.deepEqual([...new Set(routes)].sort(), ["/api/calendar", "/api/calendar/area", "/api/calendar/areas/create", "/api/calendar/areas/update", "/api/calendar/create", "/api/calendar/delete", "/api/calendar/finish", "/api/calendar/link", "/api/calendar/move", "/api/calendar/projects", "/api/calendar/restore", "/api/calendar/update", "/api/task/create", "/api/task/status", "/api/task/update"]);
 });
 
 // ───────── Hoja modal: el teclado sigue funcionando aunque el control enfocado desaparezca ─────────

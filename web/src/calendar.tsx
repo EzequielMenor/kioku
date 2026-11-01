@@ -5,15 +5,16 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import "./calendar.css";
 import { DayGrid, QuickAdd } from "./calendar-grid.tsx";
 import { api, lsGet, lsSet } from "./api.ts";
+import { isMobile } from "./role.ts";
 import { useApi } from "./hooks.ts";
 import { localDate } from "../../src/core/dates.ts";
 import {
-  OFFLINE_MESSAGE, addMinutes, areaLabel, areaTextColor, countdown, dayTimeline, defaultSlot, durationOf, filterAreas, fittingTasks, formatDuration, freeMinutes, freeSummary, gapBlock,
+  DEFAULT_TASK_MINUTES, OFFLINE_MESSAGE, TASK_MIME, addMinutes, areaLabel, areaTextColor, countdown, dayTimeline, defaultSlot, durationOf, filterAreas, fittingTasks, formatDuration, freeMinutes, freeSummary, gapBlock,
   moveToDay, nextUp, nowMarker, occupancy, overlapping, progress, projectLabel, rangeLabel, rowTimes, shiftDays, shiftView, stateGlyph,
-  stateLabel, stateOf, validateArea, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure, joinLocal, parseTime24, splitLocal, editChanges, duplicateRange, type WeekPrefs,
-  type AreaLabel, type Draft, type EditFields, type ProjectLabel, type Scope,
+  stateLabel, stateOf, validateArea, dropStart, pendingTasks, taskChanges, taskDraftBlock, taskInput, validateTimes, viewRange, viewTitle, weekdayName, weekDays, writeFailure, joinLocal, parseTime24, splitLocal, editChanges, duplicateRange, type WeekPrefs,
+  type AreaLabel, type Draft, type EditFields, type ProjectLabel, type Scope, type TaskForm, type TaskPatch, type TaskValues,
 } from "./calendar-model.ts";
-import type { AreaRow, CalendarEntry, CalendarResponse, CalendarTask, Gap } from "./types.ts";
+import type { AreaRow, CalendarEntry, CalendarProject, CalendarResponse, CalendarTask, Gap } from "./types.ts";
 
 type Guard = <T>(fn: () => Promise<T>) => Promise<T | undefined>;
 type Say = (text: string, error?: boolean) => void;
@@ -46,7 +47,7 @@ function useOnline(): boolean {
 
 // ───────────────────────────── Hoja de detalle ─────────────────────────────
 
-const FOCUSABLE = "button, input, select, textarea, a[href]";
+const FOCUSABLE = "button, input, select, textarea, a[href], summary";
 
 /** Diálogo modal: foco dentro (y atrapado), Esc y clic fuera cierran, el foco vuelve a quien lo abrió. En pantallas estrechas es una hoja inferior.
  *  El teclado se atiende en el documento, no en el contenedor: si el control enfocado se elimina o se desactiva (completar la tarea, enviar un formulario),
@@ -195,7 +196,6 @@ function EditForm({ item, items, areas, now, onSave }: { item: CalendarEntry; it
         <label><input type="radio" name={`kind-${item.path}`} checked={kind === "block"} onChange={() => setKind("block")} /> Bloque</label>
         <label><input type="radio" name={`kind-${item.path}`} checked={kind === "event"} onChange={() => setKind("event")} /> Evento</label>
       </fieldset>
-      {kind === "event" && item.kind === "block" && item.taskPath && <p class="cal-note">Un evento no lleva tarea: al guardar se suelta de «{item.title}».</p>}
       <DateTime24 label="Empieza" value={start} onChange={changeStart} />
       <DateTime24 label="Termina" value={end} onChange={setEnd} />
       {check.ok ? <p class="cal-note">Dura {formatDuration(check.minutes)}.</p> : <p class="cal-warn" role="alert">{check.error}</p>}
@@ -247,6 +247,9 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
   const setWeek = (w: WeekPrefs) => { setWeekRaw(w); lsSet("calendar.weekStart", w.start); lsSet("calendar.weekend", w.weekend ? "visible" : "oculto"); };
   const range = viewRange(scope, day, week);
   const { data, error, reload } = useApi<CalendarResponse>(`/api/calendar?from=${range.from}&to=${range.to}`, rev);
+  const projectsData = useApi<CalendarProject[]>("/api/calendar/projects", rev).data;
+  const projects = projectsData ?? [];
+  const readOnly = isMobile(); // crear y editar tareas es de escritorio; el servidor lo impone, aquí solo se ocultan los controles
   const now = useClock(data?.now);
   const today = localDate(now);
   const days = scope === "dia" ? [day] : weekDays(day, week);
@@ -351,9 +354,50 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
     if (await once("task:" + path, () => write(async () => { await api("POST", "/api/task/status", { path, status: "done" }); return true; }))) say("Tarea completada. El bloque no cambia.");
     reload();
   };
+  /** Tareas nuevas y editadas desde el panel o desde una actividad. Terminar un bloque o completar una tarea siguen siendo acciones separadas. */
+  const createTask = async (input: TaskValues): Promise<boolean> => {
+    const r = await once("task:create", () => write(() => api<{ path: string; title: string }>("POST", "/api/task/create", input)));
+    reload();
+    if (!r) return false;
+    say(`Tarea «${r.title}» creada.`);
+    return true;
+  };
+  const updateTask = async (task: CalendarTask, patch: TaskPatch): Promise<boolean> => {
+    const r = await once("task:edit:" + task.path, () => write(() => api<{ title: string }>("POST", "/api/task/update", { path: task.path, hash: task.hash, ...patch })));
+    reload();
+    if (!r) return false;
+    say(`Tarea «${r.title}» actualizada.`);
+    return true;
+  };
+  const linkTask = async (item: CalendarEntry, taskPath: string | null): Promise<boolean> => {
+    const r = await once("link:" + item.path, () => write(() => api<CalendarEntry>("POST", "/api/calendar/link", { path: item.path, hash: item.hash, taskPath })));
+    reload();
+    if (!r) return false;
+    say(taskPath ? "Tarea enlazada. La tarea y la actividad se completan por separado." : "Enlace quitado. La tarea no cambia.");
+    return true;
+  };
+  const linkNewTask = async (item: CalendarEntry, task: TaskValues): Promise<boolean> => {
+    const r = await once("link:" + item.path, () => write(() => api<CalendarEntry>("POST", "/api/calendar/link", { path: item.path, hash: item.hash, task })));
+    reload();
+    if (!r) return false;
+    say(`Tarea «${task.title}» creada y enlazada.`);
+    return true;
+  };
+  /** Una tarea del panel se convierte en un bloque con hora: bajo el puntero en la cuadrícula, o en el primer hueco donde cabe. */
+  const scheduleTask = async (taskPath: string, onDay: string, start?: string): Promise<void> => {
+    const t = tasks.find((x) => x.path === taskPath);
+    if (!t) return;
+    await create(taskDraftBlock(t, start ?? dropStart(items, onDay, now, t.estimate ?? DEFAULT_TASK_MINUTES)), newId());
+  };
+  const isTaskDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes(TASK_MIME);
   const dropOn = (target: string) => (e: DragEvent) => {
     e.preventDefault();
     setOver(null);
+    if (isTaskDrag(e)) {
+      const taskPath = e.dataTransfer?.getData(TASK_MIME);
+      if (taskPath) void scheduleTask(taskPath, target);
+      return;
+    }
     const item = items.find((i) => i.path === (e.dataTransfer?.getData("text/plain") || dragging));
     setDragging(null);
     if (!item || item.start.slice(0, 10) === target) return;
@@ -361,11 +405,15 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
     void reschedule(item, t.start, t.end);
   };
   const dropZone = (d: string) => ({
-    onDragOver: (e: DragEvent) => { if (dragging) { e.preventDefault(); setOver(d); } },
+    onDragOver: (e: DragEvent) => { if (dragging || isTaskDrag(e)) { e.preventDefault(); setOver(d); } },
     onDragLeave: () => setOver((o) => (o === d ? null : o)),
     onDrop: dropOn(d),
   });
   const compose = (draft?: Draft) => setPanel({ kind: "compose", draft: draft ?? { kind: "block", title: "", ...defaultSlot(day, now) } });
+
+  /** Día al que apunta «Programar»: el que se ve, o hoy dentro de una semana que lo incluye. */
+  const targetDay = scope === "dia" ? day : days.includes(today) ? today : days[0];
+  const programTask = (t: CalendarTask) => compose(taskDraftBlock(t, dropStart(items, targetDay, now, t.estimate ?? DEFAULT_TASK_MINUTES)));
 
   const upcoming = days.includes(today) ? nextUp(items, now) : null;
   const detail = panel?.kind === "detail" ? items.find((i) => i.path === panel.path) : undefined;
@@ -418,7 +466,8 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
       {!data && !error && <div class="empty muted">Cargando…</div>}
 
       {data && (
-        <>
+        <div class="cal-layout">
+          <div class="cal-body">
           {upcoming && (
             <p class="cal-ticker" role="status">
               <span class="cal-eyebrow">Siguiente</span>
@@ -458,11 +507,11 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
           {scope === "dia" && <p class="cal-free">{freeSummary(items, day, now)} <span class="muted">No hace falta llenar los huecos.</span></p>}
 
           <QuickAdd now={now} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} />
-          {scope === "dia" && dayView === "grid" ? <DayGrid day={day} items={shown} now={now} today={today} onOpen={(path) => setPanel({ kind: "detail", path })} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} onChange={reschedule} /> : <section class="cal-board" aria-label={scope === "dia" ? "Actividades del día en orden" : "Actividades de la semana en orden"}>
+          {scope === "dia" && dayView === "grid" ? <DayGrid day={day} items={shown} now={now} today={today} onOpen={(path) => setPanel({ kind: "detail", path })} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} onChange={reschedule} onDropTask={(taskPath, start) => void scheduleTask(taskPath, day, start)} /> : <section class="cal-board" aria-label={scope === "dia" ? "Actividades del día en orden" : "Actividades de la semana en orden"}>
             {days.map((d) => {
               const rows = dayTimeline(items, shown, d, now);
               return (
-                <div key={d}>
+                <div key={d} class={scope === "dia" && over === d ? "over" : ""} {...(scope === "dia" ? dropZone(d) : {})}>
                   {scope === "semana" && (
                     <div class={`cal-dayhead ${over === d ? "over" : ""}`} {...dropZone(d)}>
                       <b>{dayName(d)}</b>{d === today && <span class="cal-pill st-active">Hoy</span>}
@@ -492,12 +541,15 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
               );
             })}
           </section>}
-        </>
+          </div>
+          <TaskPanel tasks={tasks} projects={projects} readOnly={readOnly} onCreate={createTask} onSave={updateTask} onSchedule={programTask} />
+        </div>
       )}
 
       {detail && (
         <Sheet title={detail.title} onClose={closePanel}>
-          <Detail item={detail} items={items} tasks={tasks} areas={areas} now={now}
+          <Detail item={detail} items={items} tasks={tasks} projects={projects} areas={areas} now={now} readOnly={readOnly}
+            onLink={(taskPath) => linkTask(detail, taskPath)} onLinkNew={(task) => linkNewTask(detail, task)}
             onFinish={() => void finish(detail)} onSave={(f, a) => saveEdit(detail, f, a)} onDuplicate={() => void duplicate(detail)} onDelete={() => void remove(detail)} onShift={(n) => { const t = shiftDays(detail, n); void reschedule(detail, t.start, t.end); }}
             onCompleteTask={(p) => void completeTask(p)} onClose={closePanel} />
         </Sheet>
@@ -590,9 +642,10 @@ function AreasManager({ areas, onSave, onClose }: { areas: AreaRow[]; onSave(are
   </>;
 }
 
-function Detail({ item, items, tasks, areas, now, onFinish, onSave, onShift, onDuplicate, onDelete, onCompleteTask, onClose }: {
-  item: CalendarEntry; items: CalendarEntry[]; tasks: CalendarTask[]; areas: AreaRow[]; now: Date; onFinish(): void;
-  onSave(fields: Partial<EditFields>, areaPath: string | null | undefined): Promise<boolean>; onShift(n: number): void; onDuplicate(): void; onDelete(): void; onCompleteTask(path: string): void; onClose(): void;
+function Detail({ item, items, tasks, projects, areas, now, readOnly, onFinish, onSave, onShift, onDuplicate, onDelete, onCompleteTask, onLink, onLinkNew, onClose }: {
+  item: CalendarEntry; items: CalendarEntry[]; tasks: CalendarTask[]; projects: CalendarProject[]; areas: AreaRow[]; now: Date; readOnly: boolean; onFinish(): void;
+  onSave(fields: Partial<EditFields>, areaPath: string | null | undefined): Promise<boolean>; onShift(n: number): void; onDuplicate(): void; onDelete(): void; onCompleteTask(path: string): void;
+  onLink(taskPath: string | null): Promise<boolean>; onLinkNew(task: TaskValues): Promise<boolean>; onClose(): void;
 }) {
   const task = item.taskPath ? tasks.find((t) => t.path === item.taskPath) : undefined;
   const cd = countdown(item, now);
@@ -615,9 +668,10 @@ function Detail({ item, items, tasks, areas, now, onFinish, onSave, onShift, onD
       ) : (
         <section class="cal-rel loose">
           <span class="cal-eyebrow">{item.kind === "event" ? "Evento" : "Sin tarea asociada"}</span>
-          <span class="cal-note">{item.kind === "event" ? "Los eventos son compromisos con horario y no necesitan una tarea." : "Es un bloque suelto: reserva tiempo sin estar atado a una tarea."}</span>
+          <span class="cal-note">{item.kind === "event" ? "Los eventos son compromisos con horario y no necesitan una tarea; puedes enlazar una cuando quieras." : "Es un bloque suelto: reserva tiempo sin estar atado a una tarea."}</span>
         </section>
       )}
+      {!readOnly && <TaskLinker key={item.hash} item={item} tasks={tasks} projects={projects} onLink={onLink} onLinkNew={onLinkNew} />}
 
       <section class="cal-sect">
         <span class="cal-fl">El {noun}</span>
@@ -638,7 +692,7 @@ function Detail({ item, items, tasks, areas, now, onFinish, onSave, onShift, onD
             {task && <button onClick={() => onCompleteTask(task.path)}>Completar tarea</button>}
             <a class="cal-linkbtn" href={`#/nota/${enc(item.taskPath)}`}>Abrir tarea</a>
           </div>
-          <p class="cal-note">Terminar el bloque no completa la tarea ni al revés: son acciones separadas.</p>
+          <p class="cal-note">{item.kind === "event" ? "Completar la tarea no cambia el evento: son cosas separadas." : "Terminar el bloque no completa la tarea ni al revés: son acciones separadas."}</p>
         </section>
       )}
       <div class="cal-acts end"><button onClick={onClose}>Cerrar</button></div>
@@ -711,24 +765,180 @@ function Compose({ initial, tasks, areas, items, now, onSubmit, onCancel }: {
       <fieldset class="cal-kind">
         <legend>Tipo</legend>
         <label><input type="radio" name="kind" checked={d.kind === "block"} onChange={() => set({ kind: "block" })} /> Bloque</label>
-        <label><input type="radio" name="kind" checked={d.kind === "event"} onChange={() => set({ kind: "event", taskPath: undefined })} /> Evento</label>
+        <label><input type="radio" name="kind" checked={d.kind === "event"} onChange={() => set({ kind: "event" })} /> Evento</label>
       </fieldset>
       <label>Título <input data-first class="wide-input" value={d.title} onInput={(e) => set({ title: e.currentTarget.value })} /></label>
       <DateTime24 label="Empieza" value={d.start} onChange={(start) => set({ start })} />
       <DateTime24 label="Termina" value={d.end} onChange={(end) => { endEdited.current = true; set({ end }); }} />
       <AreaSelect areas={areas} value={d.areaPath ?? ""} onChange={(areaPath) => set({ areaPath })} />
-      {d.kind === "block" && (
-        <label>Tarea
-          <select value={d.taskPath ?? ""} onChange={(e) => pickTask(e.currentTarget.value)}>
-            <option value="">Sin tarea (bloque suelto)</option>
-            {[...tasks].sort((a, b) => a.title.localeCompare(b.title)).map((t) => <option key={t.path} value={t.path}>{t.title}{t.estimate ? ` · ~${formatDuration(t.estimate)}` : ""}</option>)}
-          </select>
-        </label>
-      )}
+      <label>Tarea
+        <select value={d.taskPath ?? ""} onChange={(e) => pickTask(e.currentTarget.value)}>
+          <option value="">{d.kind === "block" ? "Sin tarea (bloque suelto)" : "Sin tarea"}</option>
+          {[...tasks].sort((a, b) => a.title.localeCompare(b.title)).map((t) => <option key={t.path} value={t.path}>{t.title}{t.estimate ? ` · ~${formatDuration(t.estimate)}` : ""}</option>)}
+        </select>
+      </label>
       {check.ok ? <p class="cal-note">Dura {formatDuration(check.minutes)}.</p> : <p class="cal-warn" role="alert">{check.error}</p>}
       {check.ok && check.past && <p class="cal-warn">△ Esa hora ya pasó. Puedes guardarla igualmente.</p>}
       {clash.length > 0 && <p class="cal-warn" role="status">△ Se cruza con {clash.map((c) => `«${c.title}» (${hm(c.start)}–${hm(c.end)})`).join(" y ")}. Puedes programarlo igual.</p>}
       <div class="cal-acts"><button class="primary" disabled={!check.ok || !d.title.trim() || busy}>Crear</button><button type="button" onClick={onCancel}>Cancelar</button></div>
     </form>
+  );
+}
+
+// ───────────────────────────── Tareas: panel lateral y enlace dentro de una actividad ─────────────────────────────
+
+const EMPTY_TASK: TaskForm = { title: "", due: "", estimate: "", projectPath: "" };
+const formOf = (t: CalendarTask): TaskForm => ({ title: t.title, due: t.due ?? "", estimate: t.estimate ? String(t.estimate) : "", projectPath: t.projectPath ?? "" });
+
+/** Fecha, estimación y proyecto: opcionales, comunes a crear, editar y crear-y-enlazar. */
+function TaskFields({ form, projects, onChange }: { form: TaskForm; projects: CalendarProject[]; onChange(patch: Partial<TaskForm>): void }) {
+  return (
+    <>
+      <label>Fecha <input type="date" value={form.due} onInput={(e) => onChange({ due: e.currentTarget.value })} /></label>
+      <label>Estimación (minutos) <input type="number" inputMode="numeric" min={1} max={1440} placeholder="30" value={form.estimate} onInput={(e) => onChange({ estimate: e.currentTarget.value })} /></label>
+      <label>Proyecto
+        <select value={form.projectPath} onChange={(e) => onChange({ projectPath: e.currentTarget.value })}>
+          <option value="">Sin proyecto</option>
+          {/* un proyecto que ya no existe en la lista (borrado) se conserva visible en vez de cambiarlo sin avisar */}
+          {form.projectPath && !projects.some((p) => p.path === form.projectPath) && <option value={form.projectPath}>{form.projectPath.replace(/^.*\//, "").replace(/\.md$/i, "")}</option>}
+          {projects.map((p) => <option key={p.path} value={p.path}>{p.title}</option>)}
+        </select>
+      </label>
+    </>
+  );
+}
+
+/** Solo el título es obligatorio. El título se guarda tal cual: «mañana», «p1» o «#etiqueta» no se interpretan. */
+function NewTask({ projects, onCreate }: { projects: CalendarProject[]; onCreate(task: TaskValues): Promise<boolean> }) {
+  const [form, setForm] = useState(EMPTY_TASK);
+  const [busy, setBusy] = useState(false);
+  const check = form.title.trim() ? taskInput(form) : null;
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    if (!check?.ok || busy) return;
+    setBusy(true);
+    const ok = await onCreate(check.value);
+    setBusy(false);
+    if (ok) setForm(EMPTY_TASK);
+  };
+  return (
+    <form class="cal-tnew" onSubmit={(e) => void submit(e)}>
+      <label>
+        <span class="cal-eyebrow">Nueva tarea</span>
+        <input type="text" autoComplete="off" placeholder="Solo el título basta" aria-label="Título de la nueva tarea" value={form.title} disabled={busy} onInput={(e) => setForm({ ...form, title: e.currentTarget.value })} />
+      </label>
+      <details>
+        <summary>Fecha, estimación y proyecto (opcionales)</summary>
+        <div class="cal-tfields"><TaskFields form={form} projects={projects} onChange={(patch) => setForm({ ...form, ...patch })} /></div>
+      </details>
+      {check && !check.ok && <p class="cal-warn" role="alert">{check.error}</p>}
+      <p class="cal-note">El título se guarda tal cual, sin interpretar fechas ni etiquetas.</p>
+      <button class="primary" disabled={!check?.ok || busy}>Añadir tarea</button>
+    </form>
+  );
+}
+
+/** Edición en el sitio de una tarea del panel: solo se envía lo que cambió. Esc cancela. */
+function TaskEdit({ task, projects, onSave, onCancel }: { task: CalendarTask; projects: CalendarProject[]; onSave(patch: TaskPatch): Promise<boolean>; onCancel(): void }) {
+  const [form, setForm] = useState(formOf(task));
+  const [busy, setBusy] = useState(false);
+  const first = useRef<HTMLInputElement>(null);
+  const opener = useRef(document.activeElement as HTMLElement | null);
+  useEffect(() => { first.current?.focus(); const o = opener.current; return () => { if (o?.isConnected) o.focus(); }; }, []);
+  const check = taskChanges(task, form);
+  const dirty = check.ok && Object.keys(check.value).length > 0;
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    if (!check.ok || !dirty || busy) return;
+    setBusy(true);
+    const ok = await onSave(check.value);
+    setBusy(false);
+    if (ok) onCancel();
+  };
+  return (
+    <form class="cal-tedit" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }}>
+      <label>Título <input ref={first} type="text" autoComplete="off" value={form.title} onInput={(e) => setForm({ ...form, title: e.currentTarget.value })} /></label>
+      <TaskFields form={form} projects={projects} onChange={(patch) => setForm({ ...form, ...patch })} />
+      {!check.ok && <p class="cal-warn" role="alert">{check.error}</p>}
+      <div class="cal-acts"><button class="primary" disabled={!dirty || busy}>Guardar</button><button type="button" onClick={onCancel}>Cancelar</button></div>
+    </form>
+  );
+}
+
+function TaskRow({ task, projects, readOnly, onSave, onSchedule }: { task: CalendarTask; projects: CalendarProject[]; readOnly: boolean; onSave(task: CalendarTask, patch: TaskPatch): Promise<boolean>; onSchedule(task: CalendarTask): void }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) return <li class="cal-task editing"><TaskEdit task={task} projects={projects} onSave={(patch) => onSave(task, patch)} onCancel={() => setEditing(false)} /></li>;
+  const meta = [task.status === "doing" ? "En curso" : null, task.projectTitle, task.estimate ? `~${formatDuration(task.estimate)}` : null, task.due ? `vence ${task.due}` : null].filter(Boolean);
+  return (
+    <li class="cal-task" draggable
+      onDragStart={(e) => { e.dataTransfer?.setData(TASK_MIME, task.path); if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy"; }}>
+      <span class="cal-grip" aria-hidden="true">⠿</span>
+      <span class="cal-tbody"><b>{task.title}</b>{meta.length > 0 && <small>{meta.join(" · ")}</small>}</span>
+      <span class="cal-tacts">
+        <button class="mini" aria-label={`Programar «${task.title}» en el calendario`} onClick={() => onSchedule(task)}>Programar</button>
+        {!readOnly && <button class="mini" aria-label={`Editar «${task.title}»`} onClick={() => setEditing(true)}>Editar</button>}
+      </span>
+    </li>
+  );
+}
+
+/** Tareas pendientes junto al calendario. Arrastrar una a la cuadrícula del día o a un día de la semana la convierte en un bloque con hora; «Programar» hace lo mismo con teclado o táctil. */
+function TaskPanel({ tasks, projects, readOnly, onCreate, onSave, onSchedule }: {
+  tasks: CalendarTask[]; projects: CalendarProject[]; readOnly: boolean; onCreate(task: TaskValues): Promise<boolean>; onSave(task: CalendarTask, patch: TaskPatch): Promise<boolean>; onSchedule(task: CalendarTask): void;
+}) {
+  const pending = pendingTasks([...tasks]);
+  return (
+    <aside class="cal-tasks" aria-label="Tareas pendientes">
+      <h2>Tareas pendientes <span class="muted small">{pending.length}</span></h2>
+      {!readOnly && <NewTask projects={projects} onCreate={onCreate} />}
+      <p class="cal-note">Arrastra una tarea al calendario para darle hora, o usa «Programar». La tarea y su bloque se completan por separado.</p>
+      {pending.length ? <ul class="cal-tlist">{pending.map((t) => <TaskRow key={t.path} task={t} projects={projects} readOnly={readOnly} onSave={onSave} onSchedule={onSchedule} />)}</ul> : <p class="cal-note">No hay tareas pendientes.</p>}
+    </aside>
+  );
+}
+
+/** Dentro de una actividad (también un evento): enlazar una tarea existente, cambiarla, quitarla o crear una nueva, en cualquier momento. */
+function TaskLinker({ item, tasks, projects, onLink, onLinkNew }: {
+  item: CalendarEntry; tasks: CalendarTask[]; projects: CalendarProject[]; onLink(taskPath: string | null): Promise<boolean>; onLinkNew(task: TaskValues): Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(!item.taskPath);
+  const [pick, setPick] = useState("");
+  const [form, setForm] = useState(EMPTY_TASK);
+  const [busy, setBusy] = useState(false);
+  const options = pendingTasks([...tasks]).filter((t) => t.path !== item.taskPath);
+  const check = form.title.trim() ? taskInput(form) : null;
+  const run = async (fn: () => Promise<boolean>) => { if (busy) return; setBusy(true); const ok = await fn(); setBusy(false); if (ok) setOpen(false); };
+  return (
+    <section class="cal-sect cal-linker">
+      <span class="cal-fl">Tarea de {item.kind === "event" ? "este evento" : "este bloque"}</span>
+      {item.taskPath && !open && (
+        <div class="cal-acts">
+          <button disabled={busy} onClick={() => setOpen(true)}>Cambiar tarea</button>
+          <button disabled={busy} onClick={() => void run(() => onLink(null))}>Quitar enlace</button>
+        </div>
+      )}
+      {open && (
+        <>
+          <div class="cal-lrow">
+            <label>{item.taskPath ? "Otra tarea existente" : "Enlazar una tarea existente"}
+              <select value={pick} disabled={busy || options.length === 0} onChange={(e) => setPick(e.currentTarget.value)}>
+                <option value="">{options.length ? "Elegir tarea…" : "No hay otras tareas pendientes"}</option>
+                {options.map((t) => <option key={t.path} value={t.path}>{t.title}{t.estimate ? ` · ~${formatDuration(t.estimate)}` : ""}</option>)}
+              </select>
+            </label>
+            <button disabled={!pick || busy} onClick={() => void run(() => onLink(pick))}>Enlazar</button>
+          </div>
+          <form class="cal-lnew" onSubmit={(e) => { e.preventDefault(); if (check?.ok) void run(() => onLinkNew(check.value)); }}>
+            <label>O crear una tarea nueva <input type="text" autoComplete="off" placeholder="Solo el título basta" value={form.title} disabled={busy} onInput={(e) => setForm({ ...form, title: e.currentTarget.value })} /></label>
+            <details>
+              <summary>Fecha, estimación y proyecto (opcionales)</summary>
+              <div class="cal-tfields"><TaskFields form={form} projects={projects} onChange={(patch) => setForm({ ...form, ...patch })} /></div>
+            </details>
+            {check && !check.ok && <p class="cal-warn" role="alert">{check.error}</p>}
+            <div class="cal-acts"><button class="primary" disabled={!check?.ok || busy}>Crear y enlazar</button>{item.taskPath && <button type="button" onClick={() => setOpen(false)}>Cancelar</button>}</div>
+          </form>
+        </>
+      )}
+    </section>
   );
 }

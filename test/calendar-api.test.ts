@@ -134,7 +134,6 @@ test("API calendario: rango, entrada y hash inválidos fallan sin tocar el vault
       ["tarea sin .md", { ...ALL, id: "calendar-api-016", taskPath: "Tareas/Escribir" }],
       ["tarea no es string", { ...ALL, id: "calendar-api-017", taskPath: 7 }],
       ["proyecto que es tarea", { ...ALL, id: "calendar-api-018", projectPath: "Tareas/Escribir.md" }],
-      ["evento con tarea", { ...ALL, id: "calendar-api-019", kind: "event", taskPath: "Tareas/Escribir.md" }],
     ];
     for (const [name, body] of bad) {
       const r = await t.call("POST", "/api/calendar/create", body);
