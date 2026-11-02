@@ -9,6 +9,7 @@ import { startServer } from "../server/server.ts";
 import { HermesEngine } from "../assistant/engine.ts";
 import { FakeEngine } from "../assistant/fake-engine.ts";
 import type { UndoRecord } from "../assistant/undo.ts";
+import { Notifier, desktopChannel } from "../server/notifier.ts";
 import { installService, serviceStatus, uninstallService } from "./service.ts";
 import { loadOrCreateKey, readKey } from "../server/key.ts";
 import { allowedHostsFrom, pairReport, publicHost } from "./pair.ts";
@@ -113,7 +114,9 @@ async function main(): Promise<void> {
       const rtFile = path.join(home, ".kioku", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`Kioku escuchando en ${srv.url}  (datos: ${home})`);
-      const stop = async () => { try { unlinkSync(rtFile); } catch { /* ya no está */ } await srv.close(); j.close(); process.exit(0); };
+      const notifier = new Notifier(j, [desktopChannel()]);
+      notifier.start();
+      const stop = async () => { notifier.stop(); try { unlinkSync(rtFile); } catch { /* ya no está */ } await srv.close(); j.close(); process.exit(0); };
       process.on("SIGINT", stop);
       process.on("SIGTERM", stop);
       return;
