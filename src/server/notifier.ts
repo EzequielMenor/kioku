@@ -44,15 +44,18 @@ export class Notifier {
     try {
       const config = parseNotifyConfig(await this.j.vault.readInternal(CONFIG_FILE));
       const now = this.now(), today = localDate(now);
-      for (const c of this.channels) { try { await c.prepare?.(); } catch (e) { this.onError(c.name, e); } }
-      const active = this.channels.filter((c) => c.enabled(config));
+      // Un canal que no puede saber qué es privado (p. ej. mobile.json roto) no envía nada: falla cerrado.
+      const ready: Channel[] = [];
+      for (const c of this.channels) { try { await c.prepare?.(); ready.push(c); } catch (e) { this.onError(c.name, e); } }
+      const active = ready.filter((c) => c.enabled(config));
       if (!active.length) return;
       const events = this.j.calendar.range(today, addDays(today, 1)).items;
-      const tasks = this.j.index.tasks({ status: ["todo", "doing"] });
+      const allTasks = this.j.index.tasks({ status: ["todo", "doing"] });
       for (const ch of active) {
         const file = `notify-${ch.name}.json`;
         const ledger = await this.readLedger(file, now);
         let changed = false;
+        const tasks = allTasks.filter((t) => !t.projectPath || ch.visible(t.projectPath));
         for (const n of dueNotifications({ now, events, tasks, fired: new Set(Object.keys(ledger)), config, visible: ch.visible })) {
           try { await ch.send(n); ledger[n.id] = now.toISOString(); changed = true; } catch (e) { this.onError(ch.name, e); }
         }

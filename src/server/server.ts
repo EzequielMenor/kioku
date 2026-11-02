@@ -13,6 +13,7 @@ import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore } from "../assistant/undo.ts";
+import type { PushStore } from "./webpush.ts";
 import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobileAreaCreateDenied, mobileCreateDenied } from "./calendar.ts";
 import { OpsLedger, validOp } from "./ops.ts";
 import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
@@ -79,6 +80,12 @@ function taskFields(b: Record<string, unknown>): Partial<TaskInput> {
     out.estimate = b.estimate;
   }
   if (b.projectPath !== undefined) out.projectPath = b.projectPath === null ? null : userPath(b.projectPath);
+  if (b.areaPath !== undefined) out.areaPath = b.areaPath === null ? null : userPath(b.areaPath);
+  if (b.status !== undefined) out.status = str(b.status, "status") as TaskStatus;
+  if (b.priority !== undefined) {
+    if (b.priority !== null && typeof b.priority !== "number") throw new HttpError(400, "La prioridad debe ser 1, 2 o 3");
+    out.priority = b.priority;
+  }
   return out;
 }
 
@@ -123,6 +130,8 @@ export async function startServer(
     onQuickHide?: () => void | Promise<void>;
     onOpenWorkspace?: (route: string) => void | Promise<void>;
     assistant?: { engine: AssistantEngine };
+    /** Avisos push al móvil: claves VAPID y suscripciones. Sin esto las rutas /api/push responden 404. */
+    push?: PushStore;
   },
 ): Promise<ServerHandle> {
   const sessions = new SessionRegistry();
@@ -206,6 +215,9 @@ export async function startServer(
       switch (p) {
         case "/api/health": return send(res, 200, { ok: true });
         case "/api/session": return send(res, 200, { role });
+        case "/api/push/key":
+          if (!opts.push) throw new HttpError(404, "Los avisos al móvil no están activados en este daemon");
+          return send(res, 200, { publicKey: opts.push.vapid.publicKey });
         case "/api/today": return send(res, 200, await j.today());
         case "/api/focus": return send(res, 200, j.focusState());
         case "/api/inbox": return send(res, 200, j.inbox().map((n) => ({ path: n.path, title: n.title, mtime: n.mtime, excerpt: n.body.trim().slice(0, 200) })));
@@ -327,6 +339,16 @@ export async function startServer(
             if (status) throw new HttpError(status, (e as Error).message);
             throw e;
           }
+        }
+        case "/api/push/subscribe": {
+          if (!opts.push) throw new HttpError(404, "Los avisos al móvil no están activados en este daemon");
+          await opts.push.add(body.subscription);
+          return send(res, 200, { ok: true });
+        }
+        case "/api/push/unsubscribe": {
+          if (!opts.push) throw new HttpError(404, "Los avisos al móvil no están activados en este daemon");
+          await opts.push.remove(str(body.endpoint, "endpoint"));
+          return send(res, 200, { ok: true });
         }
         case "/api/capture": {
           const text = str(body.text, "text");

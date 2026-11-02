@@ -1,7 +1,7 @@
 // Web Push (RFC 8030 + VAPID RFC 8292 + cifrado aes128gcm RFC 8291) con node:crypto, sin dependencias.
 // El aviso viaja cifrado de extremo a extremo hasta el móvil: el servicio push (Apple, Google…) solo ve bytes.
 import { createCipheriv, createECDH, createPrivateKey, hkdfSync, randomBytes, sign } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Kioku } from "../core/kioku.ts";
 import type { Notification } from "../core/notifications.ts";
@@ -52,9 +52,8 @@ const SUBS_FILE = "push-subscriptions.json";
 /** Claves VAPID (0600, estables) y suscripciones de los móviles; viven en `.kioku/`. */
 export class PushStore {
   readonly vapid: Vapid;
-  private subs: PushSubscription[];
   private file: string;
-  private constructor(file: string, vapid: Vapid, subs: PushSubscription[]) { this.file = file; this.vapid = vapid; this.subs = subs; }
+  private constructor(file: string, vapid: Vapid) { this.file = file; this.vapid = vapid; }
 
   static async open(root: string): Promise<PushStore> {
     const dir = path.join(root, ".kioku");
@@ -68,27 +67,28 @@ export class PushStore {
       writeFileSync(vf, JSON.stringify(vapid), { mode: 0o600 });
       chmodSync(vf, 0o600);
     }
-    const sf = path.join(dir, SUBS_FILE);
-    let subs: PushSubscription[] = [];
-    try { const v = JSON.parse(readFileSync(sf, "utf8")); if (Array.isArray(v)) subs = v.filter(validSub); } catch { /* sin suscripciones */ }
-    return new PushStore(sf, vapid, subs);
+    return new PushStore(path.join(dir, SUBS_FILE), vapid);
   }
 
-  list(): PushSubscription[] { return [...this.subs]; }
+  /** Se lee del disco cada vez: `kioku pair --revoke` borra el fichero y el daemon deja de avisar al instante. */
+  list(): PushSubscription[] {
+    try { const v = JSON.parse(readFileSync(this.file, "utf8")); return Array.isArray(v) ? v.filter(validSub) : []; } catch { return []; }
+  }
 
   async add(sub: unknown): Promise<void> {
     if (!validSub(sub)) throw new VaultError("invalid", "Suscripción push inválida");
-    this.subs = [...this.subs.filter((s) => s.endpoint !== sub.endpoint), { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }];
-    this.save();
+    this.save([...this.list().filter((s) => s.endpoint !== sub.endpoint), { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }]);
   }
 
   async remove(endpoint: string): Promise<void> {
-    this.subs = this.subs.filter((s) => s.endpoint !== endpoint);
-    this.save();
+    this.save(this.list().filter((s) => s.endpoint !== endpoint));
   }
 
-  private save(): void { writeFileSync(this.file, JSON.stringify(this.subs), { mode: 0o600 }); }
+  private save(subs: PushSubscription[]): void { writeFileSync(this.file, JSON.stringify(subs), { mode: 0o600 }); }
 }
+
+/** Borra todas las suscripciones (al desemparejar el móvil). */
+export function clearPushSubscriptions(home: string): void { rmSync(path.join(home, ".kioku", SUBS_FILE), { force: true }); }
 
 function validSub(s: unknown): s is PushSubscription {
   if (!s || typeof s !== "object") return false;

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { loadOrCreateMobileKey, revokeMobileKey } from "../server/key.ts";
+import { clearPushSubscriptions } from "../server/webpush.ts";
 import { loginUrl } from "./desktop.ts";
 
 /** Nombre DNS del equipo en la tailnet (`tailscale status --json`), sin el punto final. */
@@ -41,6 +42,7 @@ function hasPrivateFolders(home: string): boolean {
 export function pairReport(o: { home: string; host: string | null; revoke?: boolean }): { lines: string[]; url?: string } {
   if (o.revoke) {
     revokeMobileKey(o.home);
+    clearPushSubscriptions(o.home); // sin clave tampoco hay avisos al móvil
     return { lines: ["Móvil desemparejado: su clave queda revocada al instante (no hace falta reiniciar nada).", "Lo que ya descargó el móvil sigue en el teléfono hasta que desinstales la app."] };
   }
   if (!o.host) {

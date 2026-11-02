@@ -10,6 +10,9 @@ import { HermesEngine } from "../assistant/engine.ts";
 import { FakeEngine } from "../assistant/fake-engine.ts";
 import type { UndoRecord } from "../assistant/undo.ts";
 import { Notifier, desktopChannel } from "../server/notifier.ts";
+import { PushStore, pushChannel } from "../server/webpush.ts";
+import { parseMobileConfig } from "../server/mobile.ts";
+import { hiddenCalendarPaths } from "../server/calendar.ts";
 import { installService, serviceStatus, uninstallService } from "./service.ts";
 import { loadOrCreateKey, readKey } from "../server/key.ts";
 import { allowedHostsFrom, pairReport, publicHost } from "./pair.ts";
@@ -110,11 +113,13 @@ async function main(): Promise<void> {
       }
       const j = await Kioku.open({ root: home });
       j.watch();
-      const srv = await startServer(j, { port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts: allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS), webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const push = await PushStore.open(home);
+      const srv = await startServer(j, { push, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts: allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS), webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
       const rtFile = path.join(home, ".kioku", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`Kioku escuchando en ${srv.url}  (datos: ${home})`);
-      const notifier = new Notifier(j, [desktopChannel()]);
+      const mobileExclude = async () => { const cfg = parseMobileConfig(await j.vault.readInternal("mobile.json")); return [...cfg, ...hiddenCalendarPaths(j, cfg)]; };
+      const notifier = new Notifier(j, [desktopChannel(), pushChannel(j, push, { exclude: mobileExclude })]);
       notifier.start();
       const stop = async () => { notifier.stop(); try { unlinkSync(rtFile); } catch { /* ya no está */ } await srv.close(); j.close(); process.exit(0); };
       process.on("SIGINT", stop);

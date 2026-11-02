@@ -80,3 +80,31 @@ test("notificador: un canal desactivado no envía ni gasta el aviso", async () =
     j.close();
   } finally { cleanup(); }
 });
+
+test("notificador: una tarea visible de un proyecto oculto para el canal no se menciona", async () => {
+  const { j, cleanup, sent, at } = await setup();
+  try {
+    const proj = await j.createNote({ title: "Reservado", type: "project", folder: "Privado", fm: { status: "active" } });
+    await j.createNote({ title: "Tarea del reservado", type: "task", fm: { status: "todo", due: "2026-11-05", project: `[[${proj.path.replace(/\.md$/, "")}]]` } });
+    await j.createNote({ title: "Tarea normal", type: "task", fm: { status: "todo", due: "2026-11-05" } });
+    const ch: Channel = { name: "movil", enabled: () => true, visible: (p) => !p.startsWith("Privado/"), send: async (n) => { sent.push(n); } };
+    at("2026-11-05T10:00:00");
+    await new Notifier(j, [ch], () => new Date("2026-11-05T10:00:00")).tick();
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].body, /Tarea normal/);
+    assert.doesNotMatch(JSON.stringify(sent), /reservado/i);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("notificador: si el canal no puede saber qué es privado, no envía nada (falla cerrado)", async () => {
+  const { j, cleanup, sent, at } = await setup();
+  try {
+    await j.calendar.create({ id: "evento-cerrado", title: "X", kind: "event", start: "2026-11-05T17:00", end: "2026-11-05T18:00" });
+    at("2026-11-05T16:55:00");
+    const ch: Channel = { name: "roto", prepare: async () => { throw new Error("mobile.json roto"); }, enabled: () => true, visible: () => true, send: async (n) => { sent.push(n); } };
+    await new Notifier(j, [ch], () => new Date("2026-11-05T16:55:00"), () => undefined).tick();
+    assert.equal(sent.length, 0);
+    j.close();
+  } finally { cleanup(); }
+});

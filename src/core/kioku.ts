@@ -27,6 +27,9 @@ export interface TaskInput {
   due?: string | null;
   estimate?: number | null;
   projectPath?: string | null;
+  areaPath?: string | null;
+  status?: TaskStatus;
+  priority?: number | null;
 }
 
 const MAX_TASK_MINUTES = 24 * 60;
@@ -564,9 +567,13 @@ export class Kioku {
     const note = this.index.getNote(rel);
     if (!note || note.type !== "task" || note.fmError) throw new VaultError("invalid", "No es una tarea válida");
     const props = this.taskProps(changes);
+    if (changes.status !== undefined) {
+      if (changes.status === note.fm.status) { delete props.status; delete props.done_at; }
+      else Object.assign(props, this.taskStatusProps(changes.status));
+    }
     if (changes.title !== undefined) props.title = taskTitle(changes.title);
     const current = (key: string) => (note.fm[key] === undefined || note.fm[key] === null ? null : note.fm[key]);
-    for (const key of ["title", "due", "estimate"]) if (key in props && (props[key] ?? null) === (key === "title" ? note.title : current(key))) delete props[key];
+    for (const key of ["title", "due", "estimate", "priority", "area"]) if (key in props && (props[key] ?? null) === (key === "title" ? note.title : current(key))) delete props[key];
     // El mismo proyecto escrito de otra forma (`[[Título]]` de una captura) no cuenta como cambio.
     if ("project" in props && (props.project === null ? !current("project") : this.projectOf(note) === this.index.resolve(relationTarget(props.project) ?? ""))) delete props.project;
     // El hash se exige antes de decidir que no hay nada que escribir: un cambio nulo con un hash viejo también es un conflicto.
@@ -582,6 +589,20 @@ export class Kioku {
   /** Propiedades validadas de fecha, estimación y proyecto (solo las presentes); el título lo trata cada operación. */
   private taskProps(input: Partial<TaskInput>): Record<string, unknown> {
     const props: Record<string, unknown> = {};
+    if (input.status !== undefined) {
+      if (!["todo", "doing", "done", "dropped"].includes(input.status)) throw new VaultError("invalid", "Estado inválido");
+      Object.assign(props, this.taskStatusProps(input.status));
+    }
+    if (input.priority !== undefined) {
+      if (input.priority !== null && ![1, 2, 3].includes(input.priority)) throw new VaultError("invalid", "La prioridad debe ser 1, 2 o 3");
+      props.priority = input.priority;
+    }
+    if (input.areaPath !== undefined) {
+      const ref = input.areaPath;
+      const area = typeof ref === "string" && !/[\[\]#|\n\r]/.test(ref) ? this.areas.get(ref) : null;
+      if (ref !== null && !area) throw new VaultError("invalid", "El área no existe o no es válida");
+      props.area = area ? "[[" + area.path.replace(/\.md$/i, "") + "]]" : null;
+    }
     if (input.due !== undefined) props.due = input.due === null ? null : taskDue(input.due);
     if (input.estimate !== undefined) props.estimate = input.estimate === null ? null : taskMinutes(input.estimate);
     if (input.projectPath !== undefined) {
