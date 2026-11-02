@@ -237,6 +237,12 @@ export class Kioku {
     return row;
   }
 
+  /** Actualiza el índice y avisa de una nota publicada por otra puerta del vault. */
+  async notifyNoteChanged(rel: string): Promise<void> {
+    await this.reindexPath(rel);
+    this.changed("note", rel);
+  }
+
   private changed(kind: string, p: string | null): void {
     this.bus.emit("change", { kind, path: p });
   }

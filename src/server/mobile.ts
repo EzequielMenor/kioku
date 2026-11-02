@@ -8,7 +8,7 @@ export type Role = "full" | "mobile";
 /** Lo único que el móvil puede escribir: capturar, tareas y notas. Borrar, asistente, escritorio y mantenimiento quedan fuera. */
 const WRITES = new Set([
   "POST /api/capture", "POST /api/capture/convert", "POST /api/note/create", "PUT /api/note", "POST /api/note/props",
-  "POST /api/task/status", "POST /api/journal", "POST /api/note/open",
+  "POST /api/task/status", "POST /api/journal", "POST /api/note/open", "POST /api/mobile/operation",
   "POST /api/database/query", // lectura que viaja por POST
   "POST /api/calendar/create", "POST /api/calendar/move", "POST /api/calendar/finish", // calendario en línea; sin cola sin conexión
   "POST /api/calendar/areas/create", "POST /api/calendar/areas/update", "POST /api/calendar/area", // áreas del calendario y su asignación

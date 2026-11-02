@@ -11,8 +11,8 @@ import { GraphView } from "./graph.tsx";
 import { extractKey } from "./pairing.ts";
 import { SEAL_PATH } from "./seal.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
-import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submit, syncNow, useOffline, wipeOffline, type OfflineState } from "./offline/runtime.ts";
-import type { QueuedCapture } from "./offline/store.ts";
+import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submit, syncNow, useOffline, wipeOffline, loadMutations, retryMutation, resetMutationPath, setTaskStatus, type OfflineState } from "./offline/runtime.ts";
+import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
 import { priorityLabel } from "./priority.ts";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
@@ -235,7 +235,7 @@ function App() {
         <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{view}</main>
       </div>
 
-      <BottomNav active={activeRoute} pending={off.pending + off.failed} onSearch={() => setOverlay("palette")} onMore={() => setOverlay("more")} />
+      <BottomNav active={activeRoute} pending={off.pending + off.failed + off.mutations} onSearch={() => setOverlay("palette")} onMore={() => setOverlay("more")} />
       <button class="fab" aria-label="Capturar" onClick={() => setOverlay("capture")}>+</button>
       {overlay === "more" && <MoreSheet off={off} counts={counts} theme={theme} setTheme={setTheme} onClose={() => setOverlay(null)} onCapture={() => setOverlay("capture")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
       {overlay === "palette" && <Palette go={(r) => { setOverlay(null); setRoute(r); }} onClose={() => setOverlay(null)} newNote={() => { setOverlay(null); void newNote("note"); }}
@@ -300,7 +300,7 @@ function TaskLine({ t, today, go, guard, onFocus }: { t: TaskRow; today?: string
   return (
     <li class={`task ${done ? "is-done" : ""}`}>
       <input type="checkbox" checked={t.status === "done"} aria-label={`Marcar «${t.title}» como hecha`}
-        onChange={(e) => void guard(() => api("POST", "/api/task/status", { path: t.path, status: e.currentTarget.checked ? "done" : "todo" }))} />
+        onChange={(e) => void guard(() => setTaskStatus(t.path, e.currentTarget.checked ? "done" : "todo"))} />
       <a class="ttitle" href={`#/nota/${enc(t.path)}`}>{t.title}</a>
       {t.status === "doing" && <span class="chip accent">en curso</span>}
       {t.priority && <span class="chip">{priorityLabel(t.priority)}</span>}
@@ -331,7 +331,7 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
           </div>
           <div class="row">
             {!t.focus.active && !mobile && <button class="primary" onClick={() => void start(t.suggestion!.task.path)}>Empezar foco</button>}
-            <button onClick={() => void guard(() => api("POST", "/api/task/status", { path: t.suggestion!.task.path, status: "done" }))}>Ya está hecha</button>
+            <button onClick={() => void guard(() => setTaskStatus(t.suggestion!.task.path, "done"))}>Ya está hecha</button>
           </div>
           {t.alternatives.length > 0 && (
             <details>
@@ -726,7 +726,7 @@ function BottomNav({ active, pending, onSearch, onMore }: { active: string; pend
         <a key={route} href={`#${route}`} class={active === route ? "active" : ""}><Icon name={icon} /><span>{label}</span></a>
       ))}
       <button onClick={onSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg><span>Buscar</span></button>
-      <button onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span>{pending > 0 && <b class="nav-badge" aria-label={`${pending} capturas sin enviar`}>{pending}</b>}</button>
+      <button onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span>{pending > 0 && <b class="nav-badge" aria-label={`${pending} cambios pendientes`}>{pending}</b>}</button>
     </nav>
   );
 }
@@ -760,7 +760,10 @@ function MoreSheet({ off, counts, theme, setTheme, onClose, onCapture, onJournal
 function OfflineSection({ off }: { off: OfflineState }) {
   const [queue, setQueue] = useState<QueuedCapture[]>([]);
   const [used, setUsed] = useState<string | null>(null);
-  useEffect(() => { void loadQueue().then(setQueue); }, [off.pending, off.failed]);
+  const [mutations, setMutations] = useState<StoredMutation[]>([]);
+  const [error, setError] = useState("");
+  const refreshMutations = () => void loadMutations().then(setMutations);
+  useEffect(() => { void loadQueue().then(setQueue); refreshMutations(); }, [off.pending, off.failed, off.mutations, off.syncing]);
   useEffect(() => {
     navigator.storage?.estimate?.().then((e) => { if (e.usage != null) setUsed(e.usage < 1_048_576 ? `${Math.max(1, Math.round(e.usage / 1024))} KB` : `${(e.usage / 1_048_576).toFixed(1)} MB`); }, () => {});
   }, [off.lastSync]);
@@ -774,6 +777,18 @@ function OfflineSection({ off }: { off: OfflineState }) {
           <div class="row"><button onClick={() => void retryCapture(c.opId)}>Reenviar</button><button onClick={() => void discardCapture(c.opId)}>Descartar</button></div>
         </div>
       ))}
+      {!off.durable && <p class="bad-text">El almacenamiento persistente no está disponible; no se pueden guardar ediciones ni tareas.</p>}
+      {error && <p class="bad-text" role="alert">{error}</p>}
+      {mutations.filter(o => o.state !== "applied").map(o => <div class="failed-capture" key={o.body.opId}>
+        <p><b>{o.state === "conflict" ? "Conflicto" : o.state === "failed" ? "No se pudo enviar" : "Pendiente o bloqueado"}</b> · {o.body.path}<br />
+          {o.state === "conflict" && o.result && <>El original se conservó. <a href={`#/nota/${enc(o.result.path)}`}>Abrir copia de conflicto</a>.</>}
+          {o.error && <span class="muted small">{o.error}</span>}</p>
+        {o.state === "failed" && <button onClick={() => void retryMutation(o.body.opId).then(refreshMutations).catch(e => setError(errText(e)))}>Reintentar</button>}
+        {(o.state === "conflict" || o.state === "failed") && <button onClick={() => void (async () => {
+          if (!await askConfirm({ title: "¿Descartar cambios locales de esta nota?", body: "Se descartan el borrador y los cambios sin enviar de esta nota. La copia de conflicto del servidor se conserva.", confirm: "Descartar cambios locales", danger: true })) return;
+          try { await resetMutationPath(o.body.path); await syncNow(); refreshMutations(); } catch (e) { setError(errText(e)); }
+        })()}>Resolver y descartar cambios locales</button>}
+      </div>)}
       <p class="muted small">Última sincronización: {off.lastSync ? formatAgo(off.lastSync, Date.now()) : "todavía ninguna"}{used ? ` · ${used} en este dispositivo` : ""}</p>
       <button disabled={off.syncing} onClick={() => void syncNow()}>{off.syncing ? "Sincronizando…" : "Sincronizar ahora"}</button>
     </div>

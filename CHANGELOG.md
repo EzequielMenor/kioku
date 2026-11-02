@@ -15,6 +15,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 ### Despliegue
 - Añadida una configuración Docker Compose para probar Kioku localmente en macOS con Docker Desktop, y otra para un despliegue privado con Dokploy y Tailscale. Las guías están en [`docs/local-macos.md`](docs/local-macos.md) y [`docs/dokploy.md`](docs/dokploy.md).
 
+## [0.7.0] — En desarrollo
+
+### Añadido
+- Edición móvil y cambios explícitos de estado de tareas con borradores y operaciones persistentes en IndexedDB. El envío usa identificadores idempotentes y comprueba el hash; ante un conflicto conserva el original y crea una copia.
+- «Más» muestra cambios pendientes, rechazos y copias de conflicto; permite confirmar el descarte de una cadena local. No hay sobrescritura forzada automática.
+- El almacenamiento persistente es obligatorio para estas escrituras. La creación de notas y las demás propiedades no se ofrecen sin conexión.
+
+### Verificación pendiente
+- La integración de edición aún requiere comprobación en navegador y en iPhone real; no hay sincronización en segundo plano en iOS.
+
 ## [0.6.0] — 2026-10-28
 
 ### Añadido

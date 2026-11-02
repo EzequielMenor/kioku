@@ -2,6 +2,8 @@
 import { useState } from "preact/hooks";
 import { api } from "./api.ts";
 import { priorityLabel } from "./priority.ts";
+
+import { setTaskStatus } from "./offline/runtime.ts";
 import type { TaskRow, TaskStatus } from "./types.ts";
 
 type Guard = <T>(fn: () => Promise<T>) => Promise<T | undefined>;
@@ -11,7 +13,7 @@ const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");
 export const STATUS: { id: TaskStatus; label: string }[] = [
   { id: "todo", label: "Pendiente" }, { id: "doing", label: "En curso" }, { id: "done", label: "Hecha" }, { id: "dropped", label: "Descartada" },
 ];
-const setStatus = (guard: Guard, path: string, status: TaskStatus) => guard(() => api("POST", "/api/task/status", { path, status }));
+const setStatus = (guard: Guard, path: string, status: TaskStatus) => guard(() => setTaskStatus(path, status));
 
 type SortKey = "title" | "project" | "status" | "due" | "priority";
 const COLS: { key: SortKey; label: string }[] = [

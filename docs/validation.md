@@ -131,6 +131,13 @@
 - Foco: por teclado pasa a otra acción útil; al completar la última con un clic va al encabezado del panel. **Salvedad:** doble clic rápido en una fila que desaparece puede dejar foco en BODY; límite observado sin fallo de datos, no se afirma conservación universal del foco.
 - Evidencia de capturas de esta sesión: `/tmp/kioku-ux-h9042t` y `/tmp/kioku-ux-followup-wGakUk`. Exploración guiada por agente, no investigación con participantes humanos. Sin cambios de API, permisos, almacenamiento, campos horarios ni colocación móvil.
 
+## Edición móvil sin conexión (0.7.0, JARV-15)
+
+- Pruebas deterministas cubren transporte, instantáneas, dependencias y conservación de borradores. Tras corregir la pérdida de `done_at` y la carrera entre confirmación y alta de una edición, el padre observó 31/31 pruebas focalizadas y `npm run typecheck` con salida 0.
+- La suite integrada anterior a esa última corrección tuvo 290 pruebas aprobadas y 1 omitida (Hermes ausente en el HOME temporal). El build final del código corregido pasó con `GOMAXPROCS=2` (salida 0, app ~760 KB). La suite final alcanzó el límite de 180 s: salida 124, 35 archivos de pruebas cancelados, sin GREEN. Ese resultado no reemplaza ni extiende el éxito anterior a la corrección; no hubo reintento automático.
+- **Rechequeo independiente indisponible:** los dos comandos de pruebas abortaron antes de ejecutar aserciones (salida 134, fallo al crear hilos); `typecheck` no pudo arrancar (salida 254, `fork: Resource temporarily unavailable`). La inspección estática no es un GREEN independiente.
+- **Pendiente:** comprobación integrada en navegador de IndexedDB, reconexión, conflicto y resolución; también iPhone real y evicción de almacenamiento. El único intento de Chromium no abrió DevTools; no se conserva un diagnóstico concluyente de su salida. No hubo reintentos. No se considera validado para publicación ni se ha verificado sincronización en segundo plano.
+
 ## No verificado todavía
 - El bind de teclado real (`contrib/hyprland-bind.lua`): lo añade el usuario; se probó el comando `kioku quick`, no la pulsación.
 - Ctrl+Enter y el aviso de conflicto externo del editor solo por revisión de código; sin test E2E.

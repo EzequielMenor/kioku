@@ -102,6 +102,40 @@ export class Vault {
     return { hash: hashText(text) };
   }
 
+  /** Publica sin reemplazar; el enlace interno conserva la prueba de propiedad para reintentos. */
+  async writeExclusive(rel: string, text: string, owner: string): Promise<{ hash: string }> {
+    this.assertUserPath(rel);
+    if (!/^[0-9a-f-]{8,64}$/i.test(owner)) throw new VaultError("invalid", "Identificador inválido");
+    const full = this.abs(rel);
+    const internal = this.abs(INTERNAL_DIR);
+    const dir = this.abs(`${INTERNAL_DIR}/mobile-operations`);
+    for (const folder of [internal, dir]) {
+      await fs.mkdir(folder, { recursive: true });
+      const st = await fs.lstat(folder);
+      if (!st.isDirectory() || st.isSymbolicLink()) throw new VaultError("invalid", "Directorio interno inválido");
+    }
+    const stage = path.join(dir, `${owner}.stage`);
+    const tmp = path.join(dir, `${owner}.${randomUUID()}.tmp`);
+    await fs.writeFile(tmp, text, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    try {
+      try { await fs.link(tmp, stage); }
+      catch (e) { if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e; }
+    } finally { await fs.unlink(tmp); }
+    const staged = await fs.lstat(stage);
+    if (!staged.isFile() || staged.isSymbolicLink() || hashText(await fs.readFile(stage, "utf8")) !== hashText(text)) {
+      throw new VaultError("invalid", "Copia preparada inválida");
+    }
+    try { await fs.link(stage, full); }
+    catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      const existing = await fs.lstat(full);
+      if (!existing.isFile() || existing.isSymbolicLink() || existing.dev !== staged.dev || existing.ino !== staged.ino) {
+        throw new VaultError("exists", `Ya existe: ${rel}`);
+      }
+    }
+    return { hash: hashText(text) };
+  }
+
   private async writeRaw(full: string, text: string): Promise<void> {
     await fs.mkdir(path.dirname(full), { recursive: true });
     const tmp = `${full}.${process.pid}.${Date.now()}.${randomUUID().slice(0, 8)}.tmp`;
