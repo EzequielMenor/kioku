@@ -72,13 +72,13 @@ test("PWA iOS 26 (WebKit 301108): en la app instalada el documento mide como la 
   assert.match(css, /@media \(max-width: 720px\) and \(not \(display-mode: standalone\)\)\s*{[^}]*html,\s*body\s*{[^}]*overflow:\s*hidden/, "el bloqueo se queda para el navegador");
 });
 
-test("móvil: la barra inferior mide como una barra de pestañas de iOS (≈83 pt con indicador) y el contenido y el FAB cuentan con esa misma medida", () => {
+test("móvil: la barra inferior mide como una barra de pestañas de iOS (≈83 pt con indicador) y el contenido y el «+» central cuentan con esa misma medida", () => {
   const mobile = css.slice(css.indexOf("@media (max-width: 720px) {"));
   assert.match(mobile, /--nav-pad:\s*max\(calc\(env\(safe-area-inset-bottom\)\s*-\s*6px\),\s*0px\)/, "el área segura inferior se recorta 6 px: el indicador de inicio sigue libre");
   assert.match(mobile, /\.bottomnav\s*{[^}]*padding-bottom:\s*var\(--nav-pad\)/);
   assert.match(mobile, /\.bottomnav a,\s*\.bottomnav button\s*{[^}]*min-height:\s*54px/, "botones ≥ 44 px");
   assert.match(mobile, /\.content\s*{[^}]*padding-bottom:\s*calc\(54px\s*\+\s*var\(--nav-pad\)\)/, "el contenido no queda bajo la barra");
-  assert.match(mobile, /\.fab\s*{[^}]*bottom:\s*calc\(70px\s*\+\s*var\(--nav-pad\)\)/, "el FAB sigue justo encima de la barra");
+  assert.match(mobile, /\.bottomnav \.nav-add span\s*{[^}]*margin-top:\s*-14px/, "el «+» central sobresale de la barra");
 });
 
 test("el build genera sw.js con el id del build y la lista de precarga", () => {

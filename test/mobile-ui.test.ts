@@ -55,9 +55,11 @@ test("navegación: las pantallas de antes siguen en su orden con sus atajos y el
   assert.match(app, /\["g h · b · p · t · c · n · d · g · a · r"/, "la ayuda de atajos lista «g c»");
 });
 
-test("móvil: el calendario está en la barra inferior (sin duplicarse en «Más») y sus etiquetas no desbordan", () => {
+test("móvil: la barra inferior es Hoy · Tareas · «+» central · Calendario · Más (sin duplicarse en «Más») y sus etiquetas no desbordan", () => {
   const bottom = app.match(/const items: \[string, string, string\]\[\] = \[(.*)\];/)?.[1] ?? "";
-  assert.deepEqual([...bottom.matchAll(/\["(\/[a-z]+)"/g)].map((m) => m[1]), ["/hoy", "/calendario", "/tareas", "/notas"]);
-  assert.match(app, /\["\/hoy", "\/calendario", "\/tareas", "\/notas"\]\.includes\(n\.route\)/, "«Más» no repite lo que ya está abajo");
+  assert.deepEqual([...bottom.matchAll(/\["(\/[a-z]+)"/g)].map((m) => m[1]), ["/hoy", "/tareas", "/calendario"]);
+  assert.match(app, /class="nav-add" aria-label="Capturar"/, "la captura es el botón central de la barra, ya no un FAB aparte");
+  assert.doesNotMatch(app, /class="fab"/);
+  assert.match(app, /\["\/hoy", "\/calendario", "\/tareas"\]\.includes\(n\.route\)/, "«Más» no repite lo que ya está abajo");
   assert.match(appCss, /\.bottomnav span\s*{[^}]*text-overflow:\s*ellipsis/, "con seis botones, «Calendario» se recorta en lugar de ensanchar la barra");
 });

@@ -325,7 +325,7 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 .props .addprop-t { opacity: .7; }
 
 /* ───────────── Móvil / iPad: barra inferior y diseño de una columna ───────────── */
-.bottomnav, .fab { display: none; }
+.bottomnav { display: none; }
 .locked { margin: 20vh auto; max-width: 34rem; text-align: center; padding: 0 16px; }
 .locked .inline { justify-content: center; margin-top: 14px; }
 .locked .inline input { flex: 1; min-width: 0; }
@@ -358,9 +358,10 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .bottomnav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* seis botones: «Calendario» se recorta antes que ensanchar la barra */
   .bottomnav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
   .bottomnav button { position: relative; }
+  .bottomnav .nav-add { flex: 0 0 64px; }
+  .bottomnav .nav-add span { display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; margin-top: -14px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); font-size: 28px; line-height: 1; box-shadow: var(--shadow); }
   .nav-badge { position: absolute; top: 5px; left: calc(50% + 6px); min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--accent-fg); font-size: 10px; font-weight: 650; line-height: 16px; text-align: center; }
   .offline-bar { padding: 6px 16px; background: var(--side); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
-  .fab { display: flex; align-items: center; justify-content: center; position: fixed; right: 16px; bottom: calc(70px + var(--nav-pad)); z-index: 41; width: 54px; height: 54px; padding: 0; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-fg); font-size: 30px; line-height: 1; box-shadow: var(--shadow); }
   .page, .page.narrow, .page.wide { padding: 16px 16px 96px; }
   .page-head { flex-wrap: wrap; }
   .page-head .row { flex-wrap: wrap; }
@@ -409,4 +410,13 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .page-head .row:has(.add-compact) { flex-wrap: nowrap; width: 100%; }
   .page-head .row:has(.add-compact) .search { flex: 1 1 auto; min-width: 0; width: auto; }
   .add-compact { flex: 0 0 auto; white-space: nowrap; }
+}
+
+/* Móvil: avisos de Hoy como filas grandes, ejemplos de captura y separador de ajustes en «Más» */
+@media (max-width: 720px) {
+  .pills { flex-direction: column; }
+  .pills .pill { display: flex; align-items: center; min-height: 48px; padding: 8px 14px; font-size: 15px; }
+  .capture-examples { margin: 10px 0 0; }
+  .sheet-list .sheet-sep { margin-top: 8px; border-top: 1px solid var(--line2); }
+  .sheet-list button svg { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--accent); }
 }

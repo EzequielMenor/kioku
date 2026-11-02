@@ -237,9 +237,8 @@ function App() {
         <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{view}</main>
       </div>
 
-      <BottomNav active={activeRoute} pending={off.pending + off.failed + off.mutations} onSearch={() => setOverlay("palette")} onMore={() => setOverlay("more")} />
-      <button class="fab" aria-label="Capturar" onClick={() => setOverlay("capture")}>+</button>
-      {overlay === "more" && <MoreSheet off={off} counts={counts} theme={theme} setTheme={setTheme} onClose={() => setOverlay(null)} onCapture={() => setOverlay("capture")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
+      <BottomNav active={activeRoute} pending={off.pending + off.failed + off.mutations} onCapture={() => setOverlay("capture")} onMore={() => setOverlay("more")} />
+      {overlay === "more" && <MoreSheet off={off} counts={counts} theme={theme} setTheme={setTheme} onClose={() => setOverlay(null)} onSearch={() => setOverlay("palette")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
       {overlay === "palette" && <Palette go={(r) => { setOverlay(null); setRoute(r); }} onClose={() => setOverlay(null)} newNote={() => { setOverlay(null); void newNote("note"); }}
         newProject={() => { setOverlay(null); void newNote("project"); }} journal={() => { setOverlay(null); void openJournal(); }} toggleFocus={() => { setOverlay(null); void toggleFocus(); }}
         focusActive={!!focus?.active} />}
@@ -387,7 +386,7 @@ function ResumeTile({ r, go }: { r: ResumeCard; go: Go }) {
     <button class="tile" onClick={() => go(`/proyecto/${r.project.path}`)}>
       <div class="tile-title">{r.project.title}</div>
       <div class="muted small">{r.idleDays === null ? "sin actividad registrada" : r.idleDays === 0 ? "activo hoy" : `parado hace ${r.idleDays} d`} · {plural(r.open.length, "tarea abierta", "tareas abiertas")}</div>
-      {r.lastCheckpoint ? <p class="cp">{r.lastCheckpoint.text}</p> : <p class="cp muted">Sin checkpoint todavía</p>}
+      {r.lastCheckpoint ? <p class="cp">{r.lastCheckpoint.text}</p> : !isMobile() && <p class="cp muted">Sin checkpoint todavía</p>}
     </button>
   );
 }
@@ -425,15 +424,15 @@ function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; gua
       <ul class="cards">
         {(data ?? []).map((n) => (
           <li key={n.path} class="card">
-            <a class="ctitle" href={`#/nota/${enc(n.path)}`}>{n.title}</a>
-            {n.excerpt && n.excerpt !== n.title && <p class="excerpt">{n.excerpt}</p>}
+            <a class="ctitle" href={`#/nota/${enc(n.path)}`}>{mobile && n.excerpt ? n.excerpt : n.title}</a>
+            {!mobile && n.excerpt && n.excerpt !== n.title && <p class="excerpt">{n.excerpt}</p>}
             <div class="row small">
-              <span class="muted">{new Date(n.mtime).toLocaleString("es")}</span>
+              <span class="muted">{mobile ? formatAgo(n.mtime, Date.now()) : new Date(n.mtime).toLocaleString("es")}</span>
               {triaged.has(`triage:${n.path}`) && <a class="chip accent" href="#/propuestas">tiene propuesta</a>}
               <span class="grow" />
               <button class="mini" onClick={() => void convert(n.path, "task")}>→ Tarea</button>
               <button class="mini" onClick={() => void convert(n.path, "note")}>→ Nota</button>
-              <button class="mini" onClick={() => go(`/nota/${n.path}`)}>Abrir</button>
+              {!mobile && <button class="mini" onClick={() => go(`/nota/${n.path}`)}>Abrir</button>}
               {!mobile && <button class="mini danger" onClick={() => void discard(n.path, n.title)}>Descartar</button>}
             </div>
           </li>
@@ -466,6 +465,8 @@ function ProjectsView({ rev, go, onNew }: { rev: number; go: Go; onNew(): void }
   );
 }
 
+const STATUS_ES: Record<string, string> = { active: "activo", paused: "en pausa", someday: "algún día", done: "terminado" };
+
 function ProjectView({ path, rev, go, say, guard, focus, onContext }: { path: string; rev: number; go: Go; say: Say; guard: Guard; focus: FocusState | null; onContext(p: string): void }) {
   const { data: r, error } = useApi<ResumeCard>(`/api/project?path=${encodeURIComponent(path)}`, rev);
   const [cp, setCp] = useState("");
@@ -487,7 +488,7 @@ function ProjectView({ path, rev, go, say, guard, focus, onContext }: { path: st
       <header class="page-head">
         <div>
           <h1>{r.project.title}</h1>
-          <div class="muted small">{r.project.status} · {r.idleDays === null ? "sin actividad registrada" : r.idleDays === 0 ? "activo hoy" : `parado hace ${r.idleDays} d`}</div>
+          <div class="muted small">{STATUS_ES[r.project.status] ?? r.project.status} · {r.idleDays === null ? "sin actividad registrada" : r.idleDays === 0 ? "activo hoy" : `parado hace ${r.idleDays} d`}</div>
         </div>
         {!isMobile() && <div class="row">
           <button onClick={() => onContext(path)} title="Muestra exactamente qué datos recibiría un modelo de IA">Contexto IA</button>
@@ -735,22 +736,22 @@ function LockedScreen() {
 }
 
 /** Barra inferior (solo se ve en pantallas estrechas): lo más usado a un pulgar. */
-function BottomNav({ active, pending, onSearch, onMore }: { active: string; pending: number; onSearch(): void; onMore(): void }) {
-  const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/calendario", "Calendario", "calendario"], ["/tareas", "Tareas", "tareas"], ["/notas", "Notas", "notas"]];
+function BottomNav({ active, pending, onCapture, onMore }: { active: string; pending: number; onCapture(): void; onMore(): void }) {
+  const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/tareas", "Tareas", "tareas"], ["/calendario", "Calendario", "calendario"]];
+  const link = ([route, label, icon]: [string, string, string]) => <a key={route} href={`#${route}`} class={active === route ? "active" : ""}><Icon name={icon} /><span>{label}</span></a>;
   return (
     <nav class="bottomnav" aria-label="Navegación">
-      {items.map(([route, label, icon]) => (
-        <a key={route} href={`#${route}`} class={active === route ? "active" : ""}><Icon name={icon} /><span>{label}</span></a>
-      ))}
-      <button onClick={onSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg><span>Buscar</span></button>
+      {items.slice(0, 2).map(link)}
+      <button class="nav-add" aria-label="Capturar" onClick={onCapture}><span aria-hidden="true">+</span></button>
+      {items.slice(2).map(link)}
       <button onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span>{pending > 0 && <b class="nav-badge" aria-label={`${pending} cambios pendientes`}>{pending}</b>}</button>
     </nav>
   );
 }
 
 /** «Más»: el resto de pantallas en el móvil. */
-function MoreSheet({ off, counts, theme, setTheme, onClose, onCapture, onJournal }: { off: OfflineState; counts: TodayView | null; theme: string; setTheme(t: string): void; onClose(): void; onCapture(): void; onJournal(): void }) {
-  const rest = visibleNav().filter((n) => !["/hoy", "/calendario", "/tareas", "/notas"].includes(n.route));
+function MoreSheet({ off, counts, theme, setTheme, onClose, onSearch, onJournal }: { off: OfflineState; counts: TodayView | null; theme: string; setTheme(t: string): void; onClose(): void; onSearch(): void; onJournal(): void }) {
+  const rest = visibleNav().filter((n) => !["/hoy", "/calendario", "/tareas"].includes(n.route));
   const [push, setPush] = useState<PushState>("unsupported");
   const [pushBusy, setPushBusy] = useState(true);
   const [pushError, setPushError] = useState("");
@@ -767,6 +768,7 @@ function MoreSheet({ off, counts, theme, setTheme, onClose, onCapture, onJournal
     <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div class="modal sheet" role="dialog" aria-label="Más">
         <ul class="sheet-list">
+          <li><button onClick={onSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg><span>Buscar</span></button></li>
           {rest.map((n) => (
             <li key={n.route}>
               <a href={`#${n.route}`} onClick={onClose}><Icon name={n.icon} /><span>{n.label}</span>
@@ -776,8 +778,7 @@ function MoreSheet({ off, counts, theme, setTheme, onClose, onCapture, onJournal
             </li>
           ))}
           <li><a href="#/diario" onClick={(e) => { e.preventDefault(); onJournal(); }}><Icon name="diario" /><span>Diario de hoy</span></a></li>
-          <li><button onClick={onCapture}>Captura rápida</button></li>
-          <li><button onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}</button></li>
+          <li class="sheet-sep"><button onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}</button></li>
           <li><button disabled={pushBusy || push === "unsupported" || push === "denied"} onClick={() => void togglePush()}>{pushLabel}</button></li>
         </ul>
         {pushError && <p class="bad-text" role="alert">{pushError}</p>}
@@ -855,9 +856,14 @@ function CaptureOverlay({ onClose, say }: { onClose(): void; say: Say }) {
   };
   return (
     <Modal title="Captura rápida" onClose={onClose}>
-      <input class="big-input" autofocus placeholder="Idea suelta · t tarea !mañana @proyecto p1 · d decisión · n nota" value={text}
+      <input class="big-input" autofocus placeholder={isMobile() ? "Escribe lo que tengas en la cabeza…" : "Idea suelta · t tarea !mañana @proyecto p1 · d decisión · n nota"} value={text}
         onInput={(e) => setText(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") void send(); }} />
-      <p class="muted small">Enter para guardar. Sin prefijo va a la Bandeja; nada se organiza solo.</p>
+      {isMobile() && (
+        <div class="chips capture-examples" role="group" aria-label="Ejemplos">
+          {[["t ", "Tarea"], ["n ", "Nota"], ["d ", "Decisión"]].map(([prefix, label]) => <button key={prefix} class="chip btn" onClick={() => setText(prefix + text.replace(/^[tnd] /, ""))}>{label}</button>)}
+        </div>
+      )}
+      <p class="muted small">{isMobile() ? "Sin más, va a la Bandeja. Con Tarea, Nota o Decisión se guarda ya clasificada. Pulsa Intro para guardar." : "Enter para guardar. Sin prefijo va a la Bandeja; nada se organiza solo."}</p>
     </Modal>
   );
 }
