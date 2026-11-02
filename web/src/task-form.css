@@ -1,0 +1,7 @@
+.task-dialog { margin: auto; color: var(--text); }
+.task-dialog::backdrop { background: rgb(0 0 0 / 60%); }
+.task-form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.task-form-fields label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.task-form-fields input, .task-form-fields select { width: 100%; min-width: 0; }
+.task-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+@media (max-width: 480px) { .task-form-grid { grid-template-columns: 1fr; } }

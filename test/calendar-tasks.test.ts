@@ -436,14 +436,12 @@ test("API: un cambio nulo exige igualmente un hash válido y vigente (400 sin ha
   } finally { await t.done(); }
 });
 
-test("API móvil: las rutas nuevas son solo de escritorio y no cambian nada; la lectura sigue sin filtrar lo privado", async () => {
+test("API móvil: enlazar tareas a eventos sigue siendo solo de escritorio y no cambia nada; la lectura sigue sin filtrar lo privado", async () => {
   const t = await setup();
   try {
     const ev = await t.call("POST", "/api/calendar/create", { ...EVENT, kind: "event" });
     const before = snapshot(t);
     for (const [url, body] of [
-      ["/api/task/create", { title: "desde el móvil" }],
-      ["/api/task/update", { path: "Tareas/Escribir.md", hash: "h", title: "x" }],
       ["/api/calendar/link", { path: ev.json.path, hash: ev.json.hash, taskPath: "Tareas/Escribir.md" }],
       ["/api/calendar/link", { path: ev.json.path, hash: ev.json.hash, task: { title: "x" } }],
     ] as const) {
@@ -463,6 +461,114 @@ test("API móvil: las rutas nuevas son solo de escritorio y no cambian nada; la 
     assert.ok(!projects.text.includes("Proyecto oculto") && !projects.text.includes("MARCASECRETA"));
     // El rol completo ve los dos proyectos.
     assert.equal((await t.call("GET", "/api/calendar/projects")).json.length, 2);
+  } finally { await t.done(); }
+});
+
+test("task forms: calendar/link keeps ignoring status, priority and area of the task it creates", async () => {
+  const t = await setup();
+  try {
+    const area = await t.j.areas.create({ id: "task-area-002", title: "Casa", color: "#334455" });
+    const ev = await t.call("POST", "/api/calendar/create", { ...EVENT, kind: "event" });
+    const made = await t.call("POST", "/api/calendar/link", { path: ev.json.path, hash: ev.json.hash, task: { title: "Desde el evento", status: "done", priority: 1, areaPath: area.path } });
+    assert.equal(made.status, 200, made.text);
+    const fm = t.j.index.getNote(made.json.taskPath)!.fm;
+    assert.equal(fm.status, "todo");
+    for (const key of ["priority", "area", "done_at"]) assert.equal(fm[key], undefined, key);
+    const bad = await t.call("POST", "/api/calendar/link", { path: ev.json.path, hash: made.json.hash, task: { title: "Otra", status: "invalid", priority: 9 } });
+    assert.equal(bad.status, 200, "campos ajenos al enlace siguen sin validarse");
+  } finally { await t.done(); }
+});
+
+const PRIVATE_SEED = {
+  ...SEED,
+  "Privado/Tarea oculta.md": FM("type: task\nstatus: todo\n") + "MARCASECRETA\n",
+};
+
+test("task forms: mobile role creates and edits visible tasks online with the new routes", async () => {
+  const t = await setup(PRIVATE_SEED);
+  try {
+    const area = await t.j.areas.create({ id: "movil-area", title: "Casa", color: "#334455" });
+    const made = await t.mobile("POST", "/api/task/create", { title: "Desde el móvil p1", status: "doing", priority: 2, areaPath: area.path, projectPath: "Proyectos/Publico.md", due: "2026-11-05", estimate: 20 });
+    assert.equal(made.status, 200, made.text);
+    assert.match(made.json.path, /^Tareas\//);
+    const fm = t.j.index.getNote(made.json.path)!.fm;
+    assert.deepEqual([fm.status, fm.priority, fm.due, fm.estimate], ["doing", 2, "2026-11-05", 20]);
+    const read = await t.mobile("GET", `/api/note?path=${encodeURIComponent(made.json.path)}`);
+    const edited = await t.mobile("POST", "/api/task/update", { path: made.json.path, hash: read.json.hash, status: "done", areaPath: null });
+    assert.equal(edited.status, 200, edited.text);
+    const after = t.j.index.getNote(made.json.path)!.fm;
+    assert.deepEqual([after.status, after.area, after.done_at], ["done", undefined, NOW.toISOString()]);
+  } finally { await t.done(); }
+});
+
+test("task forms: mobile role cannot create or edit tasks that touch private folders, and nothing is written", async () => {
+  const t = await setup(PRIVATE_SEED);
+  try {
+    await t.j.areas.create({ id: "area-oculta-001", title: "Oculta", color: "#334455" });
+    const visible = t.j.index.getNote("Tareas/Escribir.md")!;
+    const read = (await t.call("GET", "/api/note?path=Tareas/Escribir.md")).json;
+    // Privado/ además del área «oculta» y un fichero concreto de Tareas/.
+    writeFileSync(path.join(t.root, ".kioku", "mobile.json"), JSON.stringify({ exclude: ["Privado/", "Areas/area-oculta-001.md", "Tareas/Secreta.md"] }));
+    const before = snapshot(t);
+    const attempts: [string, string, Record<string, unknown>][] = [
+      ["create en proyecto privado", "/api/task/create", { title: "x", projectPath: "Privado/Proyecto oculto.md" }],
+      ["create en área privada", "/api/task/create", { title: "x", areaPath: "Areas/area-oculta-001.md" }],
+      ["create cuyo fichero sería privado", "/api/task/create", { title: "Secreta" }],
+      ["create cuyo fichero sería privado (otras mayúsculas)", "/api/task/create", { title: "sECRETA" }],
+      ["update de tarea privada", "/api/task/update", { path: "Privado/Tarea oculta.md", hash: "h", title: "x" }],
+      ["update a proyecto privado", "/api/task/update", { path: visible.path, hash: read.hash, projectPath: "Privado/Proyecto oculto.md" }],
+      ["update a área privada", "/api/task/update", { path: visible.path, hash: read.hash, areaPath: "Areas/area-oculta-001.md" }],
+      ["update con ruta disfrazada", "/api/task/update", { path: "Tareas/../Privado/Tarea oculta.md", hash: "h", title: "x" }],
+    ];
+    for (const [name, url, body] of attempts) {
+      const r = await t.mobile("POST", url, body);
+      assert.equal(r.status, 403, `${name}: ${r.text}`);
+      assert.equal(snapshot(t), before, `${name}: no escribe ni cuenta ni registra`);
+    }
+    // Carpeta por defecto excluida entera.
+    writeFileSync(path.join(t.root, ".kioku", "mobile.json"), JSON.stringify({ exclude: ["Tareas/"] }));
+    const r = await t.mobile("POST", "/api/task/create", { title: "Nueva" });
+    assert.equal(r.status, 403, r.text);
+    assert.equal(snapshot(t), before, "Tareas/ excluida: no se crea nada");
+    // El escritorio no queda afectado por la configuración del móvil.
+    assert.equal((await t.call("POST", "/api/task/create", { title: "Secreta" })).status, 200);
+  } finally { await t.done(); }
+});
+
+test("task forms: mobile role cannot update a task whose existing project or area is private or unresolved", async () => {
+  const t = await setup({
+    ...SEED,
+    "Tareas/Relacionada.md": FM("type: task\nstatus: todo\nproject: \"[[Privado/Proyecto oculto]]\"\n") + "MARCASECRETA\n",
+    "Tareas/Rota.md": FM("type: task\nstatus: todo\nproject: \"[[Proyecto que no existe]]\"\n") + "x\n",
+    "Tareas/Visible.md": FM("type: task\nstatus: todo\nproject: \"[[Proyectos/Publico]]\"\n") + "Visible\n",
+  });
+  try {
+    const hash = async (rel: string) => (await t.call("GET", `/api/note?path=${encodeURIComponent(rel)}`)).json.hash as string;
+    const area = await t.j.areas.create({ id: "area-privada-01", title: "Privada", color: "#334455" });
+    const withArea = await t.call("POST", "/api/task/create", { title: "Con área", areaPath: area.path });
+    writeFileSync(path.join(t.root, ".kioku", "mobile.json"), JSON.stringify({ exclude: ["Privado/", area.path] }));
+    const listed = (await t.mobile("GET", "/api/tasks")).text;
+    assert.ok(!listed.includes("Relacionada"), "la tarea con proyecto privado no sale en la lista móvil");
+    const bodies: [string, Record<string, unknown>][] = [
+      ["Tareas/Relacionada.md", { title: "Changed from mobile" }],
+      ["Tareas/Relacionada.md", { projectPath: null }],
+      ["Tareas/Relacionada.md", { projectPath: "Proyectos/Publico.md", areaPath: null }],
+      ["Tareas/Rota.md", { title: "Changed from mobile" }],
+      [withArea.json.path, { title: "Changed from mobile" }],
+      [withArea.json.path, { areaPath: null }],
+    ];
+    const before = snapshot(t);
+    for (const [rel, body] of bodies) {
+      const r = await t.mobile("POST", "/api/task/update", { path: rel, hash: await hash(rel), ...body });
+      assert.equal(r.status, 403, `${rel} ${JSON.stringify(body)}: ${r.text}`);
+      assert.equal(snapshot(t), before, `${rel}: no escribe ni cuenta ni registra`);
+    }
+    // El escritorio sí puede, y una tarea visible se edita con normalidad desde el móvil.
+    assert.equal((await t.call("POST", "/api/task/update", { path: "Tareas/Relacionada.md", hash: await hash("Tareas/Relacionada.md"), title: "Desde el portátil" })).status, 200);
+    const ok = await t.mobile("POST", "/api/task/update", { path: "Tareas/Visible.md", hash: await hash("Tareas/Visible.md"), title: "Editada en el móvil", priority: 1 });
+    assert.equal(ok.status, 200, ok.text);
+    assert.equal(t.j.index.getNote("Tareas/Visible.md")!.title, "Editada en el móvil");
+    assert.equal(t.j.index.getNote("Tareas/Visible.md")!.fm.project, "[[Proyectos/Publico]]");
   } finally { await t.done(); }
 });
 

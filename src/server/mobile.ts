@@ -2,13 +2,14 @@
 // privacidad (`.kioku/mobile.json`: carpetas que nunca salen del portátil) y filtrado de respuestas.
 import path from "node:path";
 import { isExcludedPath, parseAssistantConfig } from "../assistant/policy.ts";
+import { relationTarget } from "../core/index.ts";
 
 export type Role = "full" | "mobile";
 
-/** Lo único que el móvil puede escribir: capturar, tareas y notas. Borrar, asistente, escritorio y mantenimiento quedan fuera. */
+/** Lo único que el móvil puede escribir: capturar, tareas (estado y formulario en línea) y notas. Borrar, asistente, escritorio y mantenimiento quedan fuera. */
 const WRITES = new Set([
   "POST /api/capture", "POST /api/capture/convert", "POST /api/note/create", "PUT /api/note", "POST /api/note/props",
-  "POST /api/task/status", "POST /api/journal", "POST /api/note/open", "POST /api/mobile/operation",
+  "POST /api/task/status", "POST /api/task/create", "POST /api/task/update", "POST /api/journal", "POST /api/note/open", "POST /api/mobile/operation",
   "POST /api/database/query", // lectura que viaja por POST
   "POST /api/push/subscribe", "POST /api/push/unsubscribe", // avisos al móvil: cada móvil gestiona su propia suscripción
   "POST /api/calendar/create", "POST /api/calendar/move", "POST /api/calendar/finish", // calendario en línea; sin cola sin conexión
@@ -35,6 +36,14 @@ export function touchesPrivate(sources: (URLSearchParams | Record<string, unknow
     const v = s instanceof URLSearchParams ? s.get(k) : s[k];
     return typeof v === "string" && isPrivate(v, exclude);
   }));
+}
+
+/** Una relación existente (`[[Nota]]`) que el móvil no puede ver: cae en una carpeta privada o no se resuelve (podría apuntar a algo privado). */
+export function hiddenRelation(raw: unknown, resolve: (target: string) => string | null, exclude: string[]): boolean {
+  if (!raw) return false;
+  const target = relationTarget(raw);
+  const found = target ? resolve(target) : null;
+  return !found || isPrivate(found, exclude);
 }
 
 /** `.kioku/mobile.json`: `{ "exclude": ["Privado/"] }`. Sin fichero = nada privado; roto = falla cerrado. */

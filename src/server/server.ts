@@ -18,7 +18,7 @@ import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobi
 import { OpsLedger, validOp } from "./ops.ts";
 import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
-import { mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
+import { hiddenRelation, mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
 export const DEFAULT_PORT = 47800;
 /** Sincronización móvil: tope de rutas por petición y de texto por respuesta (lo que no cabe vuelve en `pending`). */
@@ -70,8 +70,11 @@ function str(v: unknown, name: string): string {
   return v;
 }
 
-/** Campos de tarea del cuerpo JSON. `undefined` = no viene; `null` = quitar el valor (solo tiene efecto al editar). */
-function taskFields(b: Record<string, unknown>): Partial<TaskInput> {
+/**
+ * Campos de tarea del cuerpo JSON. `undefined` = no viene; `null` = quitar el valor (solo tiene efecto al editar).
+ * Estado, prioridad y área solo los lee el formulario de tareas (`extended`); el calendario los sigue ignorando.
+ */
+function taskFields(b: Record<string, unknown>, extended = false): Partial<TaskInput> {
   const out: Partial<TaskInput> = {};
   if (b.title !== undefined) out.title = str(b.title, "title");
   if (b.due !== undefined) out.due = b.due === null ? null : str(b.due, "due");
@@ -80,6 +83,7 @@ function taskFields(b: Record<string, unknown>): Partial<TaskInput> {
     out.estimate = b.estimate;
   }
   if (b.projectPath !== undefined) out.projectPath = b.projectPath === null ? null : userPath(b.projectPath);
+  if (!extended) return out;
   if (b.areaPath !== undefined) out.areaPath = b.areaPath === null ? null : userPath(b.areaPath);
   if (b.status !== undefined) out.status = str(b.status, "status") as TaskStatus;
   if (b.priority !== undefined) {
@@ -385,13 +389,19 @@ export async function startServer(
           await j.setTaskStatus(rel, st);
           return send(res, 200, { ok: true });
         }
-        // Crear y editar tareas desde el calendario es solo de escritorio: no están en la lista blanca del móvil.
+        // Formulario de tareas (en línea, también desde el móvil): lo privado lo para `touchesPrivate`; la ruta de la tarea nueva se comprueba aquí.
         case "/api/task/create": {
-          const n = await j.createTask({ ...taskFields(body), title: str(body.title, "title") });
+          const input = { ...taskFields(body, true), title: str(body.title, "title") };
+          if (role === "mobile" && isPrivate(j.buildNote({ title: input.title, type: "task" }).rel, mobileExclude)) throw new HttpError(403, "Esa carpeta es privada y no se toca desde el móvil");
+          const n = await j.createTask(input);
           return send(res, 200, { path: n.path, title: n.title, hash: n.hash });
         }
         case "/api/task/update": {
-          const n = await j.updateTask(userPath(body.path), taskFields(body), str(body.hash, "hash"));
+          const rel = userPath(body.path);
+          // Una tarea con proyecto o área privados (o sin resolver) no existe para el móvil: se rechaza aunque el cuerpo intente quitarlos.
+          const fm = j.index.getNote(rel)?.fm;
+          if (role === "mobile" && fm && [fm.project, fm.area].some((r) => hiddenRelation(r, (t) => j.index.resolve(t), mobileExclude))) throw new HttpError(403, "Esa carpeta es privada y no se toca desde el móvil");
+          const n = await j.updateTask(rel, taskFields(body, true), str(body.hash, "hash"));
           return send(res, 200, { path: n.path, title: n.title, hash: n.hash });
         }
         case "/api/calendar/link": {

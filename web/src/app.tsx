@@ -16,6 +16,7 @@ import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
 import { priorityLabel } from "./priority.ts";
 import { currentState, disablePush, enablePush, type PushState } from "./push.ts";
+import { TaskForm } from "./task-form.tsx";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
 import type {
   CaptureResult, FocusState, NoteListItem, Proposal, ResumeCard, SearchHit, TaskRow, TodayView,
@@ -295,14 +296,14 @@ function EndFocus({ focus, onClose, say, guard }: { focus: FocusState; onClose()
 
 // ───────────────────────────── Hoy ─────────────────────────────
 
-function TaskLine({ t, today, go, guard, onFocus }: { t: TaskRow; today?: string; go: Go; guard: Guard; onFocus?: () => void }) {
+function TaskLine({ t, today, go, guard, onFocus, onEdit }: { t: TaskRow; today?: string; go: Go; guard: Guard; onFocus?: () => void; onEdit?: (path: string) => void }) {
   const done = t.status === "done" || t.status === "dropped";
   const overdue = !!t.due && !!today && t.due < today && !done;
   return (
     <li class={`task ${done ? "is-done" : ""}`}>
       <input type="checkbox" checked={t.status === "done"} aria-label={`Marcar «${t.title}» como hecha`}
         onChange={(e) => void guard(() => setTaskStatus(t.path, e.currentTarget.checked ? "done" : "todo"))} />
-      <a class="ttitle" href={`#/nota/${enc(t.path)}`}>{t.title}</a>
+      <a class="ttitle" href={`#/nota/${enc(t.path)}`} onClick={onEdit && ((e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onEdit(t.path); } })}>{t.title}</a>
       {t.status === "doing" && <span class="chip accent">en curso</span>}
       {t.priority && <span class="chip">{priorityLabel(t.priority)}</span>}
       {t.due && <span class={`chip ${overdue ? "bad" : ""}`}>{relDate(t.due, today)}</span>}
@@ -538,18 +539,20 @@ function ProjectView({ path, rev, go, say, guard, focus, onContext }: { path: st
 // ───────────────────────────── Tareas ─────────────────────────────
 
 function TasksView({ rev, go, guard, today }: { rev: number; go: Go; guard: Guard; today?: string }) {
-  const { data } = useApi<TaskRow[]>("/api/tasks", rev);
+  const { data, reload } = useApi<TaskRow[]>("/api/tasks", rev);
   const [showDone, setShowDone] = useState(false);
   const [q, setQ] = useState("");
-  const [nt, setNt] = useState("");
+  const [form, setForm] = useState<{ path: string | null } | null>(null);
+  const edit = (path: string) => setForm({ path });
   const [mode, setModeRaw] = useState<"lista" | "tabla" | "tablero">(() => { const m = lsGet("tasks.mode"); return m === "tabla" || m === "tablero" ? m : "lista"; });
   const setMode = (m: typeof mode) => { setModeRaw(m); lsSet("tasks.mode", m); };
   const list = (data ?? []).filter((t) => !q || t.title.toLowerCase().includes(q.toLowerCase()) || (t.projectTitle ?? "").toLowerCase().includes(q.toLowerCase()));
   const doing = list.filter((t) => t.status === "doing");
   const open = list.filter((t) => t.status === "todo").sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || (a.priority ?? 9) - (b.priority ?? 9));
   const closed = list.filter((t) => t.status === "done" || t.status === "dropped").sort((a, b) => (b.doneAt ?? "").localeCompare(a.doneAt ?? "")).slice(0, 50);
-  const Group = ({ title, items }: { title: string; items: TaskRow[] }) => items.length ? (
-    <section><h2 class="sec">{title} <span class="muted">{items.length}</span></h2><ul class="tasks">{items.map((t) => <TaskLine key={t.path} t={t} today={today} go={go} guard={guard} />)}</ul></section>
+  // Función, no componente: un componente definido aquí se recrea en cada render y desmonta las filas (y el foco del título que abrió el formulario).
+  const group = (title: string, items: TaskRow[]) => items.length ? (
+    <section><h2 class="sec">{title} <span class="muted">{items.length}</span></h2><ul class="tasks">{items.map((t) => <TaskLine key={t.path} t={t} today={today} go={go} guard={guard} onEdit={edit} />)}</ul></section>
   ) : null;
   return (
     <div class={`page ${mode === "lista" ? "narrow" : "wide"}`}>
@@ -559,19 +562,17 @@ function TasksView({ rev, go, guard, today }: { rev: number; go: Go; guard: Guar
         </div>
         <input class="search" placeholder="Filtrar…" value={q} onInput={(e) => setQ(e.currentTarget.value)} />
       </div></header>
-      <form class="inline addbar" onSubmit={(e) => { e.preventDefault(); if (!nt.trim()) return; void guard(async () => { await api("POST", "/api/capture", { text: `t ${nt.trim()}` }); setNt(""); }); }}>
-        <input placeholder="Nueva tarea…  !mañana  @proyecto  p1" value={nt} onInput={(e) => setNt(e.currentTarget.value)} />
-        <button class="primary">Añadir</button>
-      </form>
+      <div class="addbar"><button class="primary" onClick={() => setForm({ path: null })}>Añadir tarea</button></div>
       {data && data.length === 0 && <div class="empty">Sin tareas. Crea una con <code>t …</code> desde Quick (o pulsa <kbd>c</kbd>).</div>}
-      {mode === "tabla" && <TaskTable tasks={list} today={today} guard={guard} fmt={relDate} />}
-      {mode === "tablero" && <TaskBoard tasks={list} today={today} guard={guard} fmt={relDate} />}
+      {mode === "tabla" && <TaskTable tasks={list} today={today} guard={guard} fmt={relDate} onEdit={edit} />}
+      {mode === "tablero" && <TaskBoard tasks={list} today={today} guard={guard} fmt={relDate} onEdit={edit} />}
       {mode === "lista" && <>
-        <Group title="En curso" items={doing} />
-        <Group title="Pendientes" items={open} />
+        {group("En curso", doing)}
+        {group("Pendientes", open)}
         <div class="row"><button class={`chip btn ${showDone ? "on" : ""}`} onClick={() => setShowDone(!showDone)}>{showDone ? "Ocultar completadas" : "Mostrar completadas"}</button></div>
-        {showDone && <Group title="Completadas" items={closed} />}
+        {showDone && group("Completadas", closed)}
       </>}
+      {form && <TaskForm path={form.path} onClose={() => setForm(null)} onSaved={() => { setForm(null); reload(); }} />}
     </div>
   );
 }

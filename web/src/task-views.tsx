@@ -7,12 +7,18 @@ import { setTaskStatus } from "./offline/runtime.ts";
 import type { TaskRow, TaskStatus } from "./types.ts";
 
 type Guard = <T>(fn: () => Promise<T>) => Promise<T | undefined>;
-interface Props { tasks: TaskRow[]; today?: string; guard: Guard; fmt(d: string | null, today?: string): string }
+interface Props { tasks: TaskRow[]; today?: string; guard: Guard; fmt(d: string | null, today?: string): string; onEdit(path: string): void }
 
 const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");
 export const STATUS: { id: TaskStatus; label: string }[] = [
   { id: "todo", label: "Pendiente" }, { id: "doing", label: "En curso" }, { id: "done", label: "Hecha" }, { id: "dropped", label: "Descartada" },
 ];
+/** Clic normal en un título: abre el formulario; con modificadores (nueva pestaña) sigue siendo el enlace a la nota. */
+const editClick = (onEdit: (path: string) => void, path: string) => (e: MouseEvent) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  onEdit(path);
+};
 const setStatus = (guard: Guard, path: string, status: TaskStatus) => guard(() => setTaskStatus(path, status));
 
 type SortKey = "title" | "project" | "status" | "due" | "priority";
@@ -30,7 +36,7 @@ const order = (t: TaskRow, k: SortKey): string | number => {
   }
 };
 
-export function TaskTable({ tasks, today, guard, fmt }: Props) {
+export function TaskTable({ tasks, today, guard, fmt, onEdit }: Props) {
   const [sort, setSort] = useState<{ k: SortKey; dir: 1 | -1 }>({ k: "due", dir: 1 });
   const rows = [...tasks].sort((a, b) => {
     const x = order(a, sort.k), y = order(b, sort.k);
@@ -52,7 +58,7 @@ export function TaskTable({ tasks, today, guard, fmt }: Props) {
             const closed = t.status === "done" || t.status === "dropped";
             return (
               <tr key={t.path} class={closed ? "is-done" : ""}>
-                <td><a href={`#/nota/${enc(t.path)}`}>{t.title}</a></td>
+                <td><a href={`#/nota/${enc(t.path)}`} onClick={editClick(onEdit, t.path)}>{t.title}</a></td>
                 <td>{t.projectPath ? <a class="chip link" href={`#/proyecto/${enc(t.projectPath)}`}>{t.projectTitle}</a> : <span class="muted">—</span>}</td>
                 <td>
                   <select class="cell-select" value={t.status} aria-label={`Estado de «${t.title}»`}
@@ -72,7 +78,7 @@ export function TaskTable({ tasks, today, guard, fmt }: Props) {
   );
 }
 
-export function TaskBoard({ tasks, today, guard, fmt }: Props) {
+export function TaskBoard({ tasks, today, guard, fmt, onEdit }: Props) {
   const [over, setOver] = useState<TaskStatus | null>(null);
   const drop = (status: TaskStatus, e: DragEvent) => {
     e.preventDefault();
@@ -95,7 +101,7 @@ export function TaskBoard({ tasks, today, guard, fmt }: Props) {
               const overdue = !!t.due && !!today && t.due < today && col.id !== "done" && col.id !== "dropped";
               return (
                 <article key={t.path} class="kcard" draggable onDragStart={(e) => e.dataTransfer?.setData("text/plain", t.path)}>
-                  <a href={`#/nota/${enc(t.path)}`}>{t.title}</a>
+                  <a href={`#/nota/${enc(t.path)}`} onClick={editClick(onEdit, t.path)}>{t.title}</a>
                   <div class="meta">
                     {t.priority && <span class="chip">{priorityLabel(t.priority)}</span>}
                     {t.due && <span class={`chip ${overdue ? "bad" : ""}`}>{fmt(t.due, today)}</span>}
