@@ -7,6 +7,8 @@ import { dueNotifications, parseNotifyConfig, type Notification, type NotifyConf
 
 export interface Channel {
   name: string;
+  /** Refresca lo que el canal necesita saber antes de decidir (p. ej. carpetas privadas). */
+  prepare?(): Promise<void>;
   enabled(config: NotifyConfig): boolean;
   /** Qué rutas puede mencionar este canal (el push al móvil no ve las carpetas privadas). */
   visible(path: string): boolean;
@@ -42,6 +44,7 @@ export class Notifier {
     try {
       const config = parseNotifyConfig(await this.j.vault.readInternal(CONFIG_FILE));
       const now = this.now(), today = localDate(now);
+      for (const c of this.channels) { try { await c.prepare?.(); } catch (e) { this.onError(c.name, e); } }
       const active = this.channels.filter((c) => c.enabled(config));
       if (!active.length) return;
       const events = this.j.calendar.range(today, addDays(today, 1)).items;

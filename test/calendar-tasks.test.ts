@@ -135,6 +135,44 @@ test("editar tarea: hash viejo, destino que no es tarea y datos inválidos falla
   } finally { t.done(); }
 });
 
+test("task forms: create, edit and clear area, priority and status atomically through the API", async () => {
+  const t = await setup();
+  try {
+    const area = await t.j.areas.create({ id: "task-area-001", title: "Casa", color: "#334455" });
+    const created = await t.call("POST", "/api/task/create", { title: "Literal mañana p1", status: "doing", priority: 1, areaPath: area.path });
+    assert.equal(created.status, 200, created.text);
+    const read = () => t.call("GET", `/api/note?path=${encodeURIComponent(created.json.path)}`);
+    let note = (await read()).json;
+    assert.equal(note.note.fm.status, "doing");
+    assert.equal(note.note.fm.priority, 1);
+    assert.equal(note.note.fm.area, "[[Areas/task-area-001]]");
+    assert.equal(note.note.fm.project, undefined, "area does not require a project");
+    const changed = await t.call("POST", "/api/task/update", { path: created.json.path, hash: note.hash, status: "done", priority: 3 });
+    assert.equal(changed.status, 200, changed.text);
+    note = (await read()).json;
+    assert.equal(note.note.fm.status, "done");
+    assert.equal(note.note.fm.done_at, NOW.toISOString());
+    assert.equal(note.note.fm.area, "[[Areas/task-area-001]]");
+    const same = await t.call("POST", "/api/task/update", { path: created.json.path, hash: note.hash, status: "done" });
+    assert.equal(same.json.hash, note.hash, "saving the same status preserves completion time");
+    const cleared = await t.call("POST", "/api/task/update", { path: created.json.path, hash: note.hash, status: "todo", priority: null, areaPath: null });
+    assert.equal(cleared.status, 200, cleared.text);
+    note = (await read()).json;
+    for (const key of ["area", "priority", "done_at"]) assert.equal(note.note.fm[key], undefined, key);
+    const before = snapshot(t);
+    for (const fields of [{ status: "invalid" }, { status: null }, { priority: 0 }, { priority: 4 }, { priority: "1" }, { areaPath: "Tareas/Escribir.md" }, { areaPath: "Areas/missing.md" }]) {
+      for (const endpoint of ["create", "update"]) {
+        const result = await t.call("POST", `/api/task/${endpoint}`, { title: "Rejected", path: created.json.path, hash: note.hash, ...fields });
+        assert.equal(result.status, 400, result.text);
+        assert.ok(result.json.error);
+        assert.equal(snapshot(t), before, "rejection leaves notes, counters and log unchanged");
+      }
+    }
+    assert.equal((await t.call("POST", "/api/task/update", { path: created.json.path, hash: created.json.hash, priority: 2 })).status, 409);
+    assert.equal(snapshot(t), before);
+  } finally { await t.done(); }
+});
+
 // ───────────── Núcleo: eventos con tarea ─────────────
 
 test("un evento puede llevar tarea; seguir sin poder terminarse y la tarea y el bloque se completan por separado", async () => {
