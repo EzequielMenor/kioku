@@ -8,14 +8,39 @@ declare const __PRECACHE__: string[];
 // Tipos mínimos: el proyecto compila con la librería DOM, no con la de workers.
 interface ExtEvent { waitUntil(p: Promise<unknown>): void }
 interface FetchEv { request: Request; respondWith(r: Promise<Response>): void }
+interface PushEv extends ExtEvent { data: { json(): unknown } | null }
+interface ClickEv extends ExtEvent { notification: { close(): void } }
+interface WindowClient { postMessage(m: unknown): void; focus(): Promise<unknown> }
 interface SwScope {
   addEventListener(type: string, fn: (e: never) => void): void;
   skipWaiting(): Promise<void>;
-  clients: { claim(): Promise<void>; matchAll(o: { type: "window" }): Promise<{ postMessage(m: unknown): void }[]> };
+  clients: { claim(): Promise<void>; matchAll(o: { type: "window"; includeUncontrolled?: boolean }): Promise<WindowClient[]>; openWindow(url: string): Promise<unknown> };
+  registration: { showNotification(title: string, options: { body?: string; tag?: string; icon?: string }): Promise<void> };
   location: { origin: string };
 }
 const sw = self as unknown as SwScope;
 const SHELL = shellCacheName(__BUILD_ID__);
+
+sw.addEventListener("push", ((e: PushEv) => {
+  e.waitUntil((async () => {
+    let payload: { title?: unknown; body?: unknown; tag?: unknown } = {};
+    try { const data = e.data?.json(); if (data && typeof data === "object") payload = data; } catch { /* mostrar aviso genérico */ }
+    await sw.registration.showNotification(typeof payload.title === "string" && payload.title ? payload.title : "Kioku", {
+      body: typeof payload.body === "string" ? payload.body : undefined,
+      tag: typeof payload.tag === "string" ? payload.tag : undefined,
+      icon: "/icons/icon-192.png",
+    });
+  })());
+}) as (e: never) => void);
+
+sw.addEventListener("notificationclick", ((e: ClickEv) => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const windows = await sw.clients.matchAll({ type: "window", includeUncontrolled: true });
+    if (windows.length) await windows[0].focus();
+    else await sw.clients.openWindow("/");
+  })());
+}) as (e: never) => void);
 
 sw.addEventListener("install", ((e: ExtEvent) => {
   e.waitUntil((async () => {

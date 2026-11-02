@@ -15,6 +15,7 @@ import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submi
 import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
 import { priorityLabel } from "./priority.ts";
+import { currentState, disablePush, enablePush, type PushState } from "./push.ts";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
 import type {
   CaptureResult, FocusState, NoteListItem, Proposal, ResumeCard, SearchHit, TaskRow, TodayView,
@@ -734,6 +735,18 @@ function BottomNav({ active, pending, onSearch, onMore }: { active: string; pend
 /** «Más»: el resto de pantallas en el móvil. */
 function MoreSheet({ off, counts, theme, setTheme, onClose, onCapture, onJournal }: { off: OfflineState; counts: TodayView | null; theme: string; setTheme(t: string): void; onClose(): void; onCapture(): void; onJournal(): void }) {
   const rest = visibleNav().filter((n) => !["/hoy", "/calendario", "/tareas", "/notas"].includes(n.route));
+  const [push, setPush] = useState<PushState>("unsupported");
+  const [pushBusy, setPushBusy] = useState(true);
+  const [pushError, setPushError] = useState("");
+  useEffect(() => { void currentState().then(setPush).catch((e) => setPushError(errText(e))).finally(() => setPushBusy(false)); }, []);
+  const togglePush = async () => {
+    setPushBusy(true); setPushError("");
+    try { if (push === "on") await disablePush(); else await enablePush(); }
+    catch (e) { setPushError(errText(e)); }
+    try { setPush(await currentState()); } catch (e) { setPushError(errText(e)); }
+    setPushBusy(false);
+  };
+  const pushLabel = { on: "Avisos: activados", off: "Activar avisos", denied: "Bloqueados en Ajustes de iOS", unsupported: "No disponibles: instala la app en la pantalla de inicio" }[push];
   return (
     <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div class="modal sheet" role="dialog" aria-label="Más">
@@ -749,7 +762,9 @@ function MoreSheet({ off, counts, theme, setTheme, onClose, onCapture, onJournal
           <li><a href="#/diario" onClick={(e) => { e.preventDefault(); onJournal(); }}><Icon name="diario" /><span>Diario de hoy</span></a></li>
           <li><button onClick={onCapture}>Captura rápida</button></li>
           <li><button onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}</button></li>
+          <li><button disabled={pushBusy || push === "unsupported" || push === "denied"} onClick={() => void togglePush()}>{pushLabel}</button></li>
         </ul>
+        {pushError && <p class="bad-text" role="alert">{pushError}</p>}
         <OfflineSection off={off} />
       </div>
     </div>
