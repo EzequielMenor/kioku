@@ -296,7 +296,8 @@ function EndFocus({ focus, onClose, say, guard }: { focus: FocusState; onClose()
 
 // ───────────────────────────── Hoy ─────────────────────────────
 
-function TaskLine({ t, today, go, guard, onFocus, onEdit }: { t: TaskRow; today?: string; go: Go; guard: Guard; onFocus?: () => void; onEdit?: (path: string) => void }) {
+/** `compact`: la fecha ya la dice el grupo (Hoy, Próximas…), así que solo se repite si está vencida. */
+function TaskLine({ t, today, go, guard, onFocus, onEdit, compact }: { t: TaskRow; today?: string; go: Go; guard: Guard; onFocus?: () => void; onEdit?: (path: string) => void; compact?: boolean }) {
   const done = t.status === "done" || t.status === "dropped";
   const overdue = !!t.due && !!today && t.due < today && !done;
   return (
@@ -305,8 +306,8 @@ function TaskLine({ t, today, go, guard, onFocus, onEdit }: { t: TaskRow; today?
         onChange={(e) => void guard(() => setTaskStatus(t.path, e.currentTarget.checked ? "done" : "todo"))} />
       <a class="ttitle" href={`#/nota/${enc(t.path)}`} onClick={onEdit && ((e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onEdit(t.path); } })}>{t.title}</a>
       {t.status === "doing" && <span class="chip accent">en curso</span>}
-      {t.priority && <span class="chip">{priorityLabel(t.priority)}</span>}
-      {t.due && <span class={`chip ${overdue ? "bad" : ""}`}>{relDate(t.due, today)}</span>}
+      {t.priority && (!isMobile() || t.priority === 1) && <span class="chip">{priorityLabel(t.priority)}</span>}
+      {t.due && !(compact && !overdue) && <span class={`chip ${overdue ? "bad" : ""}`}>{relDate(t.due, today)}</span>}
       {t.projectPath && <a class="chip link" href={`#/proyecto/${enc(t.projectPath)}`}>{t.projectTitle}</a>}
       {onFocus && !done && <button class="mini" onClick={onFocus} title="Empezar foco">▶</button>}
     </li>
@@ -544,31 +545,45 @@ function TasksView({ rev, go, guard, today }: { rev: number; go: Go; guard: Guar
   const [q, setQ] = useState("");
   const [form, setForm] = useState<{ path: string | null } | null>(null);
   const edit = (path: string) => setForm({ path });
-  const [mode, setModeRaw] = useState<"lista" | "tabla" | "tablero">(() => { const m = lsGet("tasks.mode"); return m === "tabla" || m === "tablero" ? m : "lista"; });
+  const mobile = isMobile(); // en el móvil solo hay lista: Tabla y Tablero no caben en la pantalla
+  const [storedMode, setModeRaw] = useState<"lista" | "tabla" | "tablero">(() => { const m = lsGet("tasks.mode"); return m === "tabla" || m === "tablero" ? m : "lista"; });
+  const mode = mobile ? "lista" : storedMode;
   const setMode = (m: typeof mode) => { setModeRaw(m); lsSet("tasks.mode", m); };
   const list = (data ?? []).filter((t) => !q || t.title.toLowerCase().includes(q.toLowerCase()) || (t.projectTitle ?? "").toLowerCase().includes(q.toLowerCase()));
   const doing = list.filter((t) => t.status === "doing");
   const open = list.filter((t) => t.status === "todo").sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || (a.priority ?? 9) - (b.priority ?? 9));
   const closed = list.filter((t) => t.status === "done" || t.status === "dropped").sort((a, b) => (b.doneAt ?? "").localeCompare(a.doneAt ?? "")).slice(0, 50);
   // Función, no componente: un componente definido aquí se recrea en cada render y desmonta las filas (y el foco del título que abrió el formulario).
-  const group = (title: string, items: TaskRow[]) => items.length ? (
-    <section><h2 class="sec">{title} <span class="muted">{items.length}</span></h2><ul class="tasks">{items.map((t) => <TaskLine key={t.path} t={t} today={today} go={go} guard={guard} onEdit={edit} />)}</ul></section>
+  const group = (title: string, items: TaskRow[], compact = false) => items.length ? (
+    <section><h2 class="sec">{title} <span class="muted">{items.length}</span></h2><ul class="tasks">{items.map((t) => <TaskLine key={t.path} t={t} today={today} go={go} guard={guard} onEdit={edit} compact={compact} />)}</ul></section>
   ) : null;
+  // Móvil: lo pendiente se agrupa por cuándo toca, no en una sola lista.
+  const byDue = (pred: (due: string | null) => boolean) => open.filter((t) => pred(t.due));
+  const overdue = byDue((d) => !!d && !!today && d < today);
+  const dueToday = byDue((d) => !!d && d === today);
+  const upcoming = byDue((d) => !!d && (!today || d > today));
+  const undated = byDue((d) => !d);
   return (
     <div class={`page ${mode === "lista" ? "narrow" : "wide"}`}>
       <header class="page-head"><h1>Tareas</h1><div class="row">
-        <div class="seg" role="tablist" aria-label="Vista">
+        {!mobile && <div class="seg" role="tablist" aria-label="Vista">
           {(["lista", "tabla", "tablero"] as const).map((m) => <button key={m} role="tab" aria-selected={mode === m} class={mode === m ? "on" : ""} onClick={() => setMode(m)}>{m[0].toUpperCase() + m.slice(1)}</button>)}
-        </div>
+        </div>}
         <input class="search" placeholder="Filtrar…" value={q} onInput={(e) => setQ(e.currentTarget.value)} />
+        {mobile && <button class="primary add-compact" aria-label="Añadir tarea" onClick={() => setForm({ path: null })}>+ Tarea</button>}
       </div></header>
-      <div class="addbar"><button class="primary" onClick={() => setForm({ path: null })}>Añadir tarea</button></div>
+      {!mobile && <div class="addbar"><button class="primary" onClick={() => setForm({ path: null })}>Añadir tarea</button></div>}
       {data && data.length === 0 && <div class="empty">Sin tareas. Crea una con <code>t …</code> desde Quick (o pulsa <kbd>c</kbd>).</div>}
       {mode === "tabla" && <TaskTable tasks={list} today={today} guard={guard} fmt={relDate} onEdit={edit} />}
       {mode === "tablero" && <TaskBoard tasks={list} today={today} guard={guard} fmt={relDate} onEdit={edit} />}
       {mode === "lista" && <>
         {group("En curso", doing)}
-        {group("Pendientes", open)}
+        {mobile ? <>
+          {group("Vencidas", overdue, true)}
+          {group("Hoy", dueToday, true)}
+          {group("Próximas", upcoming)}
+          {group("Sin fecha", undated, true)}
+        </> : group("Pendientes", open)}
         <div class="row"><button class={`chip btn ${showDone ? "on" : ""}`} onClick={() => setShowDone(!showDone)}>{showDone ? "Ocultar completadas" : "Mostrar completadas"}</button></div>
         {showDone && group("Completadas", closed)}
       </>}

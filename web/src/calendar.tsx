@@ -443,8 +443,8 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
             <button onClick={() => setDay(today)}>Hoy</button>
             <button aria-label={scope === "dia" ? "Día siguiente" : "Semana siguiente"} onClick={() => setDay(shiftView(scope, day, 1))}>›</button>
           </div>
-          <button onClick={() => setPanel({ kind: "areas" })}>Áreas</button>
-          <button class="primary" onClick={() => compose()}>Nueva actividad</button>
+          {!readOnly && <button onClick={() => setPanel({ kind: "areas" })}>Áreas</button>}
+          <button class="primary" onClick={() => compose()}>{readOnly ? "+ Actividad" : "Nueva actividad"}</button>
         </div>
       </header>
 
@@ -476,13 +476,13 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
               {upcoming.freeBefore !== null && <span class="muted">Antes tienes {formatDuration(upcoming.freeBefore)} libres.</span>}
             </p>
           )}
-          <div class="chips" role="group" aria-label="Filtrar por área">
+          {!(readOnly && areas.length === 0) && <div class="chips" role="group" aria-label="Filtrar por área">
             <button class={`chip btn ${areaFilter === null ? "on" : ""}`} aria-pressed={areaFilter === null} onClick={() => setAreaFilter(null)}>Todos</button>
             {areas.map((a) => (
               <button key={a.path} class={`chip btn ${areaFilter === a.path ? "on" : ""}`} aria-pressed={areaFilter === a.path} onClick={() => setAreaFilter(a.path)}><AreaBadge area={areaLabel({ areaPath: a.path, areaTitle: a.title, areaColor: a.color })} /></button>
             ))}
             <button class={`chip btn ${areaFilter === "" ? "on" : ""}`} aria-pressed={areaFilter === ""} onClick={() => setAreaFilter("")}><AreaBadge area={areaLabel({ areaPath: null, areaTitle: null, areaColor: null })} /></button>
-          </div>
+          </div>}
 
           {scope === "semana" && (
             <>
@@ -504,9 +504,9 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
               <p class="cal-legend">Cada barra es el día de 07:00 a 22:00: lo lleno está ocupado, lo vacío está libre y la marca es ahora. Toca un día para verlo solo o arrastra una actividad sobre un día para moverla; con el teclado, usa «Un día antes / después» en su detalle.</p>
             </>
           )}
-          {scope === "dia" && <p class="cal-free">{freeSummary(items, day, now)} <span class="muted">No hace falta llenar los huecos.</span></p>}
+          {scope === "dia" && <p class="cal-free">{freeSummary(items, day, now)}{!readOnly && <> <span class="muted">No hace falta llenar los huecos.</span></>}</p>}
 
-          <QuickAdd now={now} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} />
+          {!readOnly && <QuickAdd now={now} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} />}
           {scope === "dia" && dayView === "grid" ? <DayGrid day={day} items={shown} now={now} today={today} onOpen={(path) => setPanel({ kind: "detail", path })} onCreate={(title, start, end) => create({ kind: "event", title, start, end }, newId())} onChange={reschedule} onDropTask={(taskPath, start) => void scheduleTask(taskPath, day, start)} /> : <section class="cal-board" aria-label={scope === "dia" ? "Actividades del día en orden" : "Actividades de la semana en orden"}>
             {days.map((d) => {
               const rows = dayTimeline(items, shown, d, now);

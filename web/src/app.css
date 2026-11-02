@@ -403,3 +403,10 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 @media (display-mode: standalone) {
   html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); }
 }
+
+/* Móvil: Tareas con el filtro y «+ Tarea» en una sola fila */
+@media (max-width: 720px) {
+  .page-head .row:has(.add-compact) { flex-wrap: nowrap; width: 100%; }
+  .page-head .row:has(.add-compact) .search { flex: 1 1 auto; min-width: 0; width: auto; }
+  .add-compact { flex: 0 0 auto; white-space: nowrap; }
+}

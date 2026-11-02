@@ -56,6 +56,10 @@ export function DayGrid({ day, items, now, today, onOpen, onCreate, onChange, on
   };
 
   useEffect(() => { gesture.current = null; setDraft(null); }, [day]);
+  // Móvil: el día de hoy se abre en la hora actual, no a las 07:00 con la mañana vacía.
+  useEffect(() => {
+    if (day === today && matchMedia("(max-width: 720px)").matches) body.current?.querySelector(".cal-gnow")?.scrollIntoView({ block: "center" });
+  }, [day, today]);
   // `autoFocus` solo vale al montar la página: el campo aparece al soltar el puntero, así que se enfoca a mano.
   const typing = draft !== null && !draft.held;
   useEffect(() => { if (typing) titleInput.current?.focus(); }, [typing]);
