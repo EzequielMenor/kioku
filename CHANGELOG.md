@@ -4,6 +4,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 
 ## Sin publicar
 
+### Avisos y asistente (MVP)
+- **Avisos de eventos y tareas** (escritorio y iPhone): aviso antes de cada evento o bloque (10 min por defecto) y resumen diario de tareas de hoy y vencidas (9:00 por defecto). Cada aviso sale una vez por canal y sobrevive a reinicios; configurable en `.kioku/notifications.json`.
+- **Web Push al iPhone** sin dependencias: cifrado aes128gcm (RFC 8291, comprobado contra el vector del RFC), VAPID ES256, solo servicios push conocidos por https, claves en `.kioku/vapid.json` (0600). Lo privado del móvil nunca va en un aviso; si un canal no puede saber qué es privado no envía nada. `kioku pair --revoke` borra las suscripciones. Rutas nuevas para el móvil: `POST /api/push/subscribe|unsubscribe`.
+- **Asistente con calendario:** herramientas `list_events` (lectura) y `create_event` (reversible con Deshacer).
+
 ### Calendario
 - **Uso diario del lateral** (JARV-27): completar una tarea sin salir del calendario, sin terminar su bloque; vencimientos legibles («hoy», «mañana», día de semana o fecha) relativos al día actual, no al día seleccionado.
 - **Tareas simples desde el calendario** (JARV-27): título literal, fecha/estimación/proyecto opcionales, panel de pendientes con edición inline, arrastre a Día/Semana y alternativa «Programar». El detalle permite enlazar o crear una tarea también dentro de un evento. Las escrituras nuevas son solo de escritorio y en línea; tarea y bloque conservan su finalización independiente.

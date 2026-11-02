@@ -192,6 +192,7 @@ Es opcional y la forma más cómoda de organizar el espacio: pídele que clasifi
 - **Qué hace solo:** lo pequeño y reversible (clasificar capturas, consultar tus bases, añadirles filas). Cada acción queda con un botón **Deshacer** (`kioku assistant actions` · `kioku assistant undo <id>`).
 - **Qué te pide aprobar:** borrar, mover o tocar más de 5 notas, o escribir contenido externo, se convierte en una **propuesta** con diff (`kioku proposals`).
 - **Qué ve:** solo lo que lee a través de las herramientas de Kioku; nunca monta tu bóveda. Puedes excluir carpetas en `.kioku/assistant.json`: `{"exclude": ["Privado/"]}`. `Notas/Importado/` es de solo lectura para él.
+- **Calendario:** puede ver tu agenda (`list_events`: «¿qué tengo mañana?») y apuntar eventos o bloques (`create_event`: «dentista el jueves de 17 a 18»); crear un evento es reversible con **Deshacer**. Solo el portátil usa el asistente; el móvil no.
 - **Qué recuerda:** texto plano en `.kioku/hermes/` (pantalla *Memoria*); puedes borrarlo.
 
 > El texto de las notas que el asistente lee **se envía al proveedor del modelo**. Cada consulta queda registrada con las notas leídas. Si no quieres eso, no lo actives: el resto de Kioku funciona sin él.
@@ -208,6 +209,23 @@ kioku ai triage --yes     # solo entonces se envía; el resultado son propuestas
 ```
 
 La clave nunca se guarda en disco: solo el nombre de la variable de entorno que la contiene.
+
+## Avisos de tareas y eventos
+
+Kioku te avisa mientras el daemon corre (con `kioku service install` arranca con tu sesión):
+
+- **Eventos y bloques del calendario:** un aviso unos minutos antes del inicio (10 por defecto).
+- **Tareas:** un resumen al empezar el día (a las 9:00 por defecto) con las tareas que vencen hoy o ya vencidas.
+- Cada aviso sale **una sola vez** por canal (el registro vive en `.kioku/notify-*.json` y sobrevive a reinicios). Si el portátil está apagado o dormido, no hay avisos.
+
+Canales:
+
+| Canal | Qué es | Activación |
+|---|---|---|
+| **Escritorio** | Notificación nativa (`notify-send`), sin red | Activo por defecto |
+| **iPhone / iPad** | Web Push cifrado de extremo a extremo (el servicio push de Apple solo ve bytes) | En la app instalada: **Más → Activar avisos** |
+
+Ajustes opcionales en `.kioku/notifications.json`: `{"desktop": true, "eventLeadMinutes": 10, "digestHour": 9}`. Lo que esté en las carpetas de `.kioku/mobile.json` **nunca** sale en un aviso al móvil, y `kioku pair --revoke` borra las suscripciones del móvil al instante. Requisito de iOS: la app tiene que estar añadida a la pantalla de inicio (iOS 16.4 o superior).
 
 ## Kioku en el móvil (iPhone / iPad)
 

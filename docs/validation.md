@@ -149,3 +149,14 @@ Ver `06-implementation-plan.md`.
 
 ## Seguridad de datos
 La bóveda de Obsidian (`~/Documents/Mi espacio`) no se ha leído ni modificado. `guardHome` impide usarla como vault de Kioku; la importación es opt-in y de solo lectura sobre el origen.
+
+## MVP: asistente con calendario y avisos (feat/mvp-notifications)
+**Verificado**
+- `npm test` 440/440 y `npm run typecheck` limpio. `test/notifications.test.ts` (planificador puro: ventana de antelación, no repetir, resumen diario, filtro de visibilidad, configuración), `test/notifier.test.ts` (registro en disco y reinicio, reintento sin duplicar, canal caído no frena al resto, canal desactivado, **falla cerrado** si no puede saber qué es privado, tarea visible de proyecto oculto no se menciona), `test/webpush.test.ts` (**vector del RFC 8291 byte a byte**, descifrado en el lado receptor, JWT VAPID verificado con la clave pública, endpoints permitidos, claves 0600, 410 borra la suscripción), `test/push-api.test.ts` (rutas, 401 sin clave, 400 endpoint ajeno, 404 sin soporte, `pair --revoke` borra las suscripciones al instante), `test/assistant-tools.test.ts` (list_events/create_event, Deshacer, carpetas excluidas).
+- Asistente real (Hermes) sobre bóveda temporal: «apunta una cita con el dentista el 2026-11-05 de 17:00 a 18:00 y dime qué tengo ese día» crea el evento y lo lee de vuelta, con id de Deshacer.
+- Daemon temporal real: un evento a 3 min se avisó al instante con `notify-send` (salida 0) y quedó en `.kioku/notify-desktop.json`.
+
+**No verificado**
+- **Push en un iPhone real:** el cifrado y la firma están comprobados contra el RFC y con un servicio push simulado, pero no contra los servidores de Apple (que exigen la app instalada, iOS ≥ 16.4 y permiso concedido desde un toque).
+- Que `notify-send` llegue a tu sesión cuando el daemon corre como servicio de usuario (hay que verlo con el servicio real; ver checklist del README).
+- Avisos con el portátil dormido: no existen (el daemon es el que avisa).
