@@ -1,5 +1,7 @@
 // Herramientas que el asistente puede usar. El servidor (no el modelo) impone los niveles:
 //   read = libres · auto = reversibles con Deshacer · approval = solo como propuesta.
+import { randomUUID } from "node:crypto";
+import { parseBlock } from "../core/calendar.ts";
 import type { View } from "../core/database.ts";
 import { FOLDERS, type Kioku } from "../core/kioku.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
@@ -277,6 +279,40 @@ function externalContentReason(args: Record<string, unknown>): string | null {
   return EXTERNAL_RE.test(JSON.stringify(args)) ? "El texto incluye enlaces web, imágenes o HTML: podrían usarse para sacar contenido de tus notas, así que necesita tu aprobación." : null;
 }
 
+const CALENDAR_DEFS: Def[] = [
+  {
+    spec: { name: "list_events", level: "read", description: "Eventos y bloques del calendario entre dos días (AAAA-MM-DD, ambos incluidos; por defecto hoy): título, tipo, inicio, fin y estado.", inputSchema: obj({ from: S, to: S }) },
+    async run(c, a) {
+      const today = (await c.j.today()).date as string;
+      const from = argOpt(a, "from") ?? today, to = argOpt(a, "to") ?? from;
+      if (!DATE_RE.test(from) || !DATE_RE.test(to)) throw new AssistantError("invalid", "«from» y «to» deben ser AAAA-MM-DD");
+      const hide = (p: string | null) => (p && isExcluded(p, c.exclude) ? null : p);
+      return c.j.calendar.range(from, to).items
+        .filter((i) => !isExcluded(i.path, c.exclude))
+        .map((i) => ({ path: i.path, title: i.title, kind: i.kind, start: i.start, end: i.end, state: i.state, taskPath: hide(i.taskPath), projectPath: hide(i.projectPath), projectTitle: hide(i.projectPath) ? i.projectTitle : null }));
+    },
+  },
+];
+
+const CALENDAR_WRITE_DEFS: Def[] = [
+  writeDef(
+    { name: "create_event", description: "Crea un evento (kind: event) o bloque de trabajo (kind: block) en el calendario. «start» y «end» en hora local AAAA-MM-DDTHH:mm; el fin debe ser posterior al inicio.", inputSchema: obj({ title: S, start: S, end: S, kind: S }, ["title", "start", "end"]) },
+    async (c, a) => {
+      const title = argStr(a, "title"), start = argStr(a, "start"), end = argStr(a, "end");
+      const kind = argOpt(a, "kind") ?? "event";
+      if (kind !== "event" && kind !== "block") throw new AssistantError("invalid", "«kind» debe ser event o block");
+      try { parseBlock({ kind, start, end }); } catch (e) { throw new AssistantError("invalid", (e as Error).message); }
+      const id = randomUUID();
+      const opts = { title: id, type: "block" as NoteType, folder: "Calendario", fm: { kind, start, end, title: title.trim() } };
+      return {
+        summary: `Crear ${kind === "event" ? "evento" : "bloque"} «${title.trim()}» (${start} – ${end})`, touches: [], creates: [`Calendario/${id}.md`],
+        ops: async () => { const b = c.j.buildNote(opts); return [{ op: "create", path: b.rel, text: b.text }]; },
+        apply: async () => { const item = await c.j.calendar.create({ id, title, kind, start, end }); return { out: { path: item.path }, created: [item.path] }; },
+      };
+    },
+  ),
+];
+
 const TASK_STATUSES = ["todo", "doing", "done", "dropped"];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -478,7 +514,7 @@ export class AssistantTools {
     this.j = j;
     this.undo = undo;
     this.exclude = cfg.exclude ?? [];
-    for (const d of [...READ_DEFS, ...WRITE_DEFS, PROPOSE_DEF]) this.defs.set(d.spec.name, d);
+    for (const d of [...READ_DEFS, ...CALENDAR_DEFS, ...WRITE_DEFS, ...CALENDAR_WRITE_DEFS, PROPOSE_DEF]) this.defs.set(d.spec.name, d);
   }
 
   specs(): ToolSpec[] {

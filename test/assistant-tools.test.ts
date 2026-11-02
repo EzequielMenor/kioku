@@ -354,3 +354,45 @@ test("escritura: si apply falla a medias, queda registro de Deshacer de lo que s
     j.close();
   } finally { cleanup(); }
 });
+
+// ───────── calendario ─────────
+
+test("calendario: create_event crea el evento, list_events lo devuelve y Deshacer lo quita", async () => {
+  const { j, call, tools, cleanup } = await setup();
+  try {
+    const r = await call("create_event", { title: "Dentista", start: "2026-11-05T17:00", end: "2026-11-05T18:00" });
+    assert.ok(!r.isError, r.text);
+    assert.ok(r.undoId);
+    assert.equal(tools.specs().find((x) => x.name === "create_event")!.level, "auto");
+    assert.equal(tools.specs().find((x) => x.name === "list_events")!.level, "read");
+    const l = await call("list_events", { from: "2026-11-05", to: "2026-11-05" });
+    assert.deepEqual(l.json.map((e: { title: string; start: string; end: string }) => [e.title, e.start, e.end]), [["Dentista", "2026-11-05T17:00", "2026-11-05T18:00"]]);
+    await new UndoStore(j).undo(r.undoId!);
+    const after = await call("list_events", { from: "2026-11-05", to: "2026-11-05" });
+    assert.deepEqual(after.json, []);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("calendario: create_event rechaza un fin anterior al inicio y no escribe nada", async () => {
+  const { j, call, cleanup } = await setup();
+  try {
+    const r = await call("create_event", { title: "Mal", start: "2026-11-05T18:00", end: "2026-11-05T17:00" });
+    assert.ok(r.isError);
+    assert.deepEqual((await call("list_events", { from: "2026-11-05", to: "2026-11-05" })).json, []);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("calendario: list_events no revela proyectos ni tareas de carpetas excluidas", async () => {
+  const { j, call, cleanup } = await setup(["Privado/"]);
+  try {
+    const t = await j.createNote({ title: "Tarea secreta", type: "task", folder: "Privado", fm: { status: "todo" } });
+    await j.calendar.create({ id: "evento-privado-1", title: "Reunión", kind: "event", start: "2026-11-06T10:00", end: "2026-11-06T11:00", taskPath: t.path });
+    const l = await call("list_events", { from: "2026-11-06", to: "2026-11-06" });
+    assert.equal(l.json.length, 1);
+    assert.equal(l.json[0].taskPath, null);
+    assert.doesNotMatch(l.text, /Tarea secreta|Privado/);
+    j.close();
+  } finally { cleanup(); }
+});
