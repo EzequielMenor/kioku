@@ -27,16 +27,13 @@ async function openMobile(route: string) {
   return { p, done: async () => { await p.close(); await srv.close(); j.close(); cleanup(); } };
 }
 
-test("móvil · calendario: la fecha y los controles siguen a la vista aunque el día se abra en la hora actual", { skip: browserSkip, timeout: 60_000 }, async () => {
+test("móvil · calendario: la cabecera es compacta y no tapa el contenido al desplazarse", { skip: browserSkip, timeout: 60_000 }, async () => {
   const t = await openMobile("/calendario");
   try {
     await until(() => t.p.ev<boolean>(`!!document.querySelector(".cal-gbody")`), "cuadrícula");
-    await t.p.ev(`document.querySelector("main").scrollTop = 400`);
-    await sleep(100);
-    const r = await t.p.ev<{ headTop: number; headH: number; today: boolean }>(`(() => { const h = document.querySelector(".cal .page-head").getBoundingClientRect(); const b = [...document.querySelectorAll(".cal-step button")].find((x) => x.textContent === "Hoy").getBoundingClientRect(); return { headTop: Math.round(h.top), headH: Math.round(h.height), today: b.top >= 0 && b.bottom <= h.bottom }; })()`);
-    assert.equal(r.headTop, 0, "la cabecera se queda pegada arriba");
+    const r = await t.p.ev<{ position: string; headH: number }>(`(() => { const h = document.querySelector(".cal .page-head"); return { position: getComputedStyle(h).position, headH: Math.round(h.getBoundingClientRect().height) }; })()`);
+    assert.ok(r.position !== "sticky" && r.position !== "fixed", `la cabecera no se queda pegada (${r.position})`);
     assert.ok(r.headH <= 110, `cabecera compacta (${r.headH}px)`);
-    assert.ok(r.today, "«Hoy» sigue dentro de la cabecera");
   } finally { await t.done(); }
 });
 
