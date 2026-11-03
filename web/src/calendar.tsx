@@ -430,7 +430,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
             {(["dia", "semana"] as const).map((s) => <button key={s} class={scope === s ? "on" : ""} aria-pressed={scope === s} onClick={() => setScope(s)}>{s === "dia" ? "Día" : "Semana"}</button>)}
           </div>
           {scope === "dia" && <div class="seg" role="group" aria-label="Vista del día">
-            {(["grid", "list"] as const).map((view) => <button key={view} class={dayView === view ? "on" : ""} aria-pressed={dayView === view} onClick={() => setDayView(view)}>{view === "grid" ? "Cuadrícula" : "Lista"}</button>)}
+            {(["grid", "list"] as const).map((view) => <button key={view} class={dayView === view ? "on" : ""} aria-pressed={dayView === view} onClick={() => setDayView(view)}>{view === "grid" ? (readOnly ? "Horas" : "Cuadrícula") : "Lista"}</button>)}
           </div>}
           {scope === "semana" && (
             <div class="cal-weekopts row" role="group" aria-label="Opciones de la semana">

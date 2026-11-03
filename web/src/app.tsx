@@ -12,6 +12,7 @@ import { extractKey } from "./pairing.ts";
 import { SEAL_PATH } from "./seal.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
 import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submit, syncNow, useOffline, wipeOffline, loadMutations, retryMutation, resetMutationPath, setTaskStatus, type OfflineState } from "./offline/runtime.ts";
+import type { TaskStatus } from "./offline/store.ts";
 import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
 import { priorityLabel } from "./priority.ts";
@@ -19,11 +20,13 @@ import { currentState, disablePush, enablePush, type PushState } from "./push.ts
 import { TaskForm } from "./task-form.tsx";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
 import type {
-  CaptureResult, FocusState, NoteListItem, Proposal, ResumeCard, SearchHit, TaskRow, TodayView,
+  CalendarEntry, CalendarResponse, CaptureResult, FocusState, NoteListItem, Proposal, ResumeCard, SearchHit, TaskRow, TodayView,
 } from "./types.ts";
 
 type Go = (route: string) => void;
-type Toast = { text: string; error?: boolean };
+type Toast = { text: string; error?: boolean; action?: { label: string; run(): void } };
+/** Aviso desde fuera del árbol de App (filas de tareas): lo fija App en cada render. */
+let toastApi: ((t: Toast) => void) | null = null;
 
 const ICONS: Record<string, string> = {
   hoy: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
@@ -117,11 +120,13 @@ function App() {
   const off = useOffline();
   const mobile = isMobile();
 
-  const say = (text: string, error = false) => {
-    setToast({ text, error });
+  const show = (t: Toast) => {
+    setToast(t);
     clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), error ? 6000 : 2800);
+    toastTimer.current = window.setTimeout(() => setToast(null), t.error || t.action ? 6000 : 2800);
   };
+  toastApi = show;
+  const say = (text: string, error = false) => show({ text, error });
   const guard = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     try { return await fn(); } catch (e) { say(errText(e), true); return undefined; }
   };
@@ -246,7 +251,7 @@ function App() {
       {overlay === "help" && <Help onClose={() => setOverlay(null)} />}
       {overlay === "endfocus" && focus?.active && <EndFocus focus={focus} onClose={() => setOverlay(null)} say={say} guard={guard} />}
       {overlay === "context" && ctxPath && <ContextDialog path={ctxPath} onClose={() => setOverlay(null)} />}
-      {toast && <div class={`toast ${toast.error ? "err" : ""}`} role="status">{toast.text}</div>}
+      {toast && <div class={`toast ${toast.error ? "err" : ""}`} role="status"><span>{toast.text}</span>{toast.action && <button onClick={() => { const a = toast.action!; setToast(null); a.run(); }}>{toast.action.label}</button>}</div>}
     </div>
   );
 }
@@ -295,6 +300,13 @@ function EndFocus({ focus, onClose, say, guard }: { focus: FocusState; onClose()
 
 // ───────────────────────────── Hoy ─────────────────────────────
 
+/** Marca la tarea como hecha y ofrece deshacerlo: al completarla sale de la lista y, sin aviso, no queda claro si se guardó. */
+async function completeTask(t: { path: string; title: string; status: TaskStatus }, guard: Guard) {
+  const before = t.status;
+  const ok = await guard(async () => { await setTaskStatus(t.path, "done"); return true; });
+  if (ok) toastApi?.({ text: `Hecha: ${t.title.length > 40 ? t.title.slice(0, 40) + "…" : t.title}`, action: { label: "Deshacer", run: () => void guard(() => setTaskStatus(t.path, before)) } });
+}
+
 /** `compact`: la fecha ya la dice el grupo (Hoy, Próximas…), así que solo se repite si está vencida. */
 function TaskLine({ t, today, go, guard, onFocus, onEdit, compact }: { t: TaskRow; today?: string; go: Go; guard: Guard; onFocus?: () => void; onEdit?: (path: string) => void; compact?: boolean }) {
   const done = t.status === "done" || t.status === "dropped";
@@ -302,7 +314,7 @@ function TaskLine({ t, today, go, guard, onFocus, onEdit, compact }: { t: TaskRo
   return (
     <li class={`task ${done ? "is-done" : ""}`}>
       <input type="checkbox" checked={t.status === "done"} aria-label={`Marcar «${t.title}» como hecha`}
-        onChange={(e) => void guard(() => setTaskStatus(t.path, e.currentTarget.checked ? "done" : "todo"))} />
+        onChange={(e) => void (e.currentTarget.checked ? completeTask(t, guard) : guard(() => setTaskStatus(t.path, "todo")))} />
       <a class="ttitle" href={`#/nota/${enc(t.path)}`} onClick={onEdit && ((e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onEdit(t.path); } })}>{t.title}</a>
       {t.status === "doing" && <span class="chip accent">en curso</span>}
       {t.priority && (!isMobile() || t.priority === 1) && <span class="chip">{priorityLabel(t.priority)}</span>}
@@ -310,6 +322,26 @@ function TaskLine({ t, today, go, guard, onFocus, onEdit, compact }: { t: TaskRo
       {t.projectPath && <a class="chip link" href={`#/proyecto/${enc(t.projectPath)}`}>{t.projectTitle}</a>}
       {onFocus && !done && <button class="mini" onClick={onFocus} title="Empezar foco">▶</button>}
     </li>
+  );
+}
+
+/** Móvil: lo que hay hoy en el calendario, para ver el día de un vistazo sin abrir Calendario. Sin actividades no ocupa sitio. */
+function TodayAgenda({ date, rev }: { date: string; rev: number }) {
+  const { data } = useApi<CalendarResponse>(`/api/calendar?from=${date}&to=${date}`, rev);
+  const items = (data?.items ?? []).filter((i) => i.start.slice(0, 10) <= date && i.end.slice(0, 10) >= date).sort((a, b) => a.start.localeCompare(b.start));
+  if (!items.length) return null;
+  const when = (i: CalendarEntry) => (i.start.slice(0, 10) < date ? "desde ayer" : i.start.slice(11));
+  return (
+    <section>
+      <h2 class="sec">Agenda de hoy</h2>
+      <ul class="agenda">
+        {items.map((i) => (
+          <li key={i.path} class={`st-${i.state}`}>
+            <a href="#/calendario"><b>{when(i)}</b><span>{i.title}</span>{i.state === "active" && <em>en curso</em>}{i.state === "done" && <em>hecho</em>}</a>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -333,7 +365,7 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
           </div>
           <div class="row">
             {!t.focus.active && !mobile && <button class="primary" onClick={() => void start(t.suggestion!.task.path)}>Empezar foco</button>}
-            <button onClick={() => void guard(() => setTaskStatus(t.suggestion!.task.path, "done"))}>Ya está hecha</button>
+            <button onClick={() => void completeTask(t.suggestion!.task, guard)}>Ya está hecha</button>
           </div>
           {t.alternatives.length > 0 && (
             <details>
@@ -355,6 +387,8 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
           {t.proposals > 0 && !mobile && <a class="pill accent" href="#/propuestas">{plural(t.proposals, "propuesta por revisar", "propuestas por revisar")}</a>}
         </div>
       )}
+
+      {mobile && <TodayAgenda date={t.date} rev={rev} />}
 
       {t.resume.length > 0 && (
         <section>
@@ -602,6 +636,7 @@ function NotesView({ rev, go, onNew }: { rev: number; go: Go; onNew(): void }) {
   const types = ["all", "note", "capture", "project", "task", "journal", "resource"];
   const label: Record<string, string> = { all: "Todas", note: "Notas", capture: "Capturas", project: "Proyectos", task: "Tareas", journal: "Diario", resource: "Recursos" };
   const list = (data ?? [])
+    .filter((n) => n.type !== "block" && n.type !== "event" && !n.path.startsWith("Calendario/")) // las actividades del calendario no son notas: viven en Calendario
     .filter((n) => (type === "all" || n.type === type) && (!q || n.title.toLowerCase().includes(q.toLowerCase())))
     .sort((a, b) => b.mtime - a.mtime);
   return (
@@ -735,6 +770,9 @@ function LockedScreen() {
   );
 }
 
+/** Pantallas que en el móvil viven dentro de «Más»: con una de ellas abierta, ese botón es el activo. */
+const MORE_ROUTES = ["/bandeja", "/proyectos", "/notas", "/bases", "/grafo", "/diario"];
+
 /** Barra inferior (solo se ve en pantallas estrechas): lo más usado a un pulgar. */
 function BottomNav({ active, pending, onCapture, onMore }: { active: string; pending: number; onCapture(): void; onMore(): void }) {
   const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/tareas", "Tareas", "tareas"], ["/calendario", "Calendario", "calendario"]];
@@ -744,7 +782,7 @@ function BottomNav({ active, pending, onCapture, onMore }: { active: string; pen
       {items.slice(0, 2).map(link)}
       <button class="nav-add" aria-label="Capturar" onClick={onCapture}><span aria-hidden="true">+</span></button>
       {items.slice(2).map(link)}
-      <button onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span>{pending > 0 && <b class="nav-badge" aria-label={`${pending} cambios pendientes`}>{pending}</b>}</button>
+      <button class={MORE_ROUTES.includes(active) ? "active" : ""} onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span>{pending > 0 && <b class="nav-badge" aria-label={`${pending} cambios pendientes`}>{pending}</b>}</button>
     </nav>
   );
 }

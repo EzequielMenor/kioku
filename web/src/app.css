@@ -422,3 +422,36 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .sheet-list .sheet-sep { margin-top: 8px; border-top: 1px solid var(--line2); }
   .sheet-list button svg { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--accent); }
 }
+
+/* Móvil: enlaces .pill alineados al centro, sin barra de scroll visible, aviso con acción, agenda de hoy y nota con «Atrás» */
+@media (max-width: 720px) {
+  .pill, .chip.btn { display: inline-flex; align-items: center; justify-content: center; }
+  * { scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; }
+  .toast { display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 16px; }
+  .toast button { min-height: 36px; background: transparent; border: 0; color: var(--accent-fg); font-weight: 700; text-decoration: underline; padding: 4px 10px; }
+  .toast.err button { color: inherit; }
+  .agenda { list-style: none; margin: 0; padding: 0; }
+  .agenda li { border-bottom: 1px solid var(--line); }
+  .agenda li:last-child { border-bottom: 0; }
+  .agenda a { display: flex; align-items: baseline; gap: 14px; min-height: 48px; padding: 12px 4px; color: var(--fg); }
+  .agenda b { flex: none; min-width: 48px; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+  .agenda span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .agenda em { flex: none; font-style: normal; font-size: 12px; color: var(--accent); }
+  .agenda .st-past a, .agenda .st-done a { color: var(--muted); }
+  .agenda .st-past b, .agenda .st-done b { color: var(--muted); }
+  .task input[type=checkbox] { margin: 6px; } /* el área táctil de 22 px era justa: así se acierta con el pulgar */
+  .note-head { gap: 8px; }
+  .note-head .back { flex: none; padding-left: 0; color: var(--accent); }
+  .note-head .crumbs { display: none; }
+  .note-head .save { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .note-status { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; color: var(--fg2); }
+  .editor .cm-editor { min-height: 40vh; }
+}
+@media (max-width: 720px) { .pills .pill { justify-content: flex-start; } }
+@media (max-width: 720px) {
+  .toast { width: max-content; max-width: calc(100vw - 24px); }
+  .toast span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip.btn { font-size: 13px; padding: 0 14px; }
+  .note-status { margin-top: 12px; }
+}

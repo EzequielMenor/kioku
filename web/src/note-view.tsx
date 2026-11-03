@@ -79,6 +79,7 @@ function ExtraProps({ fm, type, setProp }: { fm: Record<string, unknown>; type: 
 }
 
 const TASK_STATUS = ["todo", "doing", "done", "dropped"];
+const STATUS_LABEL: Record<string, string> = { todo: "Pendiente", doing: "En curso", done: "Hecha", dropped: "Descartada" };
 const PROJECT_STATUS = ["active", "paused", "done", "someday"];
 
 export function NoteView(props: { path: string; rev: number; go(route: string): void; embedded?: boolean }) {
@@ -162,13 +163,13 @@ function MobileNoteView({ path, go }: { path: string; rev: number; go(route: str
     return () => { enqueue(); dead = true; clearTimeout(timer); window.removeEventListener("kioku:mutations", onMutations); node?.removeEventListener("kioku-task-status", onTask); editor?.destroy(); };
   }, [path]);
   const n = info?.note;
-  return <div class="note-layout"><div class="note-main"><header class="note-head"><div class="crumbs">{path}</div><div class="save" title={message}>{label}</div></header>
+  const back = () => { if (history.length > 1) history.back(); else go("/hoy"); };
+  return <div class="note-layout"><div class="note-main"><header class="note-head"><button class="back subtle" onClick={back}>‹ Atrás</button><div class="crumbs">{path}</div><div class="save" title={message}>{label}</div></header>
     {message && <div class="banner warn" role="alert">{message}</div>}
     {label === "Conflicto" && <div class="banner warn">El original se conservó. Revisa la copia y resuelve el conflicto en Más.</div>}
     {n && (n.type === "task" || n.type === "capture") && <h1 class="note-title">{n.title}</h1>}
-    <div class="editor" ref={host} /></div><aside class="note-side"><section><h3>Propiedades</h3>
-    {n?.type === "task" && <label>Estado <select value={status} onChange={e => host.current?.dispatchEvent(new CustomEvent("kioku-task-status", { detail: e.currentTarget.value }))}>{TASK_STATUS.map(x => <option key={x}>{x}</option>)}</select></label>}
-    <p class="muted small">Las demás propiedades no se pueden cambiar desde el móvil sin conexión.</p></section></aside></div>;
+    {n?.type === "task" && <label class="note-status">Estado <select value={status} onChange={e => host.current?.dispatchEvent(new CustomEvent("kioku-task-status", { detail: e.currentTarget.value }))}>{TASK_STATUS.map(x => <option key={x} value={x}>{STATUS_LABEL[x]}</option>)}</select></label>}
+    <div class="editor" ref={host} /></div></div>;
 }
 
 function DesktopNoteView({ path, rev, go, embedded }: { path: string; rev: number; go(route: string): void; embedded?: boolean }) {
