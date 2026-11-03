@@ -62,8 +62,8 @@ Desarrollado y probado en **Arch Linux / Omarchy con Hyprland**. En Linux, el Wo
 ### Paso a paso
 
 ```bash
-# 1. Descarga el proyecto
-git clone https://github.com/EzequielMenor/kioku.git
+# 1. Descarga el proyecto (la rama `mvp` es la más reciente: avisos, asistente, calendario y móvil)
+git clone -b mvp https://github.com/EzequielMenor/kioku.git
 cd kioku
 
 # 2. Instala las dependencias y compila la interfaz web
@@ -292,7 +292,7 @@ Diseño completo en [`docs/design`](docs/design) (PRD, arquitectura y decisiones
 ## Desarrollo
 
 ```bash
-npm test               # 150 pruebas (node:test), todas sobre bóvedas temporales
+npm test               # ~460 pruebas (node:test), todas sobre bóvedas temporales
 npm run typecheck      # tsc --noEmit
 npm run build:web      # empaqueta la interfaz con esbuild en dist/web
 npm run dev            # daemon en primer plano
