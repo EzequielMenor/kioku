@@ -455,3 +455,9 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .chip.btn { font-size: 13px; padding: 0 14px; }
   .note-status { margin-top: 12px; }
 }
+
+/* Móvil, segunda ronda: la barra de una base sin la etiqueta suelta «Mostrar como» y con las vistas en fila ajustable */
+@media (max-width: 720px) {
+  .dbbar { flex-wrap: wrap; gap: 8px; }
+  .dbbar > .muted.small { display: none; }
+}

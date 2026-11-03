@@ -86,7 +86,7 @@ export function NoteView(props: { path: string; rev: number; go(route: string): 
   return isMobile() ? <MobileNoteView key={props.path} {...props} /> : <DesktopNoteView {...props} />;
 }
 
-function MobileNoteView({ path, go }: { path: string; rev: number; go(route: string): void; embedded?: boolean }) {
+function MobileNoteView({ path, go, embedded }: { path: string; rev: number; go(route: string): void; embedded?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const [info, setInfo] = useState<NoteInfo | null>(null);
   const [label, setLabel] = useState("Cargando…");
@@ -164,7 +164,7 @@ function MobileNoteView({ path, go }: { path: string; rev: number; go(route: str
   }, [path]);
   const n = info?.note;
   const back = () => { if (history.length > 1) history.back(); else go("/hoy"); };
-  return <div class="note-layout"><div class="note-main"><header class="note-head"><button class="back subtle" onClick={back}>‹ Atrás</button><div class="crumbs">{path}</div><div class="save" title={message}>{label}</div></header>
+  return <div class="note-layout"><div class="note-main"><header class="note-head">{!embedded && <button class="back subtle" onClick={back}>‹ Atrás</button>}<div class="crumbs">{path}</div><div class="save" title={message}>{label}</div></header>
     {message && <div class="banner warn" role="alert">{message}</div>}
     {label === "Conflicto" && <div class="banner warn">El original se conservó. Revisa la copia y resuelve el conflicto en Más.</div>}
     {n && (n.type === "task" || n.type === "capture") && <h1 class="note-title">{n.title}</h1>}

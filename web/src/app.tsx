@@ -61,6 +61,7 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
 const visibleNav = () => NAV.filter((n) => !(isMobile() && MOBILE_HIDDEN.has(n.route)));
 
 const enc = (p: string) => encodeURI(p);
+const localToday = () => new Date().toLocaleDateString("sv"); // YYYY-MM-DD en hora local
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -377,7 +378,7 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
           )}
         </section>
       ) : (
-        <section class="card"><div class="eyebrow">Siguiente paso</div><p class="muted">No hay tareas abiertas. Captura algo con <kbd>c</kbd> o escribe <code>t …</code>.</p></section>
+        <section class="card"><div class="eyebrow">Siguiente paso</div><p class="muted">{mobile ? <>No hay tareas abiertas. Toca <b>+</b> para capturar algo.</> : <>No hay tareas abiertas. Captura algo con <kbd>c</kbd> o escribe <code>t …</code>.</>}</p></section>
       )}
 
       {(t.overdue > 0 || t.inbox.count > 0 || (t.proposals > 0 && !mobile)) && (
@@ -401,7 +402,7 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
       {nothing && (
         <section class="card welcome">
           <h2>Empieza por aquí</h2>
-          <p class="muted">Pulsa <kbd>c</kbd> (o usa Quick) y escribe sin pensar dónde va:</p>
+          <p class="muted">{mobile ? <>Toca <b>+</b> y escribe sin pensar dónde va:</> : <>Pulsa <kbd>c</kbd> (o usa Quick) y escribe sin pensar dónde va:</>}</p>
           <ul class="plain ex">
             <li><code>Idea suelta</code> → Bandeja</li>
             <li><code>t Llamar a Ana !mañana p1</code> → tarea con fecha y prioridad</li>
@@ -541,7 +542,7 @@ function ProjectView({ path, rev, go, say, guard, focus, onContext }: { path: st
           </section>
           <section class="card">
             <div class="eyebrow">Tareas abiertas ({r.open.length})</div>
-            <ul class="tasks">{r.open.map((t) => <TaskLine key={t.path} t={t} go={go} guard={guard} />)}</ul>
+            <ul class="tasks">{r.open.map((t) => <TaskLine key={t.path} t={t} today={localToday()} go={go} guard={guard} />)}</ul>
             <form class="inline" onSubmit={(e) => { e.preventDefault(); void addTask(); }}>
               <input placeholder="Nueva tarea… (!mañana p1)" value={task} onInput={(e) => setTask(e.currentTarget.value)} />
               <button>Añadir</button>
@@ -608,7 +609,7 @@ function TasksView({ rev, go, guard, today }: { rev: number; go: Go; guard: Guar
         {mobile && <button class="primary add-compact" aria-label="Añadir tarea" onClick={() => setForm({ path: null })}>+ Tarea</button>}
       </div></header>
       {!mobile && <div class="addbar"><button class="primary" onClick={() => setForm({ path: null })}>Añadir tarea</button></div>}
-      {data && data.length === 0 && <div class="empty">Sin tareas. Crea una con <code>t …</code> desde Quick (o pulsa <kbd>c</kbd>).</div>}
+      {data && data.length === 0 && <div class="empty">{mobile ? <>Sin tareas. Toca <b>+ Tarea</b> para crear la primera.</> : <>Sin tareas. Crea una con <code>t …</code> desde Quick (o pulsa <kbd>c</kbd>).</>}</div>}
       {mode === "tabla" && <TaskTable tasks={list} today={today} guard={guard} fmt={relDate} onEdit={edit} />}
       {mode === "tablero" && <TaskBoard tasks={list} today={today} guard={guard} fmt={relDate} onEdit={edit} />}
       {mode === "lista" && <>
@@ -913,7 +914,7 @@ function Palette(p: { go(r: string): void; onClose(): void; newNote(): void; new
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [sel, setSel] = useState(0);
   const cmds: PaletteItem[] = [
-    ...visibleNav().map((n) => ({ label: `Ir a ${n.label}`, hint: `g ${n.key}`, run: () => p.go(n.route) })),
+    ...visibleNav().map((n) => ({ label: `Ir a ${n.label}`, hint: isMobile() ? undefined : `g ${n.key}`, run: () => p.go(n.route) })),
     { label: "Nueva nota", run: p.newNote },
     ...(isMobile() ? [] : [{ label: "Nuevo proyecto", run: p.newProject }]),
     { label: "Abrir diario de hoy", run: p.journal },

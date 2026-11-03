@@ -16,7 +16,8 @@ async function openMobile(route: string) {
   const { root, cleanup } = tmpVault();
   const j = await Kioku.open({ root });
   const today = new Date().toISOString().slice(0, 10);
-  await j.createTask({ title: "Llamar al fontanero", due: today });
+  const proj = await j.createProject("Reforma del piso");
+  await j.createTask({ title: "Llamar al fontanero", due: today, projectPath: proj.path });
   await j.calendar.create({ id: "evento-ux-0001", title: "Tutoría con Marta", kind: "event", start: `${today}T10:00`, end: `${today}T11:00` });
   const srv = await startServer(j, { port: 0, webDir: WEB, key: KEY });
   const p = await launch(mkdtempSync(path.join(tmpdir(), "kioku-ux-")));
@@ -71,5 +72,25 @@ test("móvil · Hoy muestra la agenda y completar una tarea ofrece deshacer", { 
     assert.match(toast, /Deshacer/);
     await t.p.ev(`document.querySelector(".toast button").click()`);
     await until(() => t.p.ev<boolean>(`!!document.querySelector(".task input[type=checkbox]:not(:checked)") && !document.querySelector(".toast")`), "tarea de nuevo pendiente");
+  } finally { await t.done(); }
+});
+
+test("móvil · proyecto: la nota embebida no trae «Atrás» y las fechas de sus tareas son relativas", { skip: browserSkip, timeout: 60_000 }, async () => {
+  const t = await openMobile("/proyectos");
+  try {
+    await until(() => t.p.ev<boolean>(`(() => { const b = [...document.querySelectorAll("a,button")].find((x) => /Reforma del piso/.test(x.textContent)); if (b) b.click(); return !!document.querySelector(".embedded .note-layout"); })()`), "proyecto");
+    await until(() => t.p.ev<boolean>(`!!document.querySelector(".tasks .task")`), "tareas del proyecto");
+    assert.equal(await t.p.ev<boolean>(`!!document.querySelector(".embedded .back")`), false, "sin «Atrás» dentro de la página del proyecto");
+    assert.equal(await t.p.ev<boolean>(`!/\\d{4}-\\d{2}-\\d{2}/.test(document.querySelector(".tasks .task").textContent)`), true, "sin fecha ISO cruda");
+  } finally { await t.done(); }
+});
+
+test("móvil · Buscar no muestra atajos de teclado", { skip: browserSkip, timeout: 60_000 }, async () => {
+  const t = await openMobile("/hoy");
+  try {
+    await until(() => t.p.ev<boolean>(`!!document.querySelector(".bottomnav")`), "barra");
+    await t.p.ev(`[...document.querySelectorAll(".bottomnav button")].pop().click()`);
+    await until(() => t.p.ev<boolean>(`(() => { const b = document.querySelector(".sheet-list button"); if (b) b.click(); return !!document.querySelector(".palette"); })()`), "paleta");
+    assert.equal(await t.p.ev<boolean>(`/\\bg [a-z]\\b/.test(document.querySelector(".palette").textContent)`), false);
   } finally { await t.done(); }
 });
