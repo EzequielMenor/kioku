@@ -348,6 +348,8 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .shell { position: fixed; inset: 0; height: auto; }
   main { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: env(safe-area-inset-top); } /* barra de estado translúcida: el contenido no queda bajo la hora */
   #root { overflow-y: auto; }
+  html:has(.scrim) main, html:has(.scrim) #root { overflow: hidden; } /* con una hoja o diálogo abierto, arrastrar no mueve lo de detrás */
+  .scrim, .modal { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   .sidebar { display: none; }
   :root { --nav-pad: max(calc(env(safe-area-inset-bottom) - 6px), 0px); } /* el indicador de inicio ocupa ~13 pt: sobra espacio recortando 6 */
   .content { padding-bottom: calc(54px + var(--nav-pad)); }
@@ -377,7 +379,7 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .scrim.top { padding-top: 8vh; }
   .sheet-scrim { align-items: flex-end; padding: 0; }
   .modal.sheet { width: 100%; border-radius: 10px 10px 0 0; padding: 8px 16px calc(12px + env(safe-area-inset-bottom)); max-height: 85vh; }
-  .modal { max-height: 86vh; }
+  .modal { max-height: 86vh; max-height: 86dvh; }
   /* 16 px evita el zoom automático de iOS al enfocar un campo; 40 px de alto para dedos */
   input, select, textarea { font-size: 16px; }
   button, .chip.btn, .pill, select, input:not([type=checkbox]):not([type=radio]) { min-height: 40px; }
