@@ -248,8 +248,8 @@ test("menú de cabecera: con el rol móvil no existe el menú y la cabecera sigu
 /* ───────────── «+ Propiedad», opciones con color y selector con «Crear» ───────────── */
 
 /** Servidor + Chromium sobre la base «Libros» temporal; `fn` recibe la página y la raíz de la bóveda. */
-async function withBase(opts: { mobile?: boolean }, fn: (p: Page, root: string) => Promise<void>) {
-  const { root, cleanup } = vault();
+async function withBase(opts: { mobile?: boolean; make?: typeof vault; ready?: string }, fn: (p: Page, root: string) => Promise<void>) {
+  const { root, cleanup } = (opts.make ?? vault)();
   const j = await Kioku.open({ root });
   const srv = await startServer(j, { port: 0, webDir: WEB, key: KEY });
   const profile = mkdtempSync(path.join(tmpdir(), "kioku-chromium-"));
@@ -259,7 +259,7 @@ async function withBase(opts: { mobile?: boolean }, fn: (p: Page, root: string) 
     const p = page;
     await p.send("Emulation.setDeviceMetricsOverride", opts.mobile ? { width: 390, height: 780, deviceScaleFactor: 2, mobile: true } : { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false });
     await p.send("Page.navigate", { url: `${srv.url}/?k=${opts.mobile ? loadOrCreateMobileKey(root) : KEY}#/bases/Bases/Libros.md` });
-    await until(async () => (await headers(p)).includes("Autor"), "tabla con la columna Autor");
+    await until(async () => (await headers(p)).includes(opts.ready ?? "Autor"), `tabla con la columna ${opts.ready ?? "Autor"}`);
     await fn(p, root);
   } finally {
     await page?.close();
@@ -462,3 +462,34 @@ test("rol móvil: el selector de la celda sigue siendo nativo y no hay «Añadir
     assert.equal(await p.ev(`${q('[aria-label^="Estado de «Dune»"]')}.tagName`), "SELECT");
   });
 });
+
+/* ───────────── valores que no encajan con el tipo ───────────── */
+
+const NUM_DB = "---\ntype: database\nsource:\n  folder: Libros/\nproperties:\n  Páginas:\n    type: number\nviews:\n  - name: Tabla\n    kind: table\n---\n\n# Libros\n";
+const numVault = () => tmpVault({
+  "Bases/Libros.md": NUM_DB,
+  "Libros/Dune.md": FM("Páginas: 412\n") + "Dune\n",
+  "Libros/Hyperion.md": FM("Páginas: 300 aprox.\n") + "Hyperion\n",
+});
+
+for (const mobile of [false, true]) {
+  test(`valor que no encaja (${mobile ? "móvil" : "escritorio"}): «300 aprox.» en una columna de número se ve con aviso, no cambia el fichero y se sustituye al editar`, { skip, timeout: 60_000 }, async () => {
+    await withBase({ mobile, make: numVault, ready: "Páginas" }, async (p, root) => {
+      const misfitSel = `button.cell-misfit[aria-label^="Páginas de «Hyperion»"]`;
+      await until(() => p.ev<boolean>(`!!${q(misfitSel)}`), "chip de aviso");
+      assert.match(await p.ev<string>(`${q(misfitSel)}.textContent`), /300 aprox\./);
+      assert.equal(await p.ev(`${q(misfitSel)}.title`), "No es un número");
+      assert.equal(await p.ev(`${q(`input[aria-label^="Páginas de «Hyperion»"]`)} === null`), true, "no hay campo numérico vacío");
+      assert.equal(await p.ev(`${q(`input[aria-label^="Páginas de «Dune»"]`)}.value`), "412", "un número válido sigue siendo un campo");
+      await sleep(300);
+      assert.match(read(root, "Libros/Hyperion.md"), /^Páginas: 300 aprox\.$/m, "el fichero no cambia hasta que el usuario edita");
+
+      await clickSel(p, misfitSel);
+      await until(() => p.ev<boolean>(`!!${q(`input[type=number][aria-label^="Páginas de «Hyperion»"]`)}`), "campo numérico al pulsar el aviso");
+      await typeInto(p, `input[type=number][aria-label^="Páginas de «Hyperion»"]`, "350");
+      await p.ev(`${q(`input[type=number][aria-label^="Páginas de «Hyperion»"]`)}.dispatchEvent(new Event("change", { bubbles: true }))`);
+      await until(() => /^Páginas: 350$/m.test(read(root, "Libros/Hyperion.md")), "el valor escrito sustituye al original");
+      await until(() => p.ev<boolean>(`!${q(misfitSel)}`), "el aviso desaparece");
+    });
+  });
+}

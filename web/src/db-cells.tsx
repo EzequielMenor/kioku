@@ -1,6 +1,6 @@
 // Celda de una base: muestra y edita una propiedad de la fila según el tipo de su columna.
 import { useRef, useState } from "preact/hooks";
-import { relationValue, safeHref } from "./cell-values.ts";
+import { misfit, relationValue, safeHref } from "./cell-values.ts";
 import { enc, label, READONLY, text } from "./db-common.ts";
 import type { HeaderMenuCtx } from "./db-header-menu.tsx";
 import { editSchema } from "./db-schema.ts";
@@ -20,6 +20,8 @@ export function Cell({ col, row, setCell, menu }: { col: Column; row: ResultRow;
   if (col.key === "tags") return <>{(Array.isArray(v) ? v : []).map((t) => <span class="chip" key={String(t)}>#{String(t)}</span>)}</>;
   if (col.key === "mtime") return <span class="muted">{typeof v === "number" ? new Date(v).toLocaleDateString("es") : ""}</span>;
   if (READONLY.has(col.key)) return <span class="muted">{text(v)}</span>;
+  const why = misfit(col.type, v);
+  if (why) return <MisfitCell col={col} row={row} setCell={setCell} v={v} why={why} aria={aria} />;
   switch (col.type) {
     case "checkbox":
       return <input type="checkbox" checked={v === true} aria-label={aria} onChange={(e) => setCell(row, col.key, e.currentTarget.checked)} />;
@@ -58,6 +60,24 @@ export function Cell({ col, row, setCell, menu }: { col: Column; row: ResultRow;
         </span>
       );
   }
+}
+
+/** Valor que no encaja con el tipo de la columna (p. ej. «300 aprox.» en un número): se muestra tal cual con un aviso, no como celda vacía.
+ *  Pulsarlo (o Enter) abre el campo del tipo; solo lo que el usuario escribe después lo sustituye. */
+function MisfitCell({ col, row, setCell, v, why, aria }: { col: Column; row: ResultRow; setCell: SetCell; v: unknown; why: string; aria: string }) {
+  const [editing, setEditing] = useState(false);
+  const raw = typeof v === "object" && v !== null && !Array.isArray(v) ? JSON.stringify(v) : text(v);
+  if (!editing) {
+    return <button type="button" class="cell-misfit" title={why} aria-label={`${aria}: «${raw}». ${why}; pulsa para editar`} onClick={() => setEditing(true)}>
+      <span aria-hidden="true">⚠</span> {raw}
+    </button>;
+  }
+  const done = () => setEditing(false);
+  if (col.type === "checkbox") return <input type="checkbox" checked={false} autoFocus aria-label={aria} onBlur={done} onChange={(e) => setCell(row, col.key, e.currentTarget.checked)} />;
+  const isNum = col.type === "number";
+  return <input class={`cell-input${isNum ? " num" : ""}`} type={isNum ? "number" : "date"} autoFocus aria-label={aria}
+    onBlur={done} onKeyDown={(e) => { if (e.key === "Escape") done(); }}
+    onChange={(e) => setCell(row, col.key, isNum ? (e.currentTarget.value === "" ? "" : Number(e.currentTarget.value)) : e.currentTarget.value)} />;
 }
 
 /** Selección en escritorio: el valor es un chip de color que abre un popover con filtro, las opciones, «Vaciar» y «Crear «X»». */

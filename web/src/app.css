@@ -522,6 +522,9 @@ button.opt-chip.opt-none { border-color: var(--line); }
 button.opt-chip:hover { filter: brightness(1.12); }
 button.opt-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cell-chip { max-width: 100%; text-align: left; }
+.cell-misfit { font: inherit; font-size: 12.5px; line-height: 20px; padding: 0 9px; border-radius: 6px; cursor: pointer; max-width: 100%; text-align: left; min-height: 0; background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--fg2); }
+.cell-misfit:hover { filter: brightness(1.12); }
+.cell-misfit:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cell-chip.empty { background: transparent; border-color: transparent; color: var(--muted); }
 .cell-chip.empty:hover, .cell-chip.empty:focus-visible { border-color: var(--line2); background: var(--raised); filter: none; }
 .popover .opt-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 4px; max-height: 220px; overflow: auto; }
