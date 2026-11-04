@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createChat } from "../web/src/assistant-chat.ts";
+import { activityOrigin, createChat } from "../web/src/assistant-chat.ts";
 
 const deferred = <T>() => {
   let resolve!: (v: T) => void, reject!: (e: Error) => void;
@@ -68,4 +68,11 @@ test("chat: el indicador en vivo lo fija el motor mientras responde y se apaga a
   assert.equal(chat.getState().live, null);
   chat.setLive("ignorado fuera de una consulta");
   assert.equal(chat.getState().live, null);
+});
+
+test("activityOrigin: los cambios hechos desde la tabla (sesión «ui») se distinguen de los del asistente", () => {
+  const rec = (sessionId: string, tool: string) => ({ id: "x", ts: "", sessionId, tool, summary: "", files: [] });
+  assert.equal(activityOrigin(rec("ui", "database.rename-property")), "Desde la tabla");
+  assert.equal(activityOrigin(rec("s-123", "database.rename-property")), null, "una sesión del asistente no lleva etiqueta");
+  assert.equal(activityOrigin(rec("s-123", "move_note")), null);
 });

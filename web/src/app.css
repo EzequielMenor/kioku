@@ -132,6 +132,7 @@ main { flex: 1; overflow: auto; }
 .ctitle { font-weight: 550; font-size: 15px; } .ctitle:hover { color: var(--accent); }
 .meta { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 6px; }
 .chip { display: inline-block; font-size: 11.5px; padding: 0 8px; border-radius: 6px; background: var(--raised); border: 1px solid var(--line); color: var(--fg2); white-space: nowrap; line-height: 20px; }
+.chip.origin { margin-left: 8px; }
 .chip.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 .chip.bad { color: var(--bad); border-color: var(--bad); background: transparent; }
 .chip.link { color: var(--accent); } .chip.link:hover { background: var(--accent-soft); }
