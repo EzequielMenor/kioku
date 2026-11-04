@@ -297,16 +297,43 @@ test("editDatabase: fallo a mitad de lote restaura los ficheros ya escritos", as
     const before = snapshot();
     const orig = j.vault.write.bind(j.vault);
     let calls = 0;
+    const boom = new Error("disco lleno");
     j.vault.write = (async (...args: Parameters<typeof orig>) => {
       calls++;
-      if (calls === 3) throw new Error("disco lleno");
+      if (calls === 3) throw boom;
       return orig(...args);
     }) as typeof j.vault.write;
-    await assert.rejects(() => j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" }), /disco lleno/);
+    await assert.rejects(() => j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" }), (e) => e === boom);
     assert.deepEqual(snapshot(), before);
     j.vault.write = orig;
     const q = j.queryDatabase(db);
     assert.ok(q.database.available.some((c) => c.key === "Autor"));
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase: si el rollback falla en un fichero, se restauran los demás y el error nombra el original y la ruta", async () => {
+  const { j, cleanup, read, snapshot, db } = await setupLibros();
+  try {
+    const before = snapshot();
+    const orig = j.vault.write.bind(j.vault);
+    let calls = 0;
+    j.vault.write = (async (...args: Parameters<typeof orig>) => {
+      calls++;
+      if (calls === 3) throw new Error("disco lleno");
+      if (calls > 3 && args[0] === "Libros/Dune.md") throw new Error("disco roto");
+      return orig(...args);
+    }) as typeof j.vault.write;
+    await assert.rejects(() => j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" }), (e: any) => {
+      assert.match(e.message, /disco lleno/);
+      assert.match(e.message, /Libros\/Dune\.md/);
+      assert.ok(!/Libros\/Ubik\.md/.test(e.message) && !e.message.includes(`${db},`), e.message);
+      return true;
+    });
+    assert.equal(read(db), before[db], "la base sí se restauró");
+    assert.equal(read("Libros/Ubik.md"), before["Libros/Ubik.md"]);
+    assert.notEqual(read("Libros/Dune.md"), before["Libros/Dune.md"], "la que falló al restaurar queda en el estado nuevo");
+    j.vault.write = orig;
     j.close();
   } finally { cleanup(); }
 });

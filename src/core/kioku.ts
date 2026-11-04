@@ -522,8 +522,14 @@ export class Kioku {
           written.push({ path: f.path, text: f.before });
         }
       } catch (e) {
-        if (written.length) await this.restoreSnapshot(written.reverse());
-        throw e;
+        // Cada fichero se restaura por separado: que uno falle no impide intentar los demás ni oculta el error original.
+        const stuck: string[] = [];
+        for (const w of written.reverse()) {
+          try { await this.restoreSnapshot([w]); } catch { stuck.push(w.path); }
+        }
+        if (!stuck.length) throw e;
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new VaultError(e instanceof VaultError ? e.code : "conflict", `No se pudo completar la edición («${msg}») y estas notas no se pudieron restaurar: ${stuck.join(", ")}`);
       }
       let note: NoteRow | undefined;
       for (const f of files) {
