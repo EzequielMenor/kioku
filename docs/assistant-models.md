@@ -31,7 +31,7 @@ Reglas de la herencia: si `assistant.json` fija un `provider`, del config de Her
 
 ## Proveedores soportados
 
-`openai-codex` (suscripción, sin clave), `openrouter`, `anthropic`, `gemini`, `deepseek`, `zai`, `kimi-coding`, `minimax` y `custom` (cualquier endpoint compatible; `base_url` obligatorio). La lista es cerrada y vive en `src/assistant/model-config.ts`. Valores de `api_mode`: `chat_completions`, `codex_responses`, `anthropic_messages`. Referencia de campos: <https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models>.
+`openai-codex` (suscripción, sin clave), `ollama` (local, sin clave), `openrouter`, `anthropic`, `gemini`, `deepseek`, `zai`, `kimi-coding`, `minimax` y `custom` (cualquier endpoint compatible; `base_url` obligatorio). La lista es cerrada y vive en `src/assistant/model-config.ts`. Valores de `api_mode`: `chat_completions`, `codex_responses`, `anthropic_messages`. Referencia de campos: <https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models>.
 
 **Configuración de confianza:** un endpoint remoto `custom` recibe `OPENAI_API_KEY`. No aceptes cambios de `.kioku/assistant.json` de una sincronización o colaborador que no sea de confianza: quien puede cambiar `model.base_url` puede redirigir esa clave. Kioku no verifica la identidad comercial del proveedor. La API de notas y el móvil no permiten editar esa configuración.
 

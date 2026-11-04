@@ -24,7 +24,7 @@ export function buildDockerArgs(o: {
   const bind = (source: string, target: string, readOnly = false) => ["--mount", `type=bind,source=${mountPath(source)},target=${target}${readOnly ? ",readonly" : ""}`];
   return [
     "run", "--pull=never", "--name", o.name, "--cidfile", mountPath(o.cidFile),
-    "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=128",
+    "--init", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=128",
     "--user", `${o.uid}:${o.gid}`, "--network", "host",
     "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=128m", "--workdir", DOCKER_HERMES_HOME,
     ...bind(o.hermesDir, DOCKER_HERMES_HOME), ...bind(o.bridgePath, DOCKER_BRIDGE, true),

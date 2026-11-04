@@ -18,7 +18,7 @@ test("Mac: Docker monta solo el estado de Hermes y el puente, nunca el vault, ho
     "type=bind,source=/repo/src/assistant/bridge.mjs,target=/opt/kioku-mcp.mjs,readonly",
   ]);
   for (const unsafe of ["--privileged", "--publish", "--volume", "docker.sock"]) assert.ok(!a.includes(unsafe));
-  for (const guard of ["--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pull=never"]) assert.ok(a.includes(guard));
+  for (const guard of ["--init", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pull=never"]) assert.ok(a.includes(guard));
   assert.equal(a[a.indexOf("--user") + 1], "501:20");
   assert.equal(a[a.indexOf("--network") + 1], "host");
   assert.deepEqual(a.slice(-5), ["chat", "-Q", "--oneshot", "-q", "hola"]);
@@ -85,7 +85,7 @@ test("Mac: ejecuta Hermes en Docker sin exigir bwrap ni Hermes nativo y limpia t
     assert.ok(!e.seen[0].args.join(" ").includes("sk-elegida"));
     assert.equal(e.seen[0].env.OPENROUTER_API_KEY, "sk-elegida");
     assert.equal(e.seen[0].env.ANTHROPIC_API_KEY, undefined);
-    assert.match(e.seen[0].config!, /http:\/\/127.0.0.1:47800/);
+    assert.match(e.seen[0].config!, /http:\/\/host\.docker\.internal:47800/);
     assert.match(e.seen[0].config!, new RegExp(session.token));
     assert.ok(!readFileSync(path.join(e.homeDir, ".kioku/hermes/config.yaml"), "utf8").includes(session.token));
     assert.deepEqual(e.seen[1].args.slice(-3), ["rm", "--force", "a".repeat(64)]);

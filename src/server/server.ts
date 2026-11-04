@@ -634,7 +634,8 @@ export async function startServer(
     }
   }
 
-  const isLocalHost = (host: string) => host === `127.0.0.1:${boundPort}` || host === `localhost:${boundPort}`;
+  const isLocalHost = (host: string) =>
+    host === `127.0.0.1:${boundPort}` || host === `localhost:${boundPort}` || host === `host.docker.internal:${boundPort}`;
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -644,7 +645,11 @@ export async function startServer(
       if (!local && !allowedHosts.has(host)) throw new HttpError(403, "Host no permitido");
       const origin = req.headers.origin;
       if (origin) {
-        const okOrigin = origin === `http://127.0.0.1:${boundPort}` || origin === `http://localhost:${boundPort}` || [...allowedHosts].some((h) => origin === `https://${h}`);
+        const okOrigin =
+          origin === `http://127.0.0.1:${boundPort}` ||
+          origin === `http://localhost:${boundPort}` ||
+          origin === `http://host.docker.internal:${boundPort}` ||
+          [...allowedHosts].some((h) => origin === `https://${h}`);
         if (!okOrigin) throw new HttpError(403, "Origen no permitido");
       }
       const url = new URL(req.url ?? "/", `http://${host}`);

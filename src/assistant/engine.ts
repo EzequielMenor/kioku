@@ -174,7 +174,11 @@ export class HermesEngine implements AssistantEngine {
   private get hermesBin(): string { return this.o.hermesBin ?? path.join(this.userHome, ".hermes/hermes-agent/venv/bin/hermes"); }
   private get bridgePath(): string { return this.o.bridgePath ?? fileURLToPath(new URL("./bridge.mjs", import.meta.url)); }
   private get realAuth(): string { return path.join(this.userHome, ".hermes/auth.json"); }
-  private get useDocker(): boolean { return (this.o.platform ?? process.platform) === "darwin"; }
+  private get useDocker(): boolean {
+    if (this.o.platform) return this.o.platform === "darwin";
+    if (this.o.bwrapBin && !this.o.dockerBin) return false;
+    return process.platform === "darwin";
+  }
   /** Solo el daemon local: nunca contextos Docker remotos ni DOCKER_HOST heredado. */
   private get dockerHost(): string {
     const desktop = path.join(this.userHome, ".docker/run/docker.sock");
@@ -232,9 +236,16 @@ export class HermesEngine implements AssistantEngine {
     try { sessions = JSON.parse(await fs.readFile(sessionsFile, "utf8")); } catch { /* primera vez */ }
     const resume = sessions[i.conversation];
 
+    const daemonUrl = this.useDocker
+      ? i.daemonUrl.replace(/(?:127\.0\.0\.1|localhost)/g, "host.docker.internal")
+      : i.daemonUrl;
+    const baseUrl = this.useDocker && settings.baseUrl
+      ? settings.baseUrl.replace(/(?:127\.0\.0\.1|localhost)/g, "host.docker.internal")
+      : settings.baseUrl;
+
     const base = {
-      toolsets: this.o.toolsets ?? ["clarify", "memory", "skills"], daemonUrl: i.daemonUrl, bridgePath: JAIL_BRIDGE,
-      model: settings.model, provider: settings.provider, baseUrl: settings.baseUrl, apiMode: settings.apiMode, docker: this.useDocker,
+      toolsets: this.o.toolsets ?? ["clarify", "memory", "skills"], daemonUrl, bridgePath: JAIL_BRIDGE,
+      model: settings.model, provider: settings.provider, baseUrl, apiMode: settings.apiMode, docker: this.useDocker,
     };
     await fs.writeFile(path.join(dir, "SOUL.md"), soulText());
     await fs.writeFile(path.join(dir, "config.yaml"), hermesConfigYaml({ ...base, token: i.session.token }), { mode: 0o600 });

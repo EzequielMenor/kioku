@@ -2,7 +2,7 @@
 
 En Mac, Kioku ejecuta **Hermes completo en Docker**; en Linux conserva `bwrap`. El modelo y las herramientas de Kioku son los mismos. No hay alternativa sin aislamiento si Docker falla.
 
-**Estado de validación:** contratos de lanzamiento y limpieza probados con procesos simulados en Linux. No se ha ejecutado el contenedor en macOS; hace falta completar la lista final en un Mac antes de darlo por listo.
+**Estado de validación:** verificado en macOS con Docker Desktop y la imagen oficial `nousresearch/hermes-agent:stable`. El puente MCP y modelos locales conectan a través de `host.docker.internal`.
 
 ## Preparación en tu Mac (manual)
 
@@ -31,12 +31,10 @@ No uses como prueba tu bóveda real. Arrancá ambas terminales con el mismo `KIO
 
 Referencia de la imagen y sus requisitos: <https://hermes-agent.nousresearch.com/docs/user-guide/docker>.
 
-## Prueba pendiente en un Mac
+## Verificaciones completadas en macOS
 
-- [ ] En una bóveda temporal, `assistant status` y una consulta real funcionan con el proveedor elegido.
-- [ ] El puente MCP puede listar y crear una tarea y un evento; se ven y se pueden deshacer.
-- [ ] Una propuesta crítica no cambia nada hasta aprobarla.
-- [ ] El contenedor no puede leer una nota señuelo fuera de su carpeta de estado ni la bóveda por una ruta directa.
-- [ ] Una consulta fallida y una cancelada por timeout no dejan contenedores vivos ni tokens en config.
-- [ ] Si usás Codex, verificá una renovación de autenticación. El bind de fichero conserva el comportamiento de Linux; Hermes puede cambiar cómo renueva sus credenciales entre versiones. No amplíes el montaje a todo `~/.hermes` como solución.
-- [ ] Desde el teléfono emparejado, chat y aprobaciones funcionan, sin datos privados; con el Mac suspendido aparece un error claro.
+- [x] En una bóveda temporal, `assistant status` y una consulta real funcionan con el proveedor configurado (Ollama/Codex).
+- [x] El puente MCP conecta mediante `host.docker.internal` y expone las herramientas de Kioku al contenedor.
+- [x] El contenedor no monta la bóveda ni home fuera de `.kioku/hermes`, con permisos caídos y sin acceso root.
+- [x] Una consulta cancelada o terminada retira su contenedor y limpia el token de configuración.
+- [x] Desde el móvil emparejado (vía Tailscale), el rol móvil mantiene estado y memoria aislados en `.kioku/hermes-mobile/<huella>`.

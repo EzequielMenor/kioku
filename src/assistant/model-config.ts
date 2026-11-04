@@ -41,6 +41,8 @@ const PROVIDERS: Record<string, ProviderSpec> = {
   zai: { keys: ["GLM_API_KEY", "ZAI_API_KEY"] },
   "kimi-coding": { keys: ["KIMI_API_KEY"] },
   minimax: { keys: ["MINIMAX_API_KEY"] },
+  ollama: { keys: ["OLLAMA_API_KEY"], keylessLocal: true, ownBaseUrl: true },
+  "ollama-launch": { keys: ["OLLAMA_API_KEY"], keylessLocal: true, ownBaseUrl: true },
   custom: { keys: ["OPENAI_API_KEY"], keylessLocal: true, ownBaseUrl: true },
 };
 
@@ -165,14 +167,16 @@ export async function resolveModelSettings(o: { homeDir: string; userHome: strin
     inherit = await readUserHermes(o.userHome);
     provider = inherit.provider === undefined ? DEFAULT_PROVIDER : checkProvider(inherit.provider, userWhere);
   }
-  const spec = PROVIDERS[provider];
-  const s: ModelSettings = { provider };
+  const effectiveProvider = provider === "ollama-launch" ? "ollama" : provider;
+  const spec = PROVIDERS[effectiveProvider];
+  const s: ModelSettings = { provider: effectiveProvider };
   const model = vault.default ?? (inherit.default !== undefined ? checkModelName(inherit.default, userWhere) : undefined);
   if (model) s.model = model;
-  if (provider !== DEFAULT_PROVIDER) {
+  if (effectiveProvider !== DEFAULT_PROVIDER) {
     const baseUrl = vault.base_url ?? (inherit.base_url !== undefined ? checkBaseUrl(inherit.base_url, userWhere) : undefined);
     if (baseUrl) s.baseUrl = baseUrl;
-    else if (spec.ownBaseUrl) throw new ModelConfigError(`El proveedor "custom" necesita «base_url» (URL https://, o http:// local): defínelo en .kioku/assistant.json → "model" o en tu config de Hermes`);
+    else if (effectiveProvider === "ollama") s.baseUrl = "http://localhost:11434/v1";
+    else if (spec.ownBaseUrl) throw new ModelConfigError(`El proveedor "${effectiveProvider}" necesita «base_url» (URL https://, o http:// local): defínelo en .kioku/assistant.json → "model" o en tu config de Hermes`);
   }
   const apiMode = vault.api_mode ?? (provider !== DEFAULT_PROVIDER && inherit.api_mode !== undefined ? checkApiMode(inherit.api_mode, userWhere) : undefined);
   if (apiMode) s.apiMode = apiMode;
