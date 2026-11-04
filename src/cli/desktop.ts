@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readKey } from "../server/key.ts";
+import { browserLaunch } from "./browser-launch.ts";
 
 export const QUICK_TITLE = "Kioku Quick";
 export const WORKSPACE_TITLE = "Kioku";
@@ -111,7 +112,8 @@ const toggleSpecial = () => lua(`hl.dispatch(hl.dsp.workspace.toggle_special(${l
 export async function toggleQuick(base: string): Promise<string> {
   const url = loginUrl(base, readKey(kiokuHome()), "/quick");
   if (!inHyprland()) {
-    spawn(browser(), [...browserArgs(url, QUICK_TITLE, "browser-quick"), "--window-size=680,160"], { detached: true, stdio: "ignore" }).unref();
+    const cmd = browserLaunch(url, () => ({ bin: browser(), args: [...browserArgs(url, QUICK_TITLE, "browser-quick"), "--window-size=680,160"] }));
+    spawn(cmd.bin, cmd.args, { detached: true, stdio: "ignore" }).unref();
     return "ventana abierta";
   }
   const existing = findClient(QUICK_TITLE);
@@ -152,7 +154,9 @@ export function openWorkspace(base: string, route: string): void {
     const c = findClient(WORKSPACE_TITLE);
     if (c) { lua(`hl.dispatch(hl.dsp.focus({ window = ${luaStr("address:" + c.address)} }))`); return; }
   }
-  spawn(browser(), [...browserArgs(loginUrl(base, readKey(kiokuHome()), `/#${route}`), WORKSPACE_TITLE, "browser"), "--window-size=1280,820"], { detached: true, stdio: "ignore" }).unref();
+  const url = loginUrl(base, readKey(kiokuHome()), `/#${route}`);
+  const cmd = browserLaunch(url, () => ({ bin: browser(), args: [...browserArgs(url, WORKSPACE_TITLE, "browser"), "--window-size=1280,820"] }));
+  spawn(cmd.bin, cmd.args, { detached: true, stdio: "ignore" }).unref();
 }
 
 export const hasBrowserProfile = () => existsSync(path.join(os.homedir(), ".cache", "kioku", "browser"));

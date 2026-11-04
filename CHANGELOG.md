@@ -2,6 +2,14 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## [Unreleased]
+
+### Asistente central (JARV-34)
+- Hermes conserva el papel de agente con proveedor y modelo configurables; claves aisladas por proveedor y sin guardarlas en la configuración de la bóveda.
+- Chat, Deshacer y aprobación de propuestas desde el móvil emparejado, con privacidad y memoria separadas por política de exclusiones. Sin chat offline ni preguntas en cola.
+- Lanzamiento aislado en Mac mediante Docker Desktop (requiere preparación manual y validación real en macOS); Linux mantiene `bwrap`.
+- Rol de organización y reflexión: no reescribe notas sin petición explícita; las acciones críticas siguen requiriendo aprobación.
+
 ## [0.8.0] — 2026-11-04
 
 ### Avisos y asistente (MVP)

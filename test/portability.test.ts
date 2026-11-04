@@ -15,6 +15,13 @@ test("export: incluye la memoria de Hermes pero no credenciales, cachés ni logs
     ".kioku/hermes/auth.lock": "",
     ".kioku/hermes/logs/agent.log": "ruido",
     ".kioku/hermes/cache/x.bin": "ruido",
+    ".kioku/hermes-mobile/abc/memories/USER.md": "Preferencia móvil",
+    ".kioku/hermes-mobile/abc/auth.json": "{\"token\":\"SECRETO\"}",
+    ".kioku/hermes-mobile/abc/.env": "OPENAI_API_KEY=SECRETO",
+    ".kioku/hermes-mobile/abc/config.yaml": "KIOKU_TOKEN: SECRETO",
+    ".kioku/hermes-mobile/abc/logs/agent.log": "ruido",
+    ".kioku/hermes/.env": "OPENAI_API_KEY=SECRETO",
+    ".kioku/hermes/config.yaml": "KIOKU_TOKEN: SECRETO",
   });
   const out = mkdtempSync(path.join(tmpdir(), "kioku-exp-"));
   try {
@@ -26,6 +33,8 @@ test("export: incluye la memoria de Hermes pero no credenciales, cachés ni logs
     const at = (rel: string) => existsSync(path.join(existsSync(path.join(dest, "Notas")) ? dest : root, rel));
     assert.ok(at("Notas/A.md"));
     assert.ok(at(".kioku/hermes/memories/USER.md"));
+    assert.ok(at(".kioku/hermes-mobile/abc/memories/USER.md"));
+    for (const rel of [".kioku/hermes/.env", ".kioku/hermes/config.yaml", ".kioku/hermes-mobile/abc/auth.json", ".kioku/hermes-mobile/abc/.env", ".kioku/hermes-mobile/abc/config.yaml", ".kioku/hermes-mobile/abc/logs/agent.log"]) assert.ok(!at(rel), rel);
     assert.ok(!at(".kioku/hermes/auth.json"), "las credenciales no viajan en backups");
     assert.ok(!at(".kioku/hermes/auth.lock"));
     assert.ok(!at(".kioku/hermes/logs/agent.log"));

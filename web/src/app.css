@@ -461,3 +461,18 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .dbbar { flex-wrap: wrap; gap: 8px; }
   .dbbar > .muted.small { display: none; }
 }
+
+/* Móvil: asistente y propuestas con el mismo diseño, ajustado al pulgar (el compositor sube sobre la barra inferior) */
+@media (max-width: 720px) {
+  .assistant-page { min-height: 0; padding-bottom: 12px; }
+  .assistant-page .page-head .row { flex-wrap: wrap; gap: 8px; }
+  .composer { bottom: calc(54px + var(--nav-pad)); }
+  .composer textarea { font-size: 16px; } /* 16 px: iOS no amplía la pantalla al enfocar */
+  .composer .primary { min-height: 44px; }
+  .bubble { max-width: 100%; overflow-wrap: anywhere; }
+  .action { flex-wrap: wrap; }
+  .action .mini { min-height: 36px; }
+  .op code { overflow-wrap: anywhere; }
+  .proposal-actions { gap: 10px; }
+  .proposal-actions button { flex: 1 1 0; min-height: 44px; }
+}
