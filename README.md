@@ -5,7 +5,7 @@
 **Tu segundo cerebro, local y tuyo.**
 Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un asistente que propone y tú apruebas.
 
-[![Versión](https://img.shields.io/badge/versión-0.7.0-7f9bd6)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versión-0.8.0-7f9bd6)](CHANGELOG.md)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
