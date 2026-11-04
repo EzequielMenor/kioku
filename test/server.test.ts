@@ -203,6 +203,22 @@ test("API bases: esquema — petición inválida 400, base inexistente 404", asy
       assert.equal(await c(db.path, { op: "add-property", name: "title", type: "text" }), 400, `${route} nombre reservado`);
       assert.equal(await c(normal.path, { op: "add-property", name: "X", type: "text" }), 400, `${route} no es base`);
       assert.equal(await c("Bases/Nada.md", { op: "add-property", name: "X", type: "text" }), 404, `${route} base inexistente`);
+      // Campos con la forma equivocada: 400, nunca 500.
+      for (const bad of [
+        { op: "add-property", name: 5, type: "text" },
+        { op: "add-property", name: "X", type: "galaxia" },
+        { op: "add-property", name: "x".repeat(201), type: "text" },
+        { op: "add-property", name: "__proto__", type: "text" },
+        { op: "rename-property", name: { a: 1 }, to: "Y" },
+        { op: "rename-property", name: "Nota", to: null },
+        { op: "delete-property" },
+        { op: "add-option", prop: "Estado", option: 3 },
+        { op: "add-option", prop: "Estado", option: "Nueva", color: "fucsia" },
+        { op: "set-option-color", prop: "Estado", option: "Leyendo", color: 5 },
+        { op: "reorder-options", prop: "Estado", options: "Leyendo" },
+        { op: "reorder-options", prop: "Estado", options: [1, 2] },
+        { op: "delete-option", prop: "Estado", option: "Leyendo", clear: "no" },
+      ]) assert.equal(await c(db.path, bad), 400, `${route} ${JSON.stringify(bad)}`);
     }
   } finally { await s.done(); }
 });

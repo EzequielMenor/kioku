@@ -37,6 +37,7 @@ export const RESERVED_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 const MAX_SEEDED_OPTIONS = 50;
+const MAX_NAME_LENGTH = 200;
 const TYPE_LABEL: Record<PropType, string> = {
   text: "texto", number: "número", date: "fecha", checkbox: "casilla", select: "selección",
   multi: "multiselección", url: "enlace", relation: "relación",
@@ -58,6 +59,9 @@ function validName(input: string): string {
   if (!name) throw new SchemaError("El nombre de la propiedad no puede estar vacío");
   if (/[\r\n\u0085\u2028\u2029]/.test(name)) throw new SchemaError("El nombre de la propiedad no puede contener saltos de línea");
   if (name === "---" || name === "...") throw new SchemaError(`«${name}» no es un nombre válido para una propiedad`);
+  if (name.length > MAX_NAME_LENGTH) throw new SchemaError(`El nombre de la propiedad no puede superar ${MAX_NAME_LENGTH} caracteres`);
+  // `parseDatabase` guarda las propiedades en un objeto: con «__proto__» la entrada se perdería en silencio.
+  if (name === "__proto__") throw new SchemaError("«__proto__» no es un nombre válido para una propiedad");
   if (RESERVED_NAMES.has(fold(name))) throw new SchemaError(`«${name}» es un nombre reservado`);
   return name;
 }
@@ -236,7 +240,32 @@ function renameOptionInFilters(views: unknown[] | undefined, prop: string, from:
   });
 }
 
+/** Campos de texto de cada operación y cómo se llama cada uno en los mensajes. */
+const TEXT_FIELDS: Record<string, [field: string, what: string][]> = {
+  "add-property": [["name", "el nombre de la propiedad"]],
+  "rename-property": [["name", "el nombre de la propiedad"], ["to", "el nombre nuevo de la propiedad"]],
+  "set-type": [["name", "el nombre de la propiedad"]],
+  "delete-property": [["name", "el nombre de la propiedad"]],
+  "add-option": [["prop", "la propiedad"], ["option", "el nombre de la opción"]],
+  "rename-option": [["prop", "la propiedad"], ["option", "el nombre de la opción"], ["to", "el nombre nuevo de la opción"]],
+  "set-option-color": [["prop", "la propiedad"], ["option", "el nombre de la opción"]],
+  "reorder-options": [["prop", "la propiedad"]],
+  "delete-option": [["prop", "la propiedad"], ["option", "el nombre de la opción"]],
+};
+
+/** La operación llega de la red: cada campo tiene que ser del tipo que el planificador da por hecho (texto, lista de textos, booleano). */
+function checkShape(op: SchemaOp): void {
+  for (const [field, what] of TEXT_FIELDS[op.op] ?? []) {
+    if (typeof (op as unknown as Record<string, unknown>)[field] !== "string") throw new SchemaError(`«${field}»: ${what} debe ser texto`);
+  }
+  if (op.op === "reorder-options" && !(Array.isArray(op.options) && op.options.every((o) => typeof o === "string"))) {
+    throw new SchemaError("«options» debe ser una lista de nombres de opciones (texto)");
+  }
+  if (op.op === "delete-option" && op.clear !== undefined && typeof op.clear !== "boolean") throw new SchemaError("«clear» debe ser verdadero o falso");
+}
+
 export function planSchemaOp(raw: { properties?: unknown; views?: unknown }, rows: DbRow[], op: SchemaOp): SchemaPlan {
+  checkShape(op);
   switch (op.op) {
     case "add-property": {
       const properties = schemaProperties(raw);
@@ -361,11 +390,11 @@ export function planSchemaOp(raw: { properties?: unknown; views?: unknown }, row
 
     case "reorder-options": {
       const t = optionTarget(raw, rows, op.prop);
-      const wanted = Array.isArray(op.options) ? op.options : [];
+      const wanted = op.options;
       const used = new Set<number>();
       const ordered = wanted.map((n) => {
-        const i = t.options.findIndex((o) => typeof n === "string" && fold(o.name) === fold(n));
-        if (i < 0) throw new SchemaError(`La opción «${String(n)}» no existe en «${op.prop}»`);
+        const i = t.options.findIndex((o) => fold(o.name) === fold(n));
+        if (i < 0) throw new SchemaError(`La opción «${n}» no existe en «${op.prop}»`);
         if (used.has(i)) throw new SchemaError(`La opción «${t.options[i].name}» está repetida`);
         used.add(i);
         return t.options[i];

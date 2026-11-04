@@ -414,8 +414,48 @@ test("las operaciones de opciones no mutan las entradas y los errores son Schema
   assert.deepEqual(optRows, rowsSnapshot);
 });
 
-test("__proto__ como nombre no contamina el esquema", () => {
-  const plan = planSchemaOp({}, [], { op: "add-property", name: "__proto__", type: "text" });
-  assert.equal(Object.getPrototypeOf(plan.properties), Object.prototype);
-  assert.deepEqual(Object.keys(plan.properties), ["__proto__"]);
+test("__proto__ como nombre se rechaza y no contamina el esquema", () => {
+  assert.throws(() => planSchemaOp({}, [], { op: "add-property", name: "__proto__", type: "text" }), SchemaError);
+  assert.equal(Object.getPrototypeOf({}), Object.prototype);
+  assert.equal(({} as Record<string, unknown>).type, undefined);
+});
+
+/* ───────────── nombres y forma de la operación ───────────── */
+
+const bad = (op: unknown, re: RegExp) => assert.throws(() => planSchemaOp(raw(), rows, op as SchemaOp), (e) => e instanceof SchemaError && re.test(e.message), JSON.stringify(op));
+
+test("nombres de propiedad: máximo 200 caracteres y «__proto__» no se admite", () => {
+  const ok = planSchemaOp(raw(), rows, { op: "add-property", name: "x".repeat(200), type: "text" });
+  assert.equal(Object.keys(ok.properties).length, 3);
+  bad({ op: "add-property", name: "x".repeat(201), type: "text" }, /200/);
+  bad({ op: "add-property", name: "__proto__", type: "text" }, /__proto__/);
+  bad({ op: "rename-property", name: "Autor", to: "__proto__" }, /__proto__/);
+  bad({ op: "rename-property", name: "Autor", to: "y".repeat(201) }, /200/);
+});
+
+test("forma de la operación: campos de texto, tipo, color, lista de opciones y «clear» inválidos son SchemaError", () => {
+  bad({ op: "add-property", name: 5, type: "text" }, /nombre/);
+  bad({ op: "add-property", name: "A1", type: "galaxia" }, /Tipo/);
+  bad({ op: "add-property", name: "A1" }, /Tipo/);
+  bad({ op: "rename-property", name: 5, to: "X" }, /nombre/);
+  bad({ op: "rename-property", name: "Autor", to: 5 }, /nombre/);
+  bad({ op: "rename-property", name: "Autor" }, /nombre/);
+  bad({ op: "set-type", name: { a: 1 }, type: "text" }, /nombre/);
+  bad({ op: "delete-property", name: null }, /nombre/);
+  bad({ op: "add-option", prop: 7, option: "A" }, /propiedad/);
+  bad({ op: "add-option", prop: "Estado", option: 7 }, /opción/);
+  bad({ op: "add-option", prop: "Estado", option: "Nueva", color: "fucsia" }, /Color/);
+  bad({ op: "add-option", prop: "Estado", option: "Nueva", color: 5 }, /Color/);
+  bad({ op: "rename-option", prop: "Estado", option: "Leyendo", to: ["x"] }, /opción/);
+  bad({ op: "set-option-color", prop: "Estado", option: "Leyendo", color: "fucsia" }, /Color/);
+  bad({ op: "set-option-color", prop: "Estado", option: "Leyendo" }, /Color/);
+  bad({ op: "reorder-options", prop: "Estado", options: "Leyendo" }, /lista/);
+  bad({ op: "reorder-options", prop: "Estado", options: ["Leyendo", 3, "Leído"] }, /lista/);
+  bad({ op: "reorder-options", prop: "Estado" }, /lista/);
+  bad({ op: "delete-option", prop: "Estado", option: "Leído", clear: "no" }, /clear/);
+  bad({ op: "delete-option", prop: "Estado", option: "Leído", clear: 1 }, /clear/);
+  // Válidos que no deben romperse: color null en set-option-color, clear true/false/ausente.
+  assert.doesNotThrow(() => planSchemaOp(raw(), rows, { op: "set-option-color", prop: "Estado", option: "Leyendo", color: null }));
+  assert.doesNotThrow(() => planSchemaOp(raw(), rows, { op: "delete-option", prop: "Estado", option: "Leído", clear: false }));
+  assert.equal(planSchemaOp(raw(), rows, { op: "delete-option", prop: "Estado", option: "Leído", clear: true }).rowEdits.length, 2);
 });
