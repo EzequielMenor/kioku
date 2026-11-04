@@ -493,3 +493,28 @@ for (const mobile of [false, true]) {
     });
   });
 }
+
+/* ───────────── nombres reservados que llegan de Obsidian ───────────── */
+
+const TYPE_DB = "---\ntype: database\nsource:\n  folder: Libros/\nproperties:\n  Autor:\n    type: text\nviews:\n  - name: Tabla\n    kind: table\n    columns: [title, Autor, Type]\n---\n\n# Libros\n";
+const typeVault = () => tmpVault({
+  "Bases/Libros.md": TYPE_DB,
+  "Libros/Dune.md": FM("Autor: Herbert\nType: Novela\n") + "Dune\n",
+});
+
+test("una propiedad llamada «Type» (mayúscula, de Obsidian) tiene el mismo menú restringido que una columna de sistema", { skip, timeout: 60_000 }, async () => {
+  await withBase({ make: typeVault }, async (p, root) => {
+    await until(async () => (await headers(p)).includes("Type"), "columna Type");
+    await openMenu(p, "Type");
+    assert.equal(await p.ev(`!!${q(`[role=dialog] input[aria-label="Nombre de la propiedad"]`)}`), false, "sin campo de nombre");
+    const buttons = await p.ev<string[]>(`[...document.querySelectorAll("[role=dialog] button")].map((b) => b.textContent.trim())`);
+    assert.ok(buttons.every((b) => !/Borrar propiedad/.test(b)), `sin borrar: ${buttons.join(" | ")}`);
+    assert.ok(buttons.some((b) => /Orden/.test(b)), "sigue pudiendo ordenar");
+    await key(p, "Escape", 27);
+    await until(() => p.ev<boolean>(`!${q("[role=dialog]")}`), "menú cerrado");
+    // Una propiedad normal sigue teniendo el menú completo.
+    await openMenu(p, "Autor");
+    assert.equal(await p.ev(`!!${q(`[role=dialog] input[aria-label="Nombre de la propiedad"]`)}`), true);
+    assert.match(read(root, "Libros/Dune.md"), /^Type: Novela$/m);
+  });
+});

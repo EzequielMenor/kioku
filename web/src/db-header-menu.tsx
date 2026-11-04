@@ -1,7 +1,7 @@
 // Menú de la cabecera de una columna de la tabla: renombrar, cambiar el tipo, editar las opciones (selección), ordenar, ocultar en esta vista y borrar la propiedad.
 // Las columnas de sistema (título, etiquetas, ruta, tipo, modificada) no son propiedades: solo ordenan y, salvo el título, se ocultan.
 import { useRef, useState } from "preact/hooks";
-import { label, PROP_TYPE_LABEL, PROP_TYPE_ORDER, READONLY } from "./db-common.ts";
+import { isSystemKey, label, PROP_TYPE_LABEL, PROP_TYPE_ORDER } from "./db-common.ts";
 import { OptionsEditor } from "./db-options-editor.tsx";
 import { editSchema } from "./db-schema.ts";
 import type { Guard, Say } from "./db-schema.ts";
@@ -24,7 +24,7 @@ export function HeaderMenu({ col, view, keys, ctx }: { col: Column; view: View; 
   const busy = useRef(false);
   const cur = view.sort[0];
   const name = label(col.key);
-  const isProp = !READONLY.has(col.key);
+  const isProp = !isSystemKey(col.key);
   const close = () => setOpen(false);
 
   /** `keepOpen`: las operaciones de opciones se encadenan sin cerrar el menú. */
