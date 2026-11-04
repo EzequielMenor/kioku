@@ -1,7 +1,7 @@
 // Planificador de cambios de esquema de una base: dado el frontmatter de la base (`properties`, `views`) y sus filas,
 // calcula el esquema/las vistas resultantes y las ediciones que hay que hacer en las notas. Es puro: no toca disco ni
 // el índice. Quien lo llama (Kioku) valida y aplica el plan; aquí solo se decide qué cambia.
-import { PROP_TYPES, cellValue, isEmptyValue, serializeOptions, type DbRow, type OptionColor, type PropOption, type PropType } from "./database.ts";
+import { OPTION_COLORS, PROP_TYPES, cellValue, isEmptyValue, parseDatabase, propType, serializeOptions, type DbRow, type OptionColor, type PropOption, type PropType } from "./database.ts";
 
 export type SchemaOp =
   | { op: "add-property"; name: string; type: PropType }
@@ -40,6 +40,10 @@ const MAX_SEEDED_OPTIONS = 50;
 const TYPE_LABEL: Record<PropType, string> = {
   text: "texto", number: "número", date: "fecha", checkbox: "casilla", select: "selección",
   multi: "multiselección", url: "enlace", relation: "relación",
+};
+
+const COLOR_LABEL: Record<OptionColor, string> = {
+  gray: "gris", brown: "marrón", orange: "naranja", yellow: "amarillo", green: "verde", blue: "azul", purple: "morado", red: "rojo",
 };
 
 const fold = (s: string): string => s.normalize("NFC").toLowerCase();
@@ -97,6 +101,13 @@ function renameKey(o: Record<string, unknown>, from: string, to: string): Record
   return Object.fromEntries(Object.entries(o).map(([k, v]) => [k === from ? to : k, v]));
 }
 
+/** Pone la entrada `name` conservando su posición si ya existe; si no, la añade al final. */
+function setEntry(properties: Record<string, unknown>, name: string, entry: unknown): Record<string, unknown> {
+  return hasKey(properties, name)
+    ? Object.fromEntries(Object.entries(properties).map(([k, v]) => [k, k === name ? entry : v]))
+    : Object.fromEntries([...Object.entries(properties), [name, entry]]);
+}
+
 /** Aplica `fn` a cada vista objeto (las que no lo son se dejan tal cual); devuelve si alguna cambió. */
 function mapViews(views: unknown[] | undefined, fn: (view: Record<string, unknown>) => boolean): boolean {
   let changed = false;
@@ -146,6 +157,83 @@ function seedOptions(name: string, rows: DbRow[]): PropOption[] {
     }
   }
   return out;
+}
+
+/** Opción nueva o a renombrar: recortada y no vacía. */
+function validOption(input: unknown): string {
+  const name = typeof input === "string" ? input.trim() : "";
+  if (!name) throw new SchemaError("El nombre de la opción no puede estar vacío");
+  return name;
+}
+
+function validColor(color: unknown): OptionColor {
+  if (!OPTION_COLORS.includes(color as OptionColor)) throw new SchemaError(`Color desconocido: ${String(color)}`);
+  return color as OptionColor;
+}
+
+interface OptionTarget { properties: Record<string, unknown>; type: PropType; options: PropOption[] }
+
+/** La propiedad `prop` y sus opciones actuales; solo las de tipo select o multi (el efectivo, declarado o inferido) tienen opciones. */
+function optionTarget(raw: { properties?: unknown }, rows: DbRow[], prop: string): OptionTarget {
+  const properties = schemaProperties(raw);
+  existing(prop, properties, rows);
+  const def = parseDatabase({ path: "", title: "", fm: { properties } });
+  const type = propType(def, prop, rows);
+  if (type !== "select" && type !== "multi") throw new SchemaError(`«${prop}» es de tipo ${TYPE_LABEL[type]} y no admite opciones`);
+  return { properties, type, options: def.properties[prop]?.options ?? [] };
+}
+
+function optionIndex(options: PropOption[], prop: string, name: string): number {
+  const i = options.findIndex((o) => fold(o.name) === fold(name));
+  if (i < 0) throw new SchemaError(`La opción «${name}» no existe en «${prop}»`);
+  return i;
+}
+
+/** Guarda `options` en la entrada de `prop` (la crea con su tipo si no existía); sin opciones, quita la clave. */
+function withOptions(t: OptionTarget, prop: string, options: PropOption[]): Record<string, unknown> {
+  const current = hasKey(t.properties, prop) ? t.properties[prop] : undefined;
+  const entry: Record<string, unknown> = isObj(current) ? current : { type: t.type };
+  if (options.length) entry.options = serializeOptions(options);
+  else delete entry.options;
+  return setEntry(t.properties, prop, entry);
+}
+
+/**
+ * Ediciones de fila (`set-value`) para las notas cuyo valor de `prop` es la opción `option`, sea escalar o elemento de lista:
+ * `replacement` la sustituye (conservando el orden) y `null` la quita (la clave desaparece si queda sin valor).
+ * Los valores se comparan sin distinguir mayúsculas; si el valor resultante es idéntico al actual no se genera edición.
+ */
+function optionRowEdits(rows: DbRow[], prop: string, option: string, replacement: string | null): RowEdit[] {
+  const is = (v: unknown): boolean => typeof v === "string" && fold(v) === fold(option);
+  const edits: RowEdit[] = [];
+  for (const r of rows) {
+    if (!hasKey(r.fm ?? {}, prop)) continue;
+    const v = cellValue(r, prop);
+    let value: unknown;
+    if (Array.isArray(v)) {
+      if (!v.some(is)) continue;
+      const items = replacement === null ? v.filter((el) => !is(el)) : v.map((el) => (is(el) ? replacement : el));
+      value = items.length ? items : null;
+    } else if (is(v)) value = replacement;
+    else continue;
+    if (JSON.stringify(value) !== JSON.stringify(v)) edits.push({ path: r.path, kind: "set-value", key: prop, value });
+  }
+  return edits;
+}
+
+/** Cambia el valor de los filtros is / is_not / contains de `prop` que apuntaban a la opción `from`. */
+function renameOptionInFilters(views: unknown[] | undefined, prop: string, from: string, to: string): boolean {
+  return mapViews(views, (view) => {
+    let changed = false;
+    if (!Array.isArray(view.filter)) return false;
+    for (const f of view.filter) {
+      if (isObj(f) && f.prop === prop && (f.op === "is" || f.op === "is_not" || f.op === "contains") && typeof f.value === "string" && fold(f.value) === fold(from)) {
+        f.value = to;
+        changed = true;
+      }
+    }
+    return changed;
+  });
 }
 
 export function planSchemaOp(raw: { properties?: unknown; views?: unknown }, rows: DbRow[], op: SchemaOp): SchemaPlan {
@@ -202,7 +290,7 @@ export function planSchemaOp(raw: { properties?: unknown; views?: unknown }, row
         delete entry.options;
       }
       return {
-        properties: hasKey(properties, op.name) ? { ...properties, ...Object.fromEntries([[op.name, entry]]) } : Object.fromEntries([...Object.entries(properties), [op.name, entry]]),
+        properties: setEntry(properties, op.name, entry),
         views: undefined,
         rowEdits: [],
         summary: `«${op.name}» ahora es de tipo ${TYPE_LABEL[type]}`,
@@ -225,13 +313,84 @@ export function planSchemaOp(raw: { properties?: unknown; views?: unknown }, row
       };
     }
 
-    // Las operaciones de opciones se añaden aquí (Task 4).
-    case "add-option":
-    case "rename-option":
-    case "set-option-color":
-    case "reorder-options":
-    case "delete-option":
-      throw new SchemaError(`Operación no soportada todavía: ${op.op}`);
+    case "add-option": {
+      const t = optionTarget(raw, rows, op.prop);
+      const name = validOption(op.option);
+      if (t.options.some((o) => fold(o.name) === fold(name))) throw new SchemaError(`Ya existe la opción «${name}» en «${op.prop}»`);
+      const color = op.color === undefined || op.color === null ? undefined : validColor(op.color);
+      return {
+        properties: withOptions(t, op.prop, [...t.options, color ? { name, color } : { name }]),
+        views: undefined,
+        rowEdits: [],
+        summary: `Añadida la opción «${name}» a «${op.prop}»`,
+      };
+    }
+
+    case "rename-option": {
+      const t = optionTarget(raw, rows, op.prop);
+      const i = optionIndex(t.options, op.prop, op.option);
+      const old = t.options[i].name;
+      const to = validOption(op.to);
+      if (to === old) throw new SchemaError("El nombre nuevo es igual al actual");
+      // Cambiar solo la capitalización de sí misma es válido; chocar con otra opción no.
+      if (t.options.some((o, j) => j !== i && fold(o.name) === fold(to))) throw new SchemaError(`Ya existe la opción «${to}» en «${op.prop}»`);
+      const options = t.options.map((o, j) => (j === i ? { ...o, name: to } : o));
+      const views = schemaViews(raw);
+      const viewsChanged = renameOptionInFilters(views, op.prop, old, to);
+      const rowEdits = optionRowEdits(rows, op.prop, old, to);
+      return {
+        properties: withOptions(t, op.prop, options),
+        views: viewsChanged ? views : undefined,
+        rowEdits,
+        summary: `Renombrada la opción «${old}» → «${to}»${afectadas(rowEdits.length)}`,
+      };
+    }
+
+    case "set-option-color": {
+      const t = optionTarget(raw, rows, op.prop);
+      const i = optionIndex(t.options, op.prop, op.option);
+      const color = op.color === null ? null : validColor(op.color);
+      const { name } = t.options[i];
+      return {
+        properties: withOptions(t, op.prop, t.options.map((o, j) => (j === i ? (color ? { name, color } : { name }) : o))),
+        views: undefined,
+        rowEdits: [],
+        summary: color ? `Color de la opción «${name}»: ${COLOR_LABEL[color]}` : `Quitado el color de la opción «${name}»`,
+      };
+    }
+
+    case "reorder-options": {
+      const t = optionTarget(raw, rows, op.prop);
+      const wanted = Array.isArray(op.options) ? op.options : [];
+      const used = new Set<number>();
+      const ordered = wanted.map((n) => {
+        const i = t.options.findIndex((o) => typeof n === "string" && fold(o.name) === fold(n));
+        if (i < 0) throw new SchemaError(`La opción «${String(n)}» no existe en «${op.prop}»`);
+        if (used.has(i)) throw new SchemaError(`La opción «${t.options[i].name}» está repetida`);
+        used.add(i);
+        return t.options[i];
+      });
+      if (ordered.length !== t.options.length) throw new SchemaError("El nuevo orden debe incluir todas las opciones, sin añadir ni quitar ninguna");
+      return {
+        properties: withOptions(t, op.prop, ordered),
+        views: undefined,
+        rowEdits: [],
+        summary: `Reordenadas las opciones de «${op.prop}»`,
+      };
+    }
+
+    case "delete-option": {
+      const t = optionTarget(raw, rows, op.prop);
+      const i = optionIndex(t.options, op.prop, op.option);
+      const { name } = t.options[i];
+      const rowEdits = op.clear ? optionRowEdits(rows, op.prop, name, null) : [];
+      return {
+        properties: withOptions(t, op.prop, t.options.filter((_, j) => j !== i)),
+        views: undefined,
+        rowEdits,
+        summary: `Eliminada la opción «${name}» de «${op.prop}»${afectadas(rowEdits.length)}`,
+      };
+    }
 
     default: {
       const unknownOp: never = op;
