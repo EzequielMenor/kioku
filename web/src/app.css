@@ -461,3 +461,20 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .dbbar { flex-wrap: wrap; gap: 8px; }
   .dbbar > .muted.small { display: none; }
 }
+
+/* Menú de cabecera de una base (Popover) */
+.dbtable th .th[aria-haspopup]::after { content: " ▾"; opacity: 0; transition: opacity .12s; }
+.dbtable th .th[aria-haspopup]:hover::after, .dbtable th .th[aria-expanded="true"]::after, .dbtable th .th[aria-haspopup]:focus-visible::after { opacity: .7; }
+.dbtable th .th[aria-haspopup]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.popover { position: fixed; z-index: 70; box-sizing: border-box; min-width: 220px; max-width: min(320px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; background: var(--surface); color: var(--fg); border: 1px solid var(--line2); border-radius: 8px; box-shadow: var(--shadow); padding: 6px; font-size: 13.5px; font-weight: 400; letter-spacing: normal; text-align: left; }
+.popover .pop-section { padding: 4px; }
+.popover .pop-section + .pop-section { border-top: 1px solid var(--line); }
+.popover .pop-field { display: grid; gap: 4px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.popover .pop-field input, .popover .pop-field select { color: var(--fg); font-size: 13.5px; width: 100%; box-sizing: border-box; }
+.popover .pop-hint { margin: -4px 0 8px; }
+.popover .pop-list { display: grid; gap: 2px; }
+.popover .pop-item { text-align: left; background: transparent; border-color: transparent; color: var(--fg); width: 100%; }
+.popover .pop-item:hover:not(:disabled) { background: var(--hover); border-color: transparent; }
+.popover .pop-item[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.popover .pop-item:disabled { color: var(--muted); cursor: default; }
+.popover .pop-item.danger { color: var(--bad); }

@@ -10,9 +10,9 @@ import { enc, READONLY } from "./db-common.ts";
 import type { Result } from "./db-common.ts";
 import { ViewPanel } from "./db-panel.tsx";
 import { Board, List, Table } from "./db-views.tsx";
-import type { ResultRow, View } from "./types.ts";
+import type { Guard, Say } from "./db-schema.ts";
+import type { ResultRow, SchemaOp, View } from "./types.ts";
 
-type Guard = <T>(fn: () => Promise<T>) => Promise<T | undefined>;
 type Go = (route: string) => void;
 interface DbListItem { path: string; title: string; rows: number; views: View[]; warnings: string[] }
 
@@ -62,7 +62,7 @@ export function DatabasesList({ rev, go, guard }: { rev: number; go: Go; guard: 
 
 /* ───────────────────────── una base ───────────────────────── */
 
-export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev: number; go: Go; guard: Guard; say(t: string, error?: boolean): void }) {
+export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev: number; go: Go; guard: Guard; say: Say }) {
   const [viewName, setViewName] = useState<string | null>(lsGet(`db.view.${path}`));
   const [draft, setDraft] = useState<View | null>(null);
   const [panel, setPanel] = useState(false);
@@ -126,6 +126,22 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
     edit({ sort: cur?.prop === key ? (cur.dir === "asc" ? [{ prop: key, dir: "desc" }] : []) : [{ prop: key, dir: "asc" }] });
   };
 
+  // Tras renombrar o borrar una propiedad, el borrador (si lo hay) no debe seguir apuntando a la clave antigua; las vistas guardadas ya las reescribe el servidor.
+  const afterSchema = (op: SchemaOp) => {
+    if (op.op !== "rename-property" && op.op !== "delete-property") return;
+    const from = op.name;
+    const to = op.op === "rename-property" ? op.to : null;
+    const swap = (k: string) => (k === from ? to : k);
+    setDraft((d) => d && {
+      ...d,
+      columns: d.columns.flatMap((k) => swap(k) ?? []),
+      filter: d.filter.flatMap((f) => (f.prop === from ? (to ? [{ ...f, prop: to }] : []) : [f])),
+      sort: d.sort.flatMap((s) => (s.prop === from ? (to ? [{ ...s, prop: to }] : []) : [s])),
+      group: d.group === from ? to : d.group,
+    });
+  };
+  const menu = isMobile() ? null : { path, guard, say, edit, onSchema: afterSchema };
+
   return (
     <div class="page wide">
       <header class="page-head">
@@ -164,7 +180,7 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
           <span class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</span>
         </form>}
 
-      {kind === "table" && <Table res={res} view={view} sortBy={sortBy} setCell={setCell} />}
+      {kind === "table" && <Table res={res} view={view} sortBy={sortBy} setCell={setCell} menu={menu} />}
       {kind === "list" && <List res={res} />}
       {kind === "board" && <Board res={res} view={view} available={db.available} edit={edit} setCell={setCell} />}
     </div>

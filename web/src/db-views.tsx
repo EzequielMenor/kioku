@@ -3,6 +3,8 @@ import { useState } from "preact/hooks";
 import { laneValue } from "./cell-values.ts";
 import { Cell } from "./db-cells.tsx";
 import { enc, label, READONLY, text } from "./db-common.ts";
+import { HeaderMenu } from "./db-header-menu.tsx";
+import type { HeaderMenuCtx } from "./db-header-menu.tsx";
 import type { Result } from "./db-common.ts";
 import type { Column, ResultRow, View } from "./types.ts";
 
@@ -10,8 +12,10 @@ import type { Column, ResultRow, View } from "./types.ts";
 
 type SetCell = (r: ResultRow, k: string, v: unknown) => void;
 
-export function Table({ res, view, sortBy, setCell }: { res: Result; view: View; sortBy(k: string): void; setCell: SetCell }) {
+/** `menu` es null en el rol móvil: allí la cabecera solo ordena y la estructura no se edita. */
+export function Table({ res, view, sortBy, setCell, menu }: { res: Result; view: View; sortBy(k: string): void; setCell: SetCell; menu: HeaderMenuCtx | null }) {
   const cur = view.sort[0];
+  const keys = res.columns.map((c) => c.key);
   const rowsOf = res.groups ?? [{ key: "", rows: res.rows }];
   return (
     <div class="dbtable">
@@ -19,7 +23,9 @@ export function Table({ res, view, sortBy, setCell }: { res: Result; view: View;
         <thead>
           <tr>{res.columns.map((c) => (
             <th key={c.key} aria-sort={cur?.prop === c.key ? (cur.dir === "asc" ? "ascending" : "descending") : "none"}>
-              <button class="th" onClick={() => sortBy(c.key)}>{label(c.key)}{cur?.prop === c.key && <span class="muted">{cur.dir === "asc" ? " ↑" : " ↓"}</span>}</button>
+              {menu
+                ? <HeaderMenu col={c} view={view} keys={keys} ctx={menu} />
+                : <button class="th" onClick={() => sortBy(c.key)}>{label(c.key)}{cur?.prop === c.key && <span class="muted">{cur.dir === "asc" ? " ↑" : " ↓"}</span>}</button>}
             </th>
           ))}</tr>
         </thead>
