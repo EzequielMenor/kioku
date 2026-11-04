@@ -376,9 +376,10 @@ test("opciones: renombrar con filas pide confirmación, actualiza las notas y De
     assert.doesNotMatch(read(root, "Bases/Libros.md"), /^\s*- Leyendo\s*$/m, "la opción vieja ya no está");
     await clickWhen(p, ".toast button", "Deshacer");
     await until(() => /^Estado: Leyendo$/m.test(read(root, "Libros/Hyperion.md")), "Deshacer restaura la nota");
-    assert.doesNotMatch(read(root, "Bases/Libros.md"), /Releyendo/);
+    await until(() => !/Releyendo/.test(read(root, "Bases/Libros.md")), "Deshacer restaura la base");
 
-    // Reordenar con los botones accesibles.
+    // Reordenar con los botones accesibles (el editor se repinta tras el refresco del watcher).
+    await until(() => p.ev<boolean>(`!!document.querySelector('[role=dialog] button[aria-label="Bajar Leyendo"]:not([disabled])')`), "botón «Bajar Leyendo»");
     await p.ev(`document.querySelector('[role=dialog] button[aria-label="Bajar Leyendo"]').click()`);
     await until(() => /-\s+Leído\s*\n\s+-\s+Leyendo/.test(read(root, "Bases/Libros.md")), "orden invertido en la base");
   });
