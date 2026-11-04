@@ -10,15 +10,15 @@ import type { NoteType, TaskStatus } from "../core/index.ts";
 import type { CalendarInput } from "../core/calendar-store.ts";
 import type { AssistantEngine } from "../assistant/engine.ts";
 import { parseAssistantConfig } from "../assistant/policy.ts";
-import { SessionRegistry } from "../assistant/session.ts";
+import { SessionRegistry, type AssistantSession } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
-import { UndoStore } from "../assistant/undo.ts";
+import { UndoStore, type UndoRecord } from "../assistant/undo.ts";
 import type { PushStore } from "./webpush.ts";
 import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobileAreaCreateDenied, mobileCreateDenied } from "./calendar.ts";
 import { OpsLedger, validOp } from "./ops.ts";
 import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
-import { hiddenRelation, mobileAllowed, mobileEvent, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
+import { exclusionScope, hiddenRelation, mobileAction, mobileAllowed, mobileConversation, mobileEvent, mobileProposalVisible, mobileToolText, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
 export const DEFAULT_PORT = 47800;
 /** Sincronización móvil: tope de rutas por petición y de texto por respuesta (lo que no cabe vuelve en `pending`). */
@@ -46,6 +46,7 @@ function userPath(p: unknown): string {
 }
 
 const MEMORY_DIR = "hermes/memories";
+const MOBILE_ISOLATION_REASON = "El asistente aún no está disponible desde el móvil: su motor no mantiene separados la memoria y las conversaciones del móvil y las del portátil. Úsalo en el portátil.";
 
 /** Ruta relativa a memories/ validada: sin `..`, sin absolutas, sin ocultos. */
 function memoryRel(v: unknown): string {
@@ -144,13 +145,32 @@ export async function startServer(
   const mobileOps = new MobileOperations(j);
   const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .kioku/assistant.json
   const assistantTools = new AssistantTools(j, undo, { exclude });
-  const loadExclude = async () => {
+  const readAssistantExclude = async (): Promise<string[]> => {
     try {
-      exclude.splice(0, exclude.length, ...parseAssistantConfig(await j.vault.readInternal("assistant.json")).exclude);
+      return parseAssistantConfig(await j.vault.readInternal("assistant.json")).exclude;
     } catch (e) {
       throw new HttpError(503, (e as Error).message); // config rota: no se actúa sin saber qué está excluido
     }
   };
+  const loadExclude = async () => { exclude.splice(0, exclude.length, ...(await readAssistantExclude())); };
+  /**
+   * Privacidad de una consulta del móvil, releída del disco cada vez y SIN tocar la lista compartida del escritorio:
+   * assistant.json + mobile.json + actividades de calendario ocultas. `scope` cambia también al ocultarse una actividad.
+   */
+  const mobileScope = async (): Promise<{ exclude: string[]; scope: string }> => {
+    let mobile: string[];
+    try { mobile = parseMobileConfig(await j.vault.readInternal("mobile.json")); }
+    catch (e) { throw new HttpError(503, (e as Error).message); }
+    const config = [...(await readAssistantExclude()), ...mobile];
+    const exclude = [...config, ...hiddenCalendarPaths(j, config)];
+    return { exclude, scope: exclusionScope(exclude) };
+  };
+  /** Clave móvil con la que se abrió cada consulta del móvil: si se revoca o se rota mientras corre, sus herramientas y su respuesta dejan de valer. */
+  const askedWith = new WeakMap<AssistantSession, string>();
+  const stillPaired = (s: AssistantSession) => { const mk = readMobileKey(j.vault.root); return !!mk && keyMatches(mk, askedWith.get(s)); };
+  /** Propuestas pendientes (o del estado pedido) que el móvil puede ver ahora mismo. */
+  const mobileProposals = async (status: "pending" | "applied" | "rejected" | "failed", ex: string[]) =>
+    (await j.proposals.list(status)).filter((pr) => mobileProposalVisible(pr, ex, (t) => j.index.resolve(t)));
 
   const allowedHosts = new Set((opts.allowedHosts ?? []).map((h) => h.trim().toLowerCase()).filter(Boolean));
   let mobileConfig: string[] = []; // carpetas privadas del móvil (`mobile.json`); se refresca en cada petición del rol `mobile`
@@ -222,7 +242,11 @@ export async function startServer(
         case "/api/push/key":
           if (!opts.push) throw new HttpError(404, "Los avisos al móvil no están activados en este daemon");
           return send(res, 200, { publicKey: opts.push.vapid.publicKey });
-        case "/api/today": return send(res, 200, await j.today());
+        case "/api/today": {
+          const t = await j.today();
+          // El contador de propuestas del móvil solo cuenta las que puede ver.
+          return send(res, 200, role === "mobile" ? { ...t, proposals: (await mobileProposals("pending", (await mobileScope()).exclude)).length } : t);
+        }
         case "/api/focus": return send(res, 200, j.focusState());
         case "/api/inbox": return send(res, 200, j.inbox().map((n) => ({ path: n.path, title: n.title, mtime: n.mtime, excerpt: n.body.trim().slice(0, 200) })));
         case "/api/search": return send(res, 200, j.index.search(q.get("q") ?? "", Number(q.get("limit") ?? 20)));
@@ -231,8 +255,16 @@ export async function startServer(
           return send(res, 200, cfg ? { configured: true, model: cfg.model, baseUrl: cfg.baseUrl, local: isLocalUrl(cfg.baseUrl), apiKeyEnv: cfg.apiKeyEnv ?? null } : { configured: false });
         }
         case "/api/ai/preview": return send(res, 200, await j.aiPreview());
-        case "/api/assistant/status": return send(res, 200, opts.assistant ? await opts.assistant.engine.available() : { ok: false, reason: "El asistente no está configurado en este daemon" });
-        case "/api/assistant/actions": return send(res, 200, (await undo.list(50)));
+        case "/api/assistant/status": {
+          if (!opts.assistant) return send(res, 200, { ok: false, reason: "El asistente no está configurado en este daemon" });
+          if (role === "mobile" && !opts.assistant.engine.isolatesMobile) return send(res, 200, { ok: false, reason: MOBILE_ISOLATION_REASON });
+          return send(res, 200, await opts.assistant.engine.available());
+        }
+        case "/api/assistant/actions": {
+          if (role !== "mobile") return send(res, 200, await undo.list(50));
+          const ex = (await mobileScope()).exclude;
+          return send(res, 200, (await undo.list(200)).map((a) => mobileAction(a, ex)).filter((a) => a !== null).slice(0, 50));
+        }
         case "/api/assistant/memory": return send(res, 200, await listMemory(j));
         case "/api/assistant/tools/list": {
           bearer(req);
@@ -311,13 +343,16 @@ export async function startServer(
           });
         }
         case "/api/proposals": {
-          const list = await j.proposals.list((q.get("status") as "pending") ?? "pending");
+          const status = (q.get("status") as "pending") ?? "pending";
+          const list = role === "mobile" ? await mobileProposals(status, (await mobileScope()).exclude) : await j.proposals.list(status);
           const withDiff = await Promise.all(list.map(async (pr) => ({
             ...pr,
             ops: await Promise.all(pr.ops.map(async (op) => {
               if (op.op === "setProp") {
                 const cur = await j.vault.read(op.path).catch(() => null);
-                return { ...op, current: cur ? j.index.getNote(op.path)?.fm ?? {} : null };
+                const fm = cur ? j.index.getNote(op.path)?.fm ?? {} : null;
+                // El móvil ve solo el valor actual de las propiedades que se van a cambiar, no toda la ficha.
+                return { ...op, current: fm && role === "mobile" ? Object.fromEntries(Object.keys(op.props).filter((k) => k in fm).map((k) => [k, fm[k]])) : fm };
               }
               return op;
             })),
@@ -498,6 +533,18 @@ export async function startServer(
         case "/api/desktop/quick/hide": { await opts.onQuickHide?.(); return send(res, 200, { ok: true }); }
         case "/api/assistant/tools/call": {
           const sess = bearer(req);
+          if (sess.role === "mobile") {
+            if (!stillPaired(sess)) throw new HttpError(401, "El móvil ya no está emparejado");
+            // Privacidad del móvil en CADA llamada (releída ahora), sin tocar la lista compartida del escritorio.
+            const current = await mobileScope();
+            if (current.scope !== sess.scope) return send(res, 200, { isError: true, text: "La privacidad cambió durante la consulta: volvé a preguntar." });
+            const ex = current.exclude;
+            const name = str(body.name, "name");
+            const r = await assistantTools.call(sess, name, body.args, ex);
+            if (r.isError) return send(res, 200, r);
+            const visible = name === "today" ? (await mobileProposals("pending", ex)).length : 0;
+            return send(res, 200, { ...r, text: mobileToolText(r.text, ex, name === "today" ? (o) => { if ("proposals" in o) o.proposals = visible; } : undefined) });
+          }
           await loadExclude();
           return send(res, 200, await assistantTools.call(sess, str(body.name, "name"), body.args));
         }
@@ -507,23 +554,43 @@ export async function startServer(
           await j.log.record("ai.memory.delete", null, { path: rel });
           return send(res, 200, { ok: true });
         }
-        case "/api/assistant/undo": return send(res, 200, await undo.undo(str(body.id, "id")));
+        case "/api/assistant/undo": {
+          const id = str(body.id, "id");
+          if (role !== "mobile") return send(res, 200, await undo.undo(id));
+          // Desde el móvil solo se deshace lo hecho por sesiones del móvil y que sigue siendo visible; el resto «no existe».
+          const text = /^[0-9A-Z]{26}$/.test(id) ? await j.vault.readInternal(`undo/${id}.json`) : null;
+          const seen = text && mobileAction(JSON.parse(text) as UndoRecord, (await mobileScope()).exclude);
+          if (!seen) throw new HttpError(404, "No existe");
+          return send(res, 200, mobileAction(await undo.undo(id), []));
+        }
         case "/api/assistant/ask": {
           if (!opts.assistant) throw new HttpError(503, "El asistente no está configurado");
           const message = str(body.message, "message").trim();
           if (!message) throw new HttpError(400, "Escribe un mensaje");
+          const mobile = role === "mobile";
+          // Fail-closed: el móvil solo pregunta si el motor mantiene separados la memoria y el estado de ese rol.
+          if (mobile && !opts.assistant.engine.isolatesMobile) throw new HttpError(503, MOBILE_ISOLATION_REASON);
           const avail = await opts.assistant.engine.available();
           if (!avail.ok) throw new HttpError(503, avail.reason ?? "El asistente no está disponible");
           await loadExclude();
-          const sess = sessions.open();
+          const scope = mobile ? await mobileScope() : null;
+          const sess = sessions.open(role, scope?.scope);
+          if (mobile) askedWith.set(sess, presentedKey(req.headers) ?? "");
           try {
-            await j.log.record("ai.request", null, { sessionId: sess.id, chars: message.length });
+            await j.log.record("ai.request", null, { sessionId: sess.id, chars: message.length, ...(mobile ? { role } : {}) });
+            const conversation = typeof body.conversation === "string" && body.conversation ? body.conversation : "default";
             const { answer } = await opts.assistant.engine.ask({
-              message, conversation: typeof body.conversation === "string" && body.conversation ? body.conversation : "default",
+              message, conversation: scope ? mobileConversation(scope.scope, conversation.slice(0, 120)) : conversation,
               session: sess, daemonUrl: `http://127.0.0.1:${boundPort}`,
             });
-            const actions = (await undo.list(200)).filter((a) => a.sessionId === sess.id).reverse();
-            return send(res, 200, { answer, reads: [...sess.reads], actions });
+            const mine = (await undo.list(200)).filter((a) => a.sessionId === sess.id).reverse();
+            if (!mobile) return send(res, 200, { answer, reads: [...sess.reads], actions: mine });
+            if (!stillPaired(sess)) throw new HttpError(401, "El móvil ya no está emparejado");
+            // Lo leído y lo hecho se vuelven a filtrar con la privacidad de AHORA (puede haber cambiado durante la consulta).
+            const current = await mobileScope();
+            if (current.scope !== sess.scope) throw new HttpError(409, "La privacidad cambió durante la consulta: volvé a preguntar.");
+            const ex = current.exclude;
+            return send(res, 200, { answer, reads: [...sess.reads].filter((r) => !isPrivate(r, ex)), actions: mine.map((a) => mobileAction(a, ex)).filter((a) => a !== null) });
           } catch (e) {
             if (e instanceof HttpError || e instanceof VaultError) throw e;
             throw new HttpError(502, e instanceof Error ? e.message : String(e));
@@ -539,7 +606,14 @@ export async function startServer(
         case "/api/reindex": return send(res, 200, await j.reindex());
       }
       const mm = /^\/api\/proposals\/([0-9A-Z]{26})\/(apply|reject)$/.exec(p);
-      if (mm) return send(res, 200, mm[2] === "apply" ? await j.applyProposal(mm[1]) : await j.rejectProposal(mm[1]));
+      if (mm) {
+        if (role === "mobile") {
+          // Aplicar o descartar desde el móvil exige que la propuesta sea del móvil y que TODO lo que toca se vea hoy.
+          const pr = await j.proposals.get(mm[1]);
+          if (!pr || !mobileProposalVisible(pr, (await mobileScope()).exclude, (t) => j.index.resolve(t))) throw new HttpError(404, "No existe");
+        }
+        return send(res, 200, mm[2] === "apply" ? await j.applyProposal(mm[1]) : await j.rejectProposal(mm[1]));
+      }
     }
     throw new HttpError(404, "No existe");
   }
