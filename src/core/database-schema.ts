@@ -255,7 +255,7 @@ const TEXT_FIELDS: Record<string, [field: string, what: string][]> = {
 
 /** La operación llega de la red: cada campo tiene que ser del tipo que el planificador da por hecho (texto, lista de textos, booleano). */
 function checkShape(op: SchemaOp): void {
-  for (const [field, what] of TEXT_FIELDS[op.op] ?? []) {
+  for (const [field, what] of (Object.hasOwn(TEXT_FIELDS, op.op) ? TEXT_FIELDS[op.op] : [])) {
     if (typeof (op as unknown as Record<string, unknown>)[field] !== "string") throw new SchemaError(`«${field}»: ${what} debe ser texto`);
   }
   if (op.op === "reorder-options" && !(Array.isArray(op.options) && op.options.every((o) => typeof o === "string"))) {

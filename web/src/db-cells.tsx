@@ -1,5 +1,5 @@
 // Celda de una base: muestra y edita una propiedad de la fila según el tipo de su columna.
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { misfit, relationValue, safeHref } from "./cell-values.ts";
 import { enc, label, READONLY, text } from "./db-common.ts";
 import type { HeaderMenuCtx } from "./db-header-menu.tsx";
@@ -66,6 +66,8 @@ export function Cell({ col, row, setCell, menu }: { col: Column; row: ResultRow;
  *  Pulsarlo (o Enter) abre el campo del tipo; solo lo que el usuario escribe después lo sustituye. */
 function MisfitCell({ col, row, setCell, v, why, aria }: { col: Column; row: ResultRow; setCell: SetCell; v: unknown; why: string; aria: string }) {
   const [editing, setEditing] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (editing) input.current?.focus(); }, [editing]); // `autofocus` solo vale al cargar la página
   const raw = typeof v === "object" && v !== null && !Array.isArray(v) ? JSON.stringify(v) : text(v);
   if (!editing) {
     return <button type="button" class="cell-misfit" title={why} aria-label={`${aria}: «${raw}». ${why}; pulsa para editar`} onClick={() => setEditing(true)}>
@@ -73,9 +75,9 @@ function MisfitCell({ col, row, setCell, v, why, aria }: { col: Column; row: Res
     </button>;
   }
   const done = () => setEditing(false);
-  if (col.type === "checkbox") return <input type="checkbox" checked={false} autoFocus aria-label={aria} onBlur={done} onChange={(e) => setCell(row, col.key, e.currentTarget.checked)} />;
+  if (col.type === "checkbox") return <input ref={input} type="checkbox" checked={false} aria-label={aria} onBlur={done} onChange={(e) => setCell(row, col.key, e.currentTarget.checked)} />;
   const isNum = col.type === "number";
-  return <input class={`cell-input${isNum ? " num" : ""}`} type={isNum ? "number" : "date"} autoFocus aria-label={aria}
+  return <input ref={input} class={`cell-input${isNum ? " num" : ""}`} type={isNum ? "number" : "date"} aria-label={aria}
     onBlur={done} onKeyDown={(e) => { if (e.key === "Escape") done(); }}
     onChange={(e) => setCell(row, col.key, isNum ? (e.currentTarget.value === "" ? "" : Number(e.currentTarget.value)) : e.currentTarget.value)} />;
 }

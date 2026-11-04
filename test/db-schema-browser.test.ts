@@ -486,6 +486,7 @@ for (const mobile of [false, true]) {
 
       await clickSel(p, misfitSel);
       await until(() => p.ev<boolean>(`!!${q(`input[type=number][aria-label^="Páginas de «Hyperion»"]`)}`), "campo numérico al pulsar el aviso");
+      await until(() => p.ev<boolean>(`document.activeElement === ${q(`input[type=number][aria-label^="Páginas de «Hyperion»"]`)}`), "el campo recibe el foco al pulsar el aviso");
       await typeInto(p, `input[type=number][aria-label^="Páginas de «Hyperion»"]`, "350");
       await p.ev(`${q(`input[type=number][aria-label^="Páginas de «Hyperion»"]`)}.dispatchEvent(new Event("change", { bubbles: true }))`);
       await until(() => /^Páginas: 350$/m.test(read(root, "Libros/Hyperion.md")), "el valor escrito sustituye al original");

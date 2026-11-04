@@ -232,6 +232,8 @@ test("API bases: esquema — petición inválida 400, base inexistente 404", asy
         { op: "rename-property", name: { a: 1 }, to: "Y" },
         { op: "rename-property", name: "Nota", to: null },
         { op: "delete-property" },
+        { op: "constructor" },
+        { op: "__proto__" },
         { op: "add-option", prop: "Estado", option: 3 },
         { op: "add-option", prop: "Estado", option: "Nueva", color: "fucsia" },
         { op: "set-option-color", prop: "Estado", option: "Leyendo", color: 5 },
