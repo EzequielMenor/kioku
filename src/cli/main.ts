@@ -114,7 +114,10 @@ async function main(): Promise<void> {
       const j = await Kioku.open({ root: home });
       j.watch();
       const push = await PushStore.open(home);
-      const srv = await startServer(j, { push, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts: allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS), webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const allowedHosts = allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS);
+      const pub = publicHost();
+      if (pub && !allowedHosts.includes(pub)) allowedHosts.push(pub);
+      const srv = await startServer(j, { push, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
       const rtFile = path.join(home, ".kioku", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`Kioku escuchando en ${srv.url}  (datos: ${home})`);
