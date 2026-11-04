@@ -101,6 +101,9 @@ Todas con vaults y `KIOKU_HOME` temporales; nunca se toca la bóveda real del us
 ## Riesgos
 
 - Reescribir muchas notas a la vez: mitigado con validación previa, aborto atómico y el Deshacer por hashes.
-- Una edición externa (Obsidian) entre la confirmación y la escritura: el hash base lo detecta y aborta el lote.
+- Una edición externa (Obsidian) entre la confirmación y la escritura: cada fichero se escribe con su hash recién leído,
+  así que un cambio concurrente en una nota aborta el lote y se revierte lo escrito. Una nota nueva que encaje en la base
+  mientras el diálogo está abierto se incluye sin avisar (el recuento mostrado puede quedar desfasado); `expect` evita que
+  el conjunto de notas crezca entre la vista previa y la escritura.
 - Cambio de forma de `Column.options` (strings → objetos): afecta a `query_database` y al cliente web; se cubre con
   pruebas de ambos.
