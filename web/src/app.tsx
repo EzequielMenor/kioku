@@ -57,7 +57,7 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/propuestas", label: "Propuestas", key: "r", icon: "propuestas" },
 ];
 
-/** Entradas de navegación que ve quien usa la interfaz (el móvil no tiene Asistente ni Propuestas). */
+/** Entradas de navegación que ve quien usa la interfaz (`MOBILE_HIDDEN` lista las que el móvil no tiene). */
 const visibleNav = () => NAV.filter((n) => !(isMobile() && MOBILE_HIDDEN.has(n.route)));
 
 const enc = (p: string) => encodeURI(p);
@@ -381,11 +381,11 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
         <section class="card"><div class="eyebrow">Siguiente paso</div><p class="muted">{mobile ? <>No hay tareas abiertas. Toca <b>+</b> para capturar algo.</> : <>No hay tareas abiertas. Captura algo con <kbd>c</kbd> o escribe <code>t …</code>.</>}</p></section>
       )}
 
-      {(t.overdue > 0 || t.inbox.count > 0 || (t.proposals > 0 && !mobile)) && (
+      {(t.overdue > 0 || t.inbox.count > 0 || t.proposals > 0) && (
         <div class="pills">
           {t.overdue > 0 && <a class="pill bad" href="#/tareas">{plural(t.overdue, "tarea vencida", "tareas vencidas")}</a>}
           {t.inbox.count > 0 && <a class="pill" href="#/bandeja">{plural(t.inbox.count, "captura sin procesar", "capturas sin procesar")}</a>}
-          {t.proposals > 0 && !mobile && <a class="pill accent" href="#/propuestas">{plural(t.proposals, "propuesta por revisar", "propuestas por revisar")}</a>}
+          {t.proposals > 0 && <a class="pill accent" href="#/propuestas">{plural(t.proposals, "propuesta por revisar", "propuestas por revisar")}</a>}
         </div>
       )}
 
@@ -717,17 +717,23 @@ function AiPanel({ rev, say, guard }: { rev: number; say: Say; guard: Guard }) {
 
 function ProposalsView({ rev, say, guard }: { rev: number; say: Say; guard: Guard }) {
   const { data, reload } = useApi<Proposal[]>("/api/proposals?status=pending", rev);
-  const act = async (id: string, what: "apply" | "reject") => {
-    const r = await guard(() => api<Proposal>("POST", `/api/proposals/${id}/${what}`));
+  const mobile = isMobile();
+  const online = useOffline().online;
+  const act = async (p: Proposal, what: "apply" | "reject") => {
+    // En el móvil un toque suelto no aplica nada: se confirma lo que se va a tocar (nunca se aplica solo).
+    if (mobile && what === "apply" && !(await askConfirm({ title: "¿Aplicar esta propuesta?", body: `${p.title} · ${plural(p.ops.length, "cambio", "cambios")}. Revisa lo que se tocará antes de confirmar.`, confirm: "Aplicar", danger: p.ops.some((o) => o.op === "trash" || o.op === "move" || o.op === "update") }))) return;
+    const r = await guard(() => api<Proposal>("POST", `/api/proposals/${p.id}/${what}`));
     if (r) { say(what === "apply" ? "Aplicada." : "Descartada."); reload(); }
   };
   return (
     <div class="page narrow">
       <header class="page-head"><h1>Propuestas</h1>
-        <button onClick={() => void guard(async () => { const r = await api<Proposal[]>("POST", "/api/triage"); say(r.length ? `${r.length} nuevas.` : "Nada nuevo."); })}>Revisar bandeja</button>
+        {!mobile && <button onClick={() => void guard(async () => { const r = await api<Proposal[]>("POST", "/api/triage"); say(r.length ? `${r.length} nuevas.` : "Nada nuevo."); })}>Revisar bandeja</button>}
       </header>
-      <AiPanel rev={rev} say={say} guard={guard} />
+      {!mobile && <AiPanel rev={rev} say={say} guard={guard} />}
       <p class="muted">Todo cambio que no hagas tú directamente pasa por aquí. Ves exactamente qué se tocará; si el archivo cambió desde que se propuso, la propuesta se aborta entera.</p>
+      {mobile && <p class="muted small">Desde el móvil ves y resuelves las propuestas que nacieron aquí, con el portátil encendido.</p>}
+      {mobile && !online && <div class="notice bad" role="status">Sin conexión: las propuestas solo se aprueban con el portátil encendido y con red. Nada se guarda para después.</div>}
       {data && data.length === 0 && <div class="empty">No hay propuestas pendientes.</div>}
       {(data ?? []).map((p) => (
         <section key={p.id} class="card">
@@ -735,9 +741,9 @@ function ProposalsView({ rev, say, guard }: { rev: number; say: Say; guard: Guar
           <h2>{p.title}</h2>
           <p class="muted">{p.rationale}</p>
           {p.ops.map((op, i) => <OpView key={i} op={op} />)}
-          <div class="row">
-            <button class="primary" onClick={() => void act(p.id, "apply")}>Aplicar</button>
-            <button onClick={() => void act(p.id, "reject")}>Descartar</button>
+          <div class="row proposal-actions">
+            <button class="primary" disabled={mobile && !online} onClick={() => void act(p, "apply")}>Aplicar</button>
+            <button disabled={mobile && !online} onClick={() => void act(p, "reject")}>Descartar</button>
           </div>
         </section>
       ))}

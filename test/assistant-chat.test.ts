@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createChat } from "../web/src/assistant-chat.ts";
+import { ASSISTANT_OFFLINE, askErrorText, createChat } from "../web/src/assistant-chat.ts";
 
 const deferred = <T>() => {
   let resolve!: (v: T) => void, reject!: (e: Error) => void;
@@ -68,4 +68,19 @@ test("chat: el indicador en vivo lo fija el motor mientras responde y se apaga a
   assert.equal(chat.getState().live, null);
   chat.setLive("ignorado fuera de una consulta");
   assert.equal(chat.getState().live, null);
+});
+
+test("chat: sin red el móvil explica que el asistente es solo en línea; el escritorio y los errores del daemon se muestran como antes", async () => {
+  const offline = new TypeError("Failed to fetch");
+  assert.equal(askErrorText(offline, true), ASSISTANT_OFFLINE);
+  assert.equal(askErrorText(offline, false), "Failed to fetch");
+  assert.equal(askErrorText(new Error("503 sin motor"), true), "503 sin motor", "un error del daemon no se disfraza de falta de red");
+  assert.match(ASSISTANT_OFFLINE, /no se ha guardado/);
+  const d = deferred<{ answer: string; reads: string[]; actions: never[] }>();
+  const chat = createChat({ ask: () => d.promise, pendingProposals: async () => [], actionsSince: async () => [], describeError: (e) => askErrorText(e, true) });
+  const sending = chat.send("hola");
+  d.reject(offline);
+  await sending;
+  assert.deepEqual(chat.getState().msgs.map((m) => [m.role, m.error ?? false, m.text]), [["user", false, "hola"], ["assistant", true, ASSISTANT_OFFLINE]]);
+  assert.equal(chat.getState().busy, false);
 });
