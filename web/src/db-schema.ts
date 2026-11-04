@@ -20,12 +20,12 @@ function confirmCopy(op: SchemaOp): { title: string; confirm: string } | null {
 
 const notes = (n: number) => (n === 1 ? "1 nota" : `${n} notas`);
 
-/** Aplica una operación de esquema. `false` si se cancela o falla (el error ya se mostró con `say`). */
-export async function editSchema(op: SchemaOp, ctx: { path: string; guard: Guard; say: Say }): Promise<boolean> {
+/** Aplica una operación de esquema. `false` si se cancela o falla (el error ya se mostró con `say`). `confirmed`: quien llama ya preguntó lo mismo. */
+export async function editSchema(op: SchemaOp, ctx: { path: string; guard: Guard; say: Say }, opts: { confirmed?: boolean } = {}): Promise<boolean> {
   const done = await ctx.guard(async () => {
     const plan = await api<Plan>("POST", "/api/database/schema/preview", { path: ctx.path, op });
     const copy = confirmCopy(op);
-    if (copy && plan.affected > 0) {
+    if (copy && plan.affected > 0 && !opts.confirmed) {
       const ok = await askConfirm({
         title: copy.title,
         body: `Se reescribirán ${notes(plan.affected)}. Podrás deshacerlo justo después.`,

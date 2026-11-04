@@ -1,11 +1,13 @@
 // Vistas de una base sobre el resultado ya consultado: tabla (con orden y grupos), lista y tablero (arrastrar tarjetas entre columnas).
 import { useState } from "preact/hooks";
 import { laneValue } from "./cell-values.ts";
+import { AddPropertyButton } from "./db-add-property.tsx";
 import { Cell } from "./db-cells.tsx";
 import { enc, label, READONLY, text } from "./db-common.ts";
 import { HeaderMenu } from "./db-header-menu.tsx";
 import type { HeaderMenuCtx } from "./db-header-menu.tsx";
 import type { Result } from "./db-common.ts";
+import { valueClass } from "./option-colors.ts";
 import type { Column, ResultRow, View } from "./types.ts";
 
 /* ───────────────────────── vistas ───────────────────────── */
@@ -27,13 +29,13 @@ export function Table({ res, view, sortBy, setCell, menu }: { res: Result; view:
                 ? <HeaderMenu col={c} view={view} keys={keys} ctx={menu} />
                 : <button class="th" onClick={() => sortBy(c.key)}>{label(c.key)}{cur?.prop === c.key && <span class="muted">{cur.dir === "asc" ? " ↑" : " ↓"}</span>}</button>}
             </th>
-          ))}</tr>
+          ))}{menu && <th class="addcol"><AddPropertyButton ctx={menu} /></th>}</tr>
         </thead>
         <tbody>
           {rowsOf.map((g) => (
             <>
-              {res.groups && <tr class="grouprow" key={`g:${g.key}`}><td colSpan={res.columns.length}>{g.key || "Sin valor"} <span class="muted">{g.rows.length}</span></td></tr>}
-              {g.rows.map((r) => <tr key={`${g.key}:${r.path}`}>{res.columns.map((c) => <td key={c.key}><Cell col={c} row={r} setCell={setCell} /></td>)}</tr>)}
+              {res.groups && <tr class="grouprow" key={`g:${g.key}`}><td colSpan={res.columns.length + (menu ? 1 : 0)}>{g.key || "Sin valor"} <span class="muted">{g.rows.length}</span></td></tr>}
+              {g.rows.map((r) => <tr key={`${g.key}:${r.path}`}>{res.columns.map((c) => <td key={c.key}><Cell col={c} row={r} setCell={setCell} menu={menu} /></td>)}{menu && <td />}</tr>)}
             </>
           ))}
         </tbody>
@@ -53,7 +55,7 @@ export function List({ res }: { res: Result }) {
           {rest.map((c) => {
             const v = r.cells[c.key];
             if (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) return null;
-            return <span key={c.key} class="chip" title={label(c.key)}>{c.type === "checkbox" ? (v ? `✓ ${label(c.key)}` : "") : text(v)}</span>;
+            return <span key={c.key} class={`chip ${c.type === "select" ? valueClass(c.options, text(v)) : ""}`} title={label(c.key)}>{c.type === "checkbox" ? (v ? `✓ ${label(c.key)}` : "") : text(v)}</span>;
           })}
         </li>
       ))}
@@ -108,7 +110,7 @@ export function Board({ res, view, available, edit, setCell }: { res: Result; vi
                 <div class="meta">
                   {rest.map((c) => {
                     const v = r.cells[c.key];
-                    return v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length) ? null : <span class="chip" key={c.key} title={label(c.key)}>{text(v)}</span>;
+                    return v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length) ? null : <span class={`chip ${c.type === "select" ? valueClass(c.options, text(v)) : ""}`} key={c.key} title={label(c.key)}>{text(v)}</span>;
                   })}
                   {movable && (
                     <select class="cell-select kmove" value={lane} aria-label={`Mover «${r.title}»`} onChange={(e) => setCell(r, group, laneValue(col?.type, e.currentTarget.value))}>

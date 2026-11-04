@@ -244,3 +244,146 @@ test("menú de cabecera: con el rol móvil no existe el menú y la cabecera sigu
     rmSync(profile, { recursive: true, force: true });
   }
 });
+
+/* ───────────── «+ Propiedad», opciones con color y selector con «Crear» ───────────── */
+
+/** Servidor + Chromium sobre la base «Libros» temporal; `fn` recibe la página y la raíz de la bóveda. */
+async function withBase(opts: { mobile?: boolean }, fn: (p: Page, root: string) => Promise<void>) {
+  const { root, cleanup } = vault();
+  const j = await Kioku.open({ root });
+  const srv = await startServer(j, { port: 0, webDir: WEB, key: KEY });
+  const profile = mkdtempSync(path.join(tmpdir(), "kioku-chromium-"));
+  let page: Page | null = null;
+  try {
+    page = await launch(profile);
+    const p = page;
+    await p.send("Emulation.setDeviceMetricsOverride", opts.mobile ? { width: 390, height: 780, deviceScaleFactor: 2, mobile: true } : { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false });
+    await p.send("Page.navigate", { url: `${srv.url}/?k=${opts.mobile ? loadOrCreateMobileKey(root) : KEY}#/bases/Bases/Libros.md` });
+    await until(async () => (await headers(p)).includes("Autor"), "tabla con la columna Autor");
+    await fn(p, root);
+  } finally {
+    await page?.close();
+    await srv.close();
+    j.close();
+    cleanup();
+    rmSync(profile, { recursive: true, force: true });
+  }
+}
+
+/** Escribe en un campo (enfocado) como lo haría el usuario y, si se pide, pulsa Enter. */
+const typeInto = async (p: Page, sel: string, value: string, enter = false) => {
+  await p.ev(`(() => { const i = ${q(sel)}; i.focus(); i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  if (enter) await key(p, "Enter", 13, "\r");
+};
+const clickSel = (p: Page, sel: string) => p.ev(`(() => { const el = ${q(sel)}; el.focus(); el.click(); })()`);
+const cellBtn = (title: string) => `button[aria-label^="Estado de «${title}»"]`;
+const openCell = async (p: Page, title: string) => {
+  await clickSel(p, cellBtn(title));
+  await until(() => p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Valor de Estado"]`)}`), `selector de «${title}»`);
+};
+
+test("«Añadir propiedad»: nombre y tipo crean la columna y la guardan en la base", { skip, timeout: 60_000 }, async () => {
+  await withBase({}, async (p, root) => {
+    await clickSel(p, `th button[aria-label="Añadir propiedad"]`);
+    await until(() => p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Nueva propiedad"]`)}`), "popover de nueva propiedad");
+    assert.ok(await p.ev<boolean>(`${q("[role=dialog]")}.contains(document.activeElement)`), "el foco entra en el popover");
+    assert.equal(await p.ev(`${q(`[role=dialog] select[aria-label="Tipo de la nueva propiedad"]`)}.value`), "text", "tipo por defecto: texto");
+    await typeInto(p, `[role=dialog] input[aria-label="Nombre de la nueva propiedad"]`, "Editorial", true);
+    await until(async () => (await headers(p)).includes("Editorial"), "columna Editorial");
+    assert.match(read(root, "Bases/Libros.md"), /Editorial:\s*\n\s+type: text/);
+    await until(() => p.ev<boolean>(`!${q("[role=dialog]")}`), "el popover se cierra");
+    assert.match(await p.ev<string>(`${q(".toast")}.textContent`), /Deshacer/);
+  });
+});
+
+test("opciones: añadir «Pausado» en verde da al chip de la celda la clase opt-green", { skip, timeout: 60_000 }, async () => {
+  await withBase({}, async (p, root) => {
+    await openMenu(p, "Estado");
+    await typeInto(p, `[role=dialog] input[aria-label="Nueva opción"]`, "Pausado", true);
+    await until(() => p.ev<boolean>(`!!${q(`[role=dialog] button[aria-label="Color de Pausado"]`)}`), "la opción aparece en el editor");
+    assert.match(read(root, "Bases/Libros.md"), /Pausado/);
+    assert.ok(await p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Propiedad Estado"]`)}`), "el menú sigue abierto para seguir editando");
+    await clickSel(p, `[role=dialog] button[aria-label="Color de Pausado"]`);
+    await clickSel(p, `[role=dialog] [role=group][aria-label="Colores de Pausado"] button[aria-label="Verde"]`);
+    await until(() => /name: Pausado\s*\n\s+color: green/.test(read(root, "Bases/Libros.md")), "color guardado en la base");
+    await key(p, "Escape", 27);
+    await until(() => p.ev<boolean>(`!${q("[role=dialog]")}`), "menú cerrado");
+
+    await openCell(p, "Hyperion");
+    await clickText(p, "[role=dialog] button", "Pausado");
+    await until(() => /^Estado: Pausado$/m.test(read(root, "Libros/Hyperion.md")), "valor asignado");
+    await until(() => p.ev<boolean>(`${q(cellBtn("Hyperion"))}.classList.contains("opt-green")`), "chip verde en la celda");
+    assert.equal(await p.ev(`${q(cellBtn("Dune"))}.classList.contains("opt-none")`), true, "una opción sin color usa la clase neutra");
+  });
+});
+
+test("selector de la celda: filtra, elige la coincidencia exacta y «Crear» añade la opción y la asigna", { skip, timeout: 60_000 }, async () => {
+  await withBase({}, async (p, root) => {
+    await openCell(p, "Dune");
+    assert.ok(await p.ev<boolean>(`document.activeElement === ${q(`[role=dialog] input[aria-label="Filtrar opciones"]`)}`), "el filtro recibe el foco");
+    const labels = () => p.ev<string[]>(`[...document.querySelectorAll("[role=dialog] button")].map((b) => b.textContent.trim())`);
+    assert.ok((await labels()).includes("Vaciar") && (await labels()).includes("Leyendo"));
+    // Texto sin coincidencia: se ofrece crear; con coincidencia exacta (sin mayúsculas ni tildes de más), no.
+    await typeInto(p, `[role=dialog] input[aria-label="Filtrar opciones"]`, "Releyendo");
+    await until(async () => (await labels()).includes("Crear «Releyendo»"), "se ofrece «Crear»");
+    assert.ok(!(await labels()).includes("Leyendo"), "el filtro oculta lo que no coincide");
+    await typeInto(p, `[role=dialog] input[aria-label="Filtrar opciones"]`, "leyendo");
+    await until(async () => !(await labels()).some((l) => l.startsWith("Crear")), "con coincidencia exacta no se ofrece crear");
+    // Enter con coincidencia exacta elige la opción existente.
+    await key(p, "Enter", 13, "\r");
+    await until(() => /^Estado: Leyendo$/m.test(read(root, "Libros/Dune.md")), "Enter elige la existente");
+    await until(() => p.ev<boolean>(`!${q("[role=dialog]")}`), "el selector se cierra");
+    assert.equal((read(root, "Bases/Libros.md").match(/Leyendo/g) ?? []).length, 1, "no se duplicó la opción");
+
+    // Crear: primero el esquema, después la celda.
+    await openCell(p, "Hyperion");
+    await typeInto(p, `[role=dialog] input[aria-label="Filtrar opciones"]`, "Releyendo");
+    await until(async () => (await labels()).includes("Crear «Releyendo»"), "se ofrece «Crear» (2)");
+    await clickText(p, "[role=dialog] button", "Crear «Releyendo»");
+    await until(() => /^Estado: Releyendo$/m.test(read(root, "Libros/Hyperion.md")), "celda asignada");
+    assert.match(read(root, "Bases/Libros.md"), /Releyendo/);
+    await until(() => p.ev<boolean>(`${q(cellBtn("Hyperion"))}.textContent.trim() === "Releyendo"`), "el chip muestra el valor");
+
+    // Vaciar quita el valor.
+    await openCell(p, "Hyperion");
+    await clickText(p, "[role=dialog] button", "Vaciar");
+    await until(() => !/^Estado:/m.test(read(root, "Libros/Hyperion.md")), "valor vaciado");
+  });
+});
+
+test("opciones: renombrar con filas pide confirmación, actualiza las notas y Deshacer lo revierte; borrar pregunta si vaciar", { skip, timeout: 90_000 }, async () => {
+  await withBase({}, async (p, root) => {
+    await openMenu(p, "Estado");
+    await typeInto(p, `[role=dialog] input[aria-label="Renombrar Leyendo"]`, "Releyendo", true);
+    await until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "confirmación de renombrado");
+    assert.match(await p.ev<string>(`${q("[role=alertdialog]")}.textContent`), /Se reescribirán 1 nota\b/);
+    await clickText(p, "[role=alertdialog] button", "Renombrar");
+    await until(() => /^Estado: Releyendo$/m.test(read(root, "Libros/Hyperion.md")), "nota actualizada");
+    assert.match(read(root, "Bases/Libros.md"), /Releyendo/);
+    assert.doesNotMatch(read(root, "Bases/Libros.md"), /^\s*- Leyendo\s*$/m, "la opción vieja ya no está");
+    await clickText(p, ".toast button", "Deshacer");
+    await until(() => /^Estado: Leyendo$/m.test(read(root, "Libros/Hyperion.md")), "Deshacer restaura la nota");
+    assert.doesNotMatch(read(root, "Bases/Libros.md"), /Releyendo/);
+
+    // Reordenar con los botones accesibles.
+    await p.ev(`document.querySelector('[role=dialog] button[aria-label="Bajar Leyendo"]').click()`);
+    await until(() => /-\s+Leído\s*\n\s+-\s+Leyendo/.test(read(root, "Bases/Libros.md")), "orden invertido en la base");
+
+    // Borrar «Leído» (lo usa Dune): pregunta si vaciar también el valor.
+    await clickSel(p, `[role=dialog] button[aria-label="Borrar Leído"]`);
+    await until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "pregunta de vaciar");
+    assert.match(await p.ev<string>(`${q("[role=alertdialog]")}.textContent`), /1 nota\b/);
+    await clickText(p, "[role=alertdialog] button", "Vaciar y borrar");
+    await until(() => !/^Estado:/m.test(read(root, "Libros/Dune.md")), "valor vaciado en la nota");
+    assert.doesNotMatch(read(root, "Bases/Libros.md"), /Leído/);
+    assert.equal(await p.ev(`!!${q("[role=alertdialog]")}`), false, "una sola pregunta, no dos");
+  });
+});
+
+test("rol móvil: el selector de la celda sigue siendo nativo y no hay «Añadir propiedad»", { skip, timeout: 60_000 }, async () => {
+  await withBase({ mobile: true }, async (p) => {
+    await until(() => p.ev<boolean>(`!${q(`input[aria-label="Título de la nueva fila"]`)}`), "rol móvil aplicado");
+    assert.equal(await p.ev(`document.querySelectorAll('th button[aria-label="Añadir propiedad"]').length`), 0);
+    assert.equal(await p.ev(`${q('[aria-label^="Estado de «Dune»"]')}.tagName`), "SELECT");
+  });
+});

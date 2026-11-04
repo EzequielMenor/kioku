@@ -1,7 +1,8 @@
-// Menú de la cabecera de una columna de la tabla: renombrar, cambiar el tipo, ordenar, ocultar en esta vista y borrar la propiedad.
+// Menú de la cabecera de una columna de la tabla: renombrar, cambiar el tipo, editar las opciones (selección), ordenar, ocultar en esta vista y borrar la propiedad.
 // Las columnas de sistema (título, etiquetas, ruta, tipo, modificada) no son propiedades: solo ordenan y, salvo el título, se ocultan.
 import { useRef, useState } from "preact/hooks";
 import { label, PROP_TYPE_LABEL, PROP_TYPE_ORDER, READONLY } from "./db-common.ts";
+import { OptionsEditor } from "./db-options-editor.tsx";
 import { editSchema } from "./db-schema.ts";
 import type { Guard, Say } from "./db-schema.ts";
 import { Popover } from "./popover.tsx";
@@ -26,12 +27,13 @@ export function HeaderMenu({ col, view, keys, ctx }: { col: Column; view: View; 
   const isProp = !READONLY.has(col.key);
   const close = () => setOpen(false);
 
-  const run = async (op: SchemaOp): Promise<boolean> => {
+  /** `keepOpen`: las operaciones de opciones se encadenan sin cerrar el menú. */
+  const run = async (op: SchemaOp, o: { keepOpen?: boolean; confirmed?: boolean } = {}): Promise<boolean> => {
     if (busy.current) return false;
     busy.current = true;
     try {
-      const ok = await editSchema(op, ctx);
-      if (ok) { ctx.onSchema(op); close(); }
+      const ok = await editSchema(op, ctx, { confirmed: o.confirmed });
+      if (ok) { ctx.onSchema(op); if (!o.keepOpen) close(); }
       return ok;
     } finally { busy.current = false; }
   };
@@ -68,6 +70,11 @@ export function HeaderMenu({ col, view, keys, ctx }: { col: Column; view: View; 
                   {PROP_TYPE_ORDER.map((t) => <option key={t} value={t}>{PROP_TYPE_LABEL[t]}</option>)}
                 </select>
               </label>
+            </div>
+          )}
+          {isProp && (col.type === "select" || col.type === "multi") && (
+            <div class="pop-section">
+              <OptionsEditor prop={col.key} options={col.options ?? []} path={ctx.path} guard={ctx.guard} apply={(op, o) => run(op, { keepOpen: true, confirmed: o?.confirmed })} />
             </div>
           )}
           <div class="pop-section pop-list">

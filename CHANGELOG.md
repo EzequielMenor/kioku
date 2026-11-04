@@ -2,6 +2,13 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
+## [Sin publicar]
+
+### Bases (JARV-35)
+- **Estructura editable desde la tabla** (solo escritorio): columna final «+» para añadir una propiedad (nombre y tipo) y menú en cada cabecera para renombrar, cambiar el tipo, ordenar, ocultar en la vista y borrar. Los cambios que reescriben notas piden confirmación y ofrecen «Deshacer». El rol móvil no puede editar la estructura (el servidor lo rechaza) y conserva el selector nativo en las celdas.
+- **Opciones con color:** editor de opciones en el menú de las propiedades de selección y multiselección (paleta de 8 colores o sin color, renombrar, subir/bajar, borrar con la opción de vaciar el valor en las notas y «Nueva opción»). Los chips de color se ven en la celda de la tabla, en la lista y en el tablero, en tema claro y oscuro.
+- **Selector de la celda con «Crear»:** el valor de una selección es un chip que abre un selector con filtro; si lo escrito no coincide con ninguna opción se ofrece **Crear «…»**, que la añade al esquema y la asigna a la fila.
+
 ## [0.8.0] — 2026-11-04
 
 ### Avisos y asistente (MVP)

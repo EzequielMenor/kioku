@@ -128,6 +128,8 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
 
   // Tras renombrar o borrar una propiedad, el borrador (si lo hay) no debe seguir apuntando a la clave antigua; las vistas guardadas ya las reescribe el servidor.
   const afterSchema = (op: SchemaOp) => {
+    // Una vista con columnas explícitas no mostraría la propiedad nueva: se añade al borrador (la vista guardada no se toca).
+    if (op.op === "add-property") { if (view.columns.length) edit({ columns: [...view.columns, op.name] }); return; }
     if (op.op !== "rename-property" && op.op !== "delete-property") return;
     const from = op.name;
     const to = op.op === "rename-property" ? op.to : null;
