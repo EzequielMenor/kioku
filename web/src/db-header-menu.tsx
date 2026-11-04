@@ -26,11 +26,13 @@ export function HeaderMenu({ col, view, keys, ctx }: { col: Column; view: View; 
   const isProp = !READONLY.has(col.key);
   const close = () => setOpen(false);
 
-  const run = async (op: SchemaOp) => {
-    if (busy.current) return;
+  const run = async (op: SchemaOp): Promise<boolean> => {
+    if (busy.current) return false;
     busy.current = true;
     try {
-      if (await editSchema(op, ctx)) { ctx.onSchema(op); close(); }
+      const ok = await editSchema(op, ctx);
+      if (ok) { ctx.onSchema(op); close(); }
+      return ok;
     } finally { busy.current = false; }
   };
   const rename = (value: string) => {
@@ -56,7 +58,13 @@ export function HeaderMenu({ col, view, keys, ctx }: { col: Column; view: View; 
               <p class="muted small pop-hint">Enter para renombrar.</p>
               <label class="pop-field">
                 <span>Tipo</span>
-                <select aria-label="Tipo de la propiedad" value={col.type} onChange={(e) => { const type = e.currentTarget.value as PropType; if (type !== col.type) void run({ op: "set-type", name: col.key, type }); }}>
+                <select aria-label="Tipo de la propiedad" value={col.type} onChange={(e) => {
+                  const select = e.currentTarget;
+                  const type = select.value as PropType;
+                  if (type === col.type) return;
+                  // Si el cambio se rechaza o se cancela, el selector vuelve al tipo real de la columna.
+                  void run({ op: "set-type", name: col.key, type }).then((ok) => { if (!ok && select.isConnected) select.value = col.type; });
+                }}>
                   {PROP_TYPE_ORDER.map((t) => <option key={t} value={t}>{PROP_TYPE_LABEL[t]}</option>)}
                 </select>
               </label>

@@ -466,7 +466,7 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
 .dbtable th .th[aria-haspopup]::after { content: " ▾"; opacity: 0; transition: opacity .12s; }
 .dbtable th .th[aria-haspopup]:hover::after, .dbtable th .th[aria-expanded="true"]::after, .dbtable th .th[aria-haspopup]:focus-visible::after { opacity: .7; }
 .dbtable th .th[aria-haspopup]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.popover { position: fixed; z-index: 70; box-sizing: border-box; min-width: 220px; max-width: min(320px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; background: var(--surface); color: var(--fg); border: 1px solid var(--line2); border-radius: 8px; box-shadow: var(--shadow); padding: 6px; font-size: 13.5px; font-weight: 400; letter-spacing: normal; text-align: left; }
+.popover { position: fixed; z-index: 45; /* sobre la tabla y la navegación (40), bajo los diálogos de confirmación (.scrim, 50) y el toast (80) */ box-sizing: border-box; min-width: 220px; max-width: min(320px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; background: var(--surface); color: var(--fg); border: 1px solid var(--line2); border-radius: 8px; box-shadow: var(--shadow); padding: 6px; font-size: 13.5px; font-weight: 400; letter-spacing: normal; text-align: left; }
 .popover .pop-section { padding: 4px; }
 .popover .pop-section + .pop-section { border-top: 1px solid var(--line); }
 .popover .pop-field { display: grid; gap: 4px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }

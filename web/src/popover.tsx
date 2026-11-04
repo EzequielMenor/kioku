@@ -1,12 +1,31 @@
 // Popover accesible anclado a un elemento: diálogo no modal bajo el ancla, dentro de la ventana. Esc y clic fuera lo cierran,
 // el foco entra en el primer campo, Tab queda atrapado dentro y al cerrar el foco vuelve al ancla.
+import { render } from "preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 const FOCUSABLE = "button, input, select, textarea, a[href], [tabindex]:not([tabindex='-1'])";
 const MARGIN = 8;
 
-export function Popover({ anchor, label, onClose, children }: { anchor: HTMLElement | null; label: string; onClose(): void; children: ComponentChildren }) {
+interface Props { anchor: HTMLElement | null; label: string; onClose(): void; children: ComponentChildren }
+
+/**
+ * Se monta en un contenedor propio colgado de `body`: dentro de una tabla, las cabeceras pegajosas crean su propio contexto de apilado
+ * y el `z-index` del menú dejaría de significar nada frente a los diálogos y a la navegación.
+ */
+export function Popover(props: Props) {
+  const host = useRef<HTMLDivElement | null>(null);
+  if (!host.current) host.current = document.createElement("div");
+  useLayoutEffect(() => {
+    const el = host.current!;
+    document.body.appendChild(el);
+    return () => { render(null, el); el.remove(); };
+  }, []);
+  useLayoutEffect(() => { render(<PopoverBox {...props} />, host.current!); });
+  return null;
+}
+
+function PopoverBox({ anchor, label, onClose, children }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;

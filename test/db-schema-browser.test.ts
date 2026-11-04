@@ -29,10 +29,13 @@ async function until<T>(fn: () => Promise<T> | T, what: string, ms = 8000): Prom
 
 async function launch(profile: string) {
   const proc: ChildProcess = spawn(CHROMIUM, ["--headless=new", "--disable-gpu", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
-  const port = await until(() => { const f = path.join(profile, "DevToolsActivePort"); return existsSync(f) ? readFileSync(f, "utf8").split("\n")[0] : null; }, "Chromium arrancó");
-  const target = await until(async () => ((await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; webSocketDebuggerUrl: string }[]).find((x) => x.type === "page"), "hay una página");
-  const ws = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
+  let ws: WebSocket;
+  try {
+    const port = await until(() => { const f = path.join(profile, "DevToolsActivePort"); return existsSync(f) ? readFileSync(f, "utf8").split("\n")[0] : null; }, "Chromium arrancó");
+    const target = await until(async () => ((await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; webSocketDebuggerUrl: string }[]).find((x) => x.type === "page"), "hay una página");
+    ws = new WebSocket(target.webSocketDebuggerUrl);
+    await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
+  } catch (e) { proc.kill("SIGKILL"); throw e; } // un arranque fallido no deja Chromium vivo
   let id = 0;
   const pending = new Map<number, (m: { result?: unknown; error?: { message: string } }) => void>();
   ws.onmessage = (e) => { const m = JSON.parse(String(e.data)); pending.get(m.id)?.(m); };
@@ -79,6 +82,7 @@ test("menú de cabecera: renombrar con Deshacer, ocultar en la vista y borrar un
   try {
     page = await launch(profile);
     const p = page;
+    await p.send("Emulation.setDeviceMetricsOverride", { width: 1000, height: 700, deviceScaleFactor: 1, mobile: false });
     await p.send("Page.navigate", { url: `${srv.url}/?k=${KEY}#/bases/Bases/Libros.md` });
     await until(async () => (await headers(p)).includes("Autor"), "tabla con la columna Autor");
 
@@ -90,9 +94,39 @@ test("menú de cabecera: renombrar con Deshacer, ocultar en la vista y borrar un
     const focusInside = await p.ev<boolean>(`${q("[role=dialog]")}.contains(document.activeElement)`);
     assert.ok(focusInside, "el foco entra en el menú");
     await p.ev(`(() => { const i = ${q(`[role=dialog] input[aria-label="Nombre de la propiedad"]`)}; i.focus(); i.value = "Escritor"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    const files = () => [read(root, "Bases/Libros.md"), read(root, "Libros/Dune.md"), read(root, "Libros/Hyperion.md")];
+    const untouched = files();
     await key(p, "Enter", 13, "\r");
     await until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "confirmación de reescritura");
     assert.match(await p.ev<string>(`${q("[role=alertdialog]")}.textContent`), /Se reescribirán 2 notas/);
+    // El diálogo queda por encima del menú: se acierta el botón de confirmar y, donde el menú asoma por fuera del diálogo, lo que se toca es el velo.
+    const hit = await p.ev<{ button: boolean; scrim: boolean; point: boolean }>(`(() => {
+      const ok = [...document.querySelectorAll("[role=alertdialog] button")].find((b) => b.textContent.trim() === "Renombrar").getBoundingClientRect();
+      const top = document.elementFromPoint(ok.left + ok.width / 2, ok.top + ok.height / 2);
+      const pop = ${q("[role=dialog]")}.getBoundingClientRect(), dlg = ${q("[role=alertdialog]")}.getBoundingClientRect();
+      for (let x = pop.left + 3; x < pop.right; x += 6) for (let y = pop.top + 3; y < pop.bottom; y += 6) {
+        if (x >= dlg.left && x <= dlg.right && y >= dlg.top && y <= dlg.bottom) continue;
+        const el = document.elementFromPoint(x, y);
+        return { button: !!top?.closest("[role=alertdialog] button"), scrim: !!el?.closest(".scrim") && !el.closest(".popover"), point: true };
+      }
+      return { button: !!top?.closest("[role=alertdialog] button"), scrim: false, point: false };
+    })()`);
+    assert.ok(hit.button, "el botón de confirmar recibe el clic");
+    assert.ok(hit.point, "el menú asoma por fuera del diálogo");
+    assert.ok(hit.scrim, "fuera del diálogo se toca el velo, no el menú");
+
+    // Cancelar no escribe nada, deja la cabecera como estaba y el menú abierto con lo escrito.
+    await clickText(p, "[role=alertdialog] button", "Cancelar");
+    await until(() => p.ev<boolean>(`!${q("[role=alertdialog]")}`), "confirmación cerrada");
+    await sleep(400);
+    assert.deepEqual(files(), untouched, "cancelar no escribe ficheros");
+    assert.ok((await headers(p)).includes("Autor") && !(await headers(p)).includes("Escritor"), "la cabecera no cambia");
+    assert.equal(await p.ev(`!!${q("[role=dialog]")}`), true, "el menú sigue abierto");
+    assert.equal(await p.ev(`${q(`[role=dialog] input[aria-label="Nombre de la propiedad"]`)}.value`), "Escritor");
+
+    // Confirmar de verdad.
+    await key(p, "Enter", 13, "\r");
+    await until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "confirmación de reescritura (2)");
     await clickText(p, "[role=alertdialog] button", "Renombrar");
     await until(async () => (await headers(p)).includes("Escritor") && !(await headers(p)).includes("Autor"), "cabecera renombrada");
     assert.match(read(root, "Libros/Dune.md"), /^Escritor: Herbert$/m);
