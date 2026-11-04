@@ -43,7 +43,7 @@ API /api/assistant/tools/*  → Motor de niveles → Vault / Índice / Propuesta
 
 ## 5. Herramientas expuestas al modelo
 **Lectura (libres, registradas en el log):**
-`search`, `read_note`, `list_notes`, `get_project` (tarjeta de reanudación), `today`, `inbox`, `list_tasks`, `neighbors` (grafo), `recent_activity`, `find_broken_links`, `find_duplicates`, `stale_projects`, `list_databases`, `query_database` (vista guardada y/o filtros; máx. 100 filas; respeta `exclude` también en recuentos y tipos inferidos).
+`search`, `read_note`, `list_notes`, `get_project` (tarjeta de reanudación), `today`, `inbox`, `list_tasks`, `neighbors` (grafo), `recent_activity`, `find_broken_links`, `find_duplicates`, `stale_projects`, `list_databases`, `query_database` (vista guardada y/o filtros; máx. 100 filas; respeta `exclude` también en recuentos y tipos inferidos; en el esquema, `options` es una lista de nombres: el color de cada opción es solo de la UI y el asistente no lo ve ni lo edita).
 
 **Escritura nivel «auto» (reversible, con Deshacer):**
 `create_task`, `create_note`, `set_task_status`, `create_row` (fila nueva en una base: carpeta/tipo de origen, valores simples; si la base apunta a una carpeta excluida no escribe), `set_props` (cualquier propiedad de usuario con texto, número, casilla o lista de simples; `null` la quita; nunca `id`/`created`/`type`/`parked` ni `source`/`properties`/`views` de una base), `convert_capture`, `add_checkpoint`, `add_decision`, `append_to_note` (solo añadir al final).
