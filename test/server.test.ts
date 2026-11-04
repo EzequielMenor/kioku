@@ -175,6 +175,26 @@ test("API bases: esquema con vista previa, Deshacer idéntico y errores", async 
   } finally { await s.done(); }
 });
 
+test("API bases: Deshacer restaura el texto que el cambio sobrescribió, incluida una edición manual hecha tras la vista previa", async () => {
+  const s = await setup();
+  try {
+    const db = (await s.call("POST", "/api/database/create", { name: "Libros", template: "libros" })).json;
+    const row = (await s.call("POST", "/api/database/row", { path: db.path, title: "Dune", props: { Estado: "Leyendo", Nota: 9 } })).json;
+    const op = { op: "rename-property", name: "Nota", to: "Puntuación" };
+    assert.equal((await s.call("POST", "/api/database/schema/preview", { path: db.path, op })).status, 200);
+    // Edición a mano entre la vista previa y la aplicación: cambia el texto, no el conjunto de rutas.
+    const handEdited = readFileSync(path.join(s.root, row.path), "utf8") + "\nNotas escritas a mano.\n";
+    writeFileSync(path.join(s.root, row.path), handEdited);
+    const done = await s.call("POST", "/api/database/schema", { path: db.path, op });
+    assert.equal(done.status, 200);
+    const renamed = readFileSync(path.join(s.root, row.path), "utf8");
+    assert.match(renamed, /Puntuación/);
+    assert.match(renamed, /Notas escritas a mano/);
+    assert.equal((await s.call("POST", "/api/assistant/undo", { id: done.json.undoId })).status, 200);
+    assert.equal(readFileSync(path.join(s.root, row.path), "utf8"), handEdited, "Deshacer devuelve exactamente lo que se sobrescribió");
+  } finally { await s.done(); }
+});
+
 test("API bases: el Deshacer de un cambio de esquema no pisa una edición manual posterior (409)", async () => {
   const s = await setup();
   try {

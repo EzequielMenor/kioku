@@ -489,9 +489,9 @@ export async function startServer(
         case "/api/database/schema": {
           const { path: rel, op } = schemaRequest(body);
           const plan = j.planDatabaseEdit(rel, op, { skip });
-          const snap = await undo.capture(plan.paths);
           const done = await j.editDatabase(rel, op, { skip, expect: plan.paths });
-          const rec = await undo.commit(snap, { sessionId: "ui", tool: `database.${op.op}`, summary: done.summary });
+          // La instantánea es lo que `editDatabase` sobrescribió de verdad (no una foto previa, que otra escritura podría adelantar).
+          const rec = await undo.commit({ before: done.before }, { sessionId: "ui", tool: `database.${op.op}`, summary: done.summary });
           return send(res, 200, { undoId: rec.id, summary: done.summary, affected: done.affected });
         }
         case "/api/project/create": { const n = await j.createProject(str(body.title, "title")); return send(res, 200, { path: n.path }); }

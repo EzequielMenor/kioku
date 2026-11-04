@@ -489,8 +489,9 @@ export class Kioku {
    * Aplica un cambio de esquema a la base y a sus filas como una sola operación: parte del texto del fichero de la base
    * (no del índice), calcula los textos nuevos de TODOS los ficheros antes de escribir ninguno, y si una escritura falla
    * restaura los ya escritos. `expect`: rutas que el cliente vio en la vista previa; si ahora salen otras, no se escribe.
+   * `before`: el texto previo de cada fichero que sí se escribió (en orden de escritura).
    */
-  async editDatabase(rel: string, op: SchemaOp, opts: { skip?: (path: string) => boolean; expect?: string[] } = {}): Promise<{ note: NoteRow; paths: string[]; summary: string; affected: number }> {
+  async editDatabase(rel: string, op: SchemaOp, opts: { skip?: (path: string) => boolean; expect?: string[] } = {}): Promise<{ note: NoteRow; paths: string[]; summary: string; affected: number; before: Map<string, string | null> }> {
     this.databaseDef(rel);
     const run = async () => {
       const cur = await this.vault.read(rel);
@@ -537,7 +538,8 @@ export class Kioku {
         if (f.path === rel) note = n;
         this.changed("note", f.path);
       }
-      return { note: note!, paths, summary: plan.summary, affected: paths.length - 1 };
+      // Lo que había en cada fichero que se sobrescribió (leído con el hash que protegió la escritura): base exacta para Deshacer.
+      return { note: note!, paths, summary: plan.summary, affected: paths.length - 1, before: new Map(written.map((w) => [w.path, w.text])) };
     };
     const result = this.viewsQueue.then(run, run);
     this.viewsQueue = result.catch(() => undefined);

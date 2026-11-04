@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Kioku } from "../src/core/kioku.ts";
 import { tmpVault } from "./helpers.ts";
@@ -238,6 +238,24 @@ test("editDatabase rename-property reescribe base y filas", async () => {
     const q = j.queryDatabase(db);
     assert.ok(q.database.available.some((c) => c.key === "Escritor"));
     assert.ok(!q.database.available.some((c) => c.key === "Autor"));
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase devuelve el texto exacto que sobrescribió, aunque el índice vaya por detrás de una edición manual", async () => {
+  const { j, cleanup, read, root, db } = await setupLibros();
+  try {
+    const handEdited = DUNE.replace("Dune\n", "Dune, editada a mano\n");
+    writeFileSync(path.join(root, "Libros/Dune.md"), handEdited); // sin reindexar: mismas claves, distinto texto
+    const r = await j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" });
+    assert.deepEqual([...r.before.keys()], [db, "Libros/Dune.md", "Libros/Ubik.md"]);
+    assert.equal(r.before.get("Libros/Dune.md"), handEdited, "el texto previo es el del disco, no el del índice");
+    assert.equal(r.before.get("Libros/Ubik.md"), UBIK);
+    assert.equal(r.before.get(db), LIBROS_DB);
+    assert.notEqual(read("Libros/Dune.md"), handEdited);
+    // Una operación que no toca ficheros de fila solo devuelve la base.
+    const r2 = await j.editDatabase(db, { op: "add-property", name: "Páginas", type: "number" });
+    assert.deepEqual([...r2.before.keys()], [db]);
     j.close();
   } finally { cleanup(); }
 });
