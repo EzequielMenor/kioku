@@ -1,0 +1,26 @@
+# Hermes as Kioku's central agent — JARV-34
+Branch: `feat/hermes-central`, base `9894fbbd66e89296b31f3ebf5441aa69ecbb32b5`. Local commits only; delivery strategy: auto-chain, chain_strategy=stacked-to-main (user selected). Forecast revised to ~2200 authored lines, mainly security tests; cohesive runtime/API slices exceed the 400-line advisory. No push/PR/merge authorized.
+Checks: temporary vaults only; `npm test`, `npm run typecheck`, `npm run build:web`. Engram tools unavailable: mirror pending.
+
+## Specs
+S1. "no pero herems es el agente yo digo q podamos elegir que modelo usar dentro de hermes como agente n o??"
+S2. "ya pero quiero que funcione en el mac, quiero poder ponerle el modelo que quiera y tal sbs"
+S3. "vale y si el agente puede funcionar en el movil, siemrpe q el pc este encnedido q claro es la idea, seria espectacular tmb eh"
+S4. "vale, y receurdea quiero q el agente sea el centro de todo osea pueda gestionar todo y q para cosas criticas me preguente, y bueno no hace falta q por ejemplo las notas me las reescriba ni nada solo para organizar, pensar mejor y poder preguntarle lo q sea sbs"
+S5. "si dale"
+
+## Tasks
+T1 | S1,S2 | delegated, parallel independent model configuration unit | done | Config + credentials + backward-compatible Codex default. Writer checks and parent spot check passed; full suite 534/534. Commit pending runtime slice. Risk: item 2 (credentials and engine boundary).
+T2 | S3,S4 | delegated, parallel independent mobile unit | done | Mobile chat, per-call exclusions, provenance, safe undo/proposals and role/scope-bound state. Parent strengthened policy-change isolation; full suite + real Chromium test passed. Commit pending API/UI slices. Risk: item 2 (mobile authorization/privacy).
+T3 | S2 | inline | done | Docker launch implemented, RED then GREEN (5 mocked/builder tests), native Mac browser launch RED then GREEN (2 tests); no broad mounts, automatic pulls or unsandboxed fallback. Commit pending runtime slice. Real Mac/Docker execution remains UNVERIFIED under T5. Risk: item 2 (sandbox boundary).
+T4 | S4 | inline, engine change coordinated with T1 owner | done | RED 1/2 then GREEN 2/2; no unsolicited rewrite, organizing/thinking and general questions. Critical approval tested through public mobile API and Chromium (cancel preserves note, explicit approval trashes it). Commit pending runtime/UI slices.
+T5 | S1-S4 | inline + independent verifier | in_progress | Full typecheck/build:web/npm test GREEN 534/534, no skips; independent security verifier completed: no code blockers, 113/115 checks passed, 2 real-bwrap checks skipped only in its isolated HOME; parent ran both in its 534/534 suite. Required actual Mac/container proof unavailable (Docker socket permission denied); real iPhone not checked. Required Mac execution proof remains unavailable; no further attempts at that unavailable check. Local provisional source snapshots and native review state must be recorded before final decision.
+
+## Log
+L1. "vale me gustaria dejar listo tmb la parte del agente como vamos ??"
+L2. Scope clarification, verbatim requirements in S1-S4; implementation authorized by "si dale". Documentation-only access outside repository granted by "si si" for `/home/eze/gentle-shell-src/assets/` and `/home/eze/gentle-shell-src/skills/`. No access to user data granted.
+L3. Existing engine fixes provider to openai-codex, reads model only, requires bwrap and auth.json. Mobile currently blocks all assistant/proposal routes. Do not enable routes without binding tools, conversations and result metadata to mobile exclusions. Existing unrelated untracked `.commandcode/` and `.router-integration-80NOkK/` must remain untouched.
+L4. Writer trigger: model configuration and mobile access are independent multi-file behaviors, launched together with disjoint allowed edit surfaces. Parent owns macOS sandbox module and final integration; workers do not commit. No callable Engram tools found; durable file is available, mirror pending. Future delivery choice: user selected "Cadena hacia main" (stacked-to-main); origin/HEAD confirms main. No publishing authorized. One honest slicing pass: runtime (~1100 lines with tests), mobile API (~750), UI/docs (~300); security slices exceed the 400-line advisory to keep each behavior's tests together.
+L5. Research: https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models documents model.provider/default/base_url/api_mode and `hermes model`. Runtime host is Linux, so macOS execution cannot be claimed verified here.
+L6. Mobile engine contract coordinated: separate role-scoped Hermes home/memories/session IDs, with exclusions-dependent namespace to prevent old private context after policy changes. AssistantEngine declares isolatesMobile only if enforced; otherwise mobile ask fails closed.
+L7. macOS uncertainty: sandbox-exec is legacy and cannot reproduce bwrap credential bind mounts directly; Hermes auth store uses atomic writes. Avoid an unproven symlink-based credential/security fallback. Official full Hermes Docker option exists (https://hermes-agent.nousresearch.com/docs/user-guide/docker). User selected "Me sirve Docker"; no installation performed. Docker CLI exists here but socket access is denied; do not retry or escalate that permission. Container/Mac functional proof remains unavailable on this host.
