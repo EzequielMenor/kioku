@@ -1,33 +1,24 @@
-// Bases de datos: Tabla / Tablero / Lista sobre notas Markdown. La definición vive en el frontmatter de la base;
-// aquí solo se consulta y se edita (cada celda es una propiedad de su nota).
+// Bases de datos: lista de bases y vista de una base (cabecera, vistas guardadas, alta de filas). La definición vive en el frontmatter de la base;
+// aquí solo se consulta y se edita (cada celda es una propiedad de su nota). Las vistas (tabla, lista, tablero) están en db-views.tsx,
+// el panel de filtros en db-panel.tsx, las celdas en db-cells.tsx y las utilidades y tipos compartidos en db-common.ts.
 import { useEffect, useState } from "preact/hooks";
 import { isMobile } from "./role.ts";
 import { api, lsGet, lsSet } from "./api.ts";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi } from "./hooks.ts";
-import type { Column, Filter, FilterOp, QueryResult, ResultRow, View } from "./types.ts";
-import { laneValue, relationValue, safeHref } from "./cell-values.ts";
+import { enc, READONLY } from "./db-common.ts";
+import type { Result } from "./db-common.ts";
+import { ViewPanel } from "./db-panel.tsx";
+import { Board, List, Table } from "./db-views.tsx";
+import type { ResultRow, View } from "./types.ts";
 
 type Guard = <T>(fn: () => Promise<T>) => Promise<T | undefined>;
 type Go = (route: string) => void;
-interface Meta { path: string; title: string; views: View[]; warnings: string[]; available: Column[] }
-type Result = QueryResult & { database: Meta };
 interface DbListItem { path: string; title: string; rows: number; views: View[]; warnings: string[] }
 
-const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");
-const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
-  { op: "is", label: "es", needsValue: true }, { op: "is_not", label: "no es", needsValue: true },
-  { op: "contains", label: "contiene", needsValue: true }, { op: "empty", label: "está vacío", needsValue: false },
-  { op: "not_empty", label: "no está vacío", needsValue: false }, { op: "gt", label: "mayor que", needsValue: true },
-  { op: "lt", label: "menor que", needsValue: true }, { op: "before", label: "antes de", needsValue: true },
-  { op: "after", label: "después de", needsValue: true }, { op: "checked", label: "marcado", needsValue: false },
-];
 const TEMPLATES: { id: string; label: string }[] = [
   { id: "vacía", label: "Vacía" }, { id: "tareas", label: "Tareas" }, { id: "proyectos", label: "Proyectos" }, { id: "libros", label: "Libros" },
 ];
-const LABEL: Record<string, string> = { title: "Nombre", tags: "Etiquetas", path: "Ruta", type: "Tipo", mtime: "Modificada" };
-const label = (k: string) => LABEL[k] ?? k;
-const READONLY = new Set(["title", "path", "type", "mtime", "tags"]);
 
 /* ───────────────────────── lista de bases ───────────────────────── */
 
@@ -176,240 +167,6 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
       {kind === "table" && <Table res={res} view={view} sortBy={sortBy} setCell={setCell} />}
       {kind === "list" && <List res={res} />}
       {kind === "board" && <Board res={res} view={view} available={db.available} edit={edit} setCell={setCell} />}
-    </div>
-  );
-}
-
-/* ───────────────────────── filtros / orden / agrupación / columnas ───────────────────────── */
-
-function ViewPanel({ view, available, edit }: { view: View; available: Column[]; edit(p: Partial<View>): void }) {
-  const first = available[0]?.key ?? "title";
-  const setFilter = (i: number, f: Filter) => edit({ filter: view.filter.map((x, j) => (j === i ? f : x)) });
-  const cols = view.columns.length ? view.columns : available.filter((c) => c.key !== "tags").map((c) => c.key);
-  const propSelect = (value: string, onChange: (v: string) => void, aria: string) => (
-    <select value={value} onChange={(e) => onChange(e.currentTarget.value)} aria-label={aria}>
-      {available.map((c) => <option key={c.key} value={c.key}>{label(c.key)}</option>)}
-      {!available.some((c) => c.key === value) && <option value={value}>{value}</option>}
-    </select>
-  );
-  return (
-    <section class="dbpanel" aria-label="Ajustes de la vista">
-      <div>
-        <h3 class="sec">Filtros</h3>
-        {view.filter.map((f, i) => {
-          const spec = OPS.find((o) => o.op === f.op)!;
-          const col = available.find((c) => c.key === f.prop);
-          return (
-            <div class="frow" key={i}>
-              {propSelect(f.prop, (v) => setFilter(i, { prop: v, op: f.op, value: f.value }), "Propiedad")}
-              <select value={f.op} onChange={(e) => setFilter(i, { prop: f.prop, op: e.currentTarget.value as FilterOp, value: f.value })} aria-label="Condición">
-                {OPS.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
-              </select>
-              {spec.needsValue && (col?.options
-                ? <select value={String(f.value ?? "")} onChange={(e) => setFilter(i, { ...f, value: e.currentTarget.value })} aria-label="Valor">
-                    <option value="">—</option>{col.options.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
-                  </select>
-                : <input value={String(f.value ?? "")} type={col?.type === "date" || f.op === "before" || f.op === "after" ? "date" : "text"} aria-label="Valor"
-                    onInput={(e) => setFilter(i, { ...f, value: col?.type === "number" && e.currentTarget.value !== "" && !Number.isNaN(Number(e.currentTarget.value)) ? Number(e.currentTarget.value) : e.currentTarget.value })} />)}
-              <button class="subtle" aria-label="Quitar filtro" onClick={() => edit({ filter: view.filter.filter((_, j) => j !== i) })}>✕</button>
-            </div>
-          );
-        })}
-        <button class="subtle" onClick={() => edit({ filter: [...view.filter, { prop: first, op: "is", value: "" }] })}>+ Filtro</button>
-      </div>
-      <div>
-        <h3 class="sec">Orden</h3>
-        {view.sort.map((s, i) => (
-          <div class="frow" key={i}>
-            {propSelect(s.prop, (v) => edit({ sort: view.sort.map((x, j) => (j === i ? { ...x, prop: v } : x)) }), "Ordenar por")}
-            <select value={s.dir} onChange={(e) => edit({ sort: view.sort.map((x, j) => (j === i ? { ...x, dir: e.currentTarget.value as "asc" | "desc" } : x)) })} aria-label="Dirección">
-              <option value="asc">ascendente</option><option value="desc">descendente</option>
-            </select>
-            <button class="subtle" aria-label="Quitar orden" onClick={() => edit({ sort: view.sort.filter((_, j) => j !== i) })}>✕</button>
-          </div>
-        ))}
-        <button class="subtle" onClick={() => edit({ sort: [...view.sort, { prop: first, dir: "asc" }] })}>+ Orden</button>
-        <h3 class="sec">Agrupar por</h3>
-        <select value={view.group ?? ""} onChange={(e) => edit({ group: e.currentTarget.value || null })} aria-label="Agrupar por">
-          <option value="">Sin agrupar</option>
-          {available.map((c) => <option key={c.key} value={c.key}>{label(c.key)}</option>)}
-        </select>
-      </div>
-      <div>
-        <h3 class="sec">Columnas</h3>
-        <div class="colpick">
-          {available.map((c) => (
-            <label key={c.key}>
-              <input type="checkbox" checked={cols.includes(c.key)}
-                onChange={(e) => edit({ columns: e.currentTarget.checked ? [...cols, c.key] : cols.filter((k) => k !== c.key) })} /> {label(c.key)}
-            </label>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ───────────────────────── celdas ───────────────────────── */
-
-const text = (v: unknown): string => (v === null || v === undefined ? "" : Array.isArray(v) ? v.join(", ") : String(v));
-
-function Cell({ col, row, setCell }: { col: Column; row: ResultRow; setCell(r: ResultRow, k: string, v: unknown): void }) {
-  const v = row.cells[col.key];
-  const aria = `${label(col.key)} de «${row.title}»`;
-  if (col.key === "title") return <a href={`#/nota/${enc(row.path)}`}>{row.title}</a>;
-  if (col.key === "tags") return <>{(Array.isArray(v) ? v : []).map((t) => <span class="chip" key={String(t)}>#{String(t)}</span>)}</>;
-  if (col.key === "mtime") return <span class="muted">{typeof v === "number" ? new Date(v).toLocaleDateString("es") : ""}</span>;
-  if (READONLY.has(col.key)) return <span class="muted">{text(v)}</span>;
-  switch (col.type) {
-    case "checkbox":
-      return <input type="checkbox" checked={v === true} aria-label={aria} onChange={(e) => setCell(row, col.key, e.currentTarget.checked)} />;
-    case "select": {
-      const options = col.options ?? [];
-      const cur = text(v);
-      return (
-        <select class="cell-select" value={cur} aria-label={aria} onChange={(e) => setCell(row, col.key, e.currentTarget.value)}>
-          <option value="">—</option>
-          {cur && !options.some((o) => o.name === cur) && <option value={cur}>{cur}</option>}
-          {options.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
-        </select>
-      );
-    }
-    case "number":
-      return <input class="cell-input num" type="number" defaultValue={text(v)} key={text(v)} aria-label={aria}
-        onChange={(e) => setCell(row, col.key, e.currentTarget.value === "" ? "" : Number(e.currentTarget.value))} />;
-    case "date":
-      return <input class="cell-input" type="date" defaultValue={text(v).slice(0, 10)} key={text(v)} aria-label={aria}
-        onChange={(e) => setCell(row, col.key, e.currentTarget.value)} />;
-    case "multi":
-      return <input class="cell-input" defaultValue={text(v)} key={text(v)} placeholder="a, b, c" aria-label={aria}
-        onBlur={(e) => { const next = e.currentTarget.value.split(",").map((s) => s.trim()).filter(Boolean); if (next.join(", ") !== text(v)) setCell(row, col.key, next); }} />;
-    case "relation":
-      return <input class="cell-input" defaultValue={text(v)} key={text(v)} placeholder="[[Nota]], [[Otra]]" aria-label={aria}
-        onBlur={(e) => { if (e.currentTarget.value !== text(v)) setCell(row, col.key, relationValue(e.currentTarget.value, v)); }}
-        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />;
-    default:
-      return (
-        <span class="cell-text">
-          <input class="cell-input" defaultValue={text(v)} key={text(v)} aria-label={aria}
-            onBlur={(e) => { if (e.currentTarget.value !== text(v)) setCell(row, col.key, e.currentTarget.value); }}
-            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-          {col.type === "url" && safeHref(text(v)) && <a href={safeHref(text(v))!} target="_blank" rel="noreferrer noopener" aria-label="Abrir enlace">↗</a>}
-        </span>
-      );
-  }
-}
-
-/* ───────────────────────── vistas ───────────────────────── */
-
-type SetCell = (r: ResultRow, k: string, v: unknown) => void;
-
-function Table({ res, view, sortBy, setCell }: { res: Result; view: View; sortBy(k: string): void; setCell: SetCell }) {
-  const cur = view.sort[0];
-  const rowsOf = res.groups ?? [{ key: "", rows: res.rows }];
-  return (
-    <div class="dbtable">
-      <table>
-        <thead>
-          <tr>{res.columns.map((c) => (
-            <th key={c.key} aria-sort={cur?.prop === c.key ? (cur.dir === "asc" ? "ascending" : "descending") : "none"}>
-              <button class="th" onClick={() => sortBy(c.key)}>{label(c.key)}{cur?.prop === c.key && <span class="muted">{cur.dir === "asc" ? " ↑" : " ↓"}</span>}</button>
-            </th>
-          ))}</tr>
-        </thead>
-        <tbody>
-          {rowsOf.map((g) => (
-            <>
-              {res.groups && <tr class="grouprow" key={`g:${g.key}`}><td colSpan={res.columns.length}>{g.key || "Sin valor"} <span class="muted">{g.rows.length}</span></td></tr>}
-              {g.rows.map((r) => <tr key={`${g.key}:${r.path}`}>{res.columns.map((c) => <td key={c.key}><Cell col={c} row={r} setCell={setCell} /></td>)}</tr>)}
-            </>
-          ))}
-        </tbody>
-      </table>
-      {res.rows.length === 0 && <div class="empty">Nada que mostrar con esta vista.</div>}
-    </div>
-  );
-}
-
-function List({ res }: { res: Result }) {
-  const rest = res.columns.filter((c) => c.key !== "title");
-  return (
-    <ul class="dblist">
-      {res.rows.map((r) => (
-        <li key={r.path}>
-          <a href={`#/nota/${enc(r.path)}`}>{r.title}</a>
-          {rest.map((c) => {
-            const v = r.cells[c.key];
-            if (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) return null;
-            return <span key={c.key} class="chip" title={label(c.key)}>{c.type === "checkbox" ? (v ? `✓ ${label(c.key)}` : "") : text(v)}</span>;
-          })}
-        </li>
-      ))}
-      {res.rows.length === 0 && <div class="empty">Nada que mostrar con esta vista.</div>}
-    </ul>
-  );
-}
-
-function Board({ res, view, available, edit, setCell }: { res: Result; view: View; available: Column[]; edit(p: Partial<View>): void; setCell: SetCell }) {
-  const [over, setOver] = useState<string | null>(null);
-  const group = view.group;
-  if (!group) {
-    const candidates = available.filter((c) => c.type === "select");
-    return (
-      <div class="empty">
-        Elige la propiedad por la que agrupar el tablero.
-        <div class="row" style="justify-content:center">
-          <select value="" onChange={(e) => e.currentTarget.value && edit({ group: e.currentTarget.value })} aria-label="Agrupar por">
-            <option value="">Agrupar por…</option>
-            {(candidates.length ? candidates : available).map((c) => <option key={c.key} value={c.key}>{label(c.key)}</option>)}
-          </select>
-        </div>
-      </div>
-    );
-  }
-  const col = available.find((c) => c.key === group);
-  const byKey = new Map((res.groups ?? []).map((g) => [g.key, g.rows]));
-  // Columnas del tablero: todas las opciones del esquema (aunque estén vacías), luego otros valores presentes y «Sin valor».
-  const optionNames = (col?.options ?? []).map((o) => o.name);
-  const lanes = [...optionNames, ...[...byKey.keys()].filter((k) => k !== "" && !optionNames.includes(k)), ""];
-  const movable = !READONLY.has(group) && col?.type !== "multi";
-  const drop = (lane: string, e: DragEvent) => {
-    e.preventDefault();
-    setOver(null);
-    const path = e.dataTransfer?.getData("text/plain");
-    const row = res.rows.find((r) => r.path === path);
-    if (row && movable && String(row.cells[group] ?? "") !== lane) setCell(row, group, laneValue(col?.type, lane));
-  };
-  const rest = res.columns.filter((c) => c.key !== "title" && c.key !== group);
-  return (
-    <div class="board" style={`grid-template-columns: repeat(${Math.max(1, lanes.length)}, minmax(210px, 1fr))`}>
-      {lanes.map((lane) => {
-        const items = byKey.get(lane) ?? [];
-        if (lane === "" && items.length === 0) return null;
-        return (
-          <section key={lane} class={`col ${over === lane ? "over" : ""}`} aria-label={lane || "Sin valor"}
-            onDragOver={(e) => { e.preventDefault(); setOver(lane); }} onDragLeave={() => setOver((o) => (o === lane ? null : o))} onDrop={(e) => drop(lane, e)}>
-            <h2 class="sec">{lane || "Sin valor"} <span class="muted">{items.length}</span></h2>
-            {items.map((r) => (
-              <article key={r.path} class="kcard" draggable={movable} onDragStart={(e) => e.dataTransfer?.setData("text/plain", r.path)}>
-                <a href={`#/nota/${enc(r.path)}`}>{r.title}</a>
-                <div class="meta">
-                  {rest.map((c) => {
-                    const v = r.cells[c.key];
-                    return v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length) ? null : <span class="chip" key={c.key} title={label(c.key)}>{text(v)}</span>;
-                  })}
-                  {movable && (
-                    <select class="cell-select kmove" value={lane} aria-label={`Mover «${r.title}»`} onChange={(e) => setCell(r, group, laneValue(col?.type, e.currentTarget.value))}>
-                      {lanes.filter((l) => l !== "" || lane === "").map((l) => <option key={l} value={l}>{l || "Sin valor"}</option>)}
-                    </select>
-                  )}
-                </div>
-              </article>
-            ))}
-            {items.length === 0 && <div class="kempty muted small">{movable ? "Arrastra filas aquí" : "Vacío"}</div>}
-          </section>
-        );
-      })}
     </div>
   );
 }
