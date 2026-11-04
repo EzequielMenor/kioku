@@ -2,7 +2,7 @@
 // renombrar, subir/bajar, borrar (pregunta si vaciar el valor en las notas) y «Nueva opción». Cada cambio es una operación de esquema.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api } from "./api.ts";
-import { askConfirm } from "./dialogs.tsx";
+import { askChoice } from "./dialogs.tsx";
 import { OPTION_COLORS, OPTION_LABELS, optionClass } from "./option-colors.ts";
 import type { Guard } from "./db-schema.ts";
 import type { OptionColor, PropOption, SchemaOp } from "./types.ts";
@@ -12,11 +12,13 @@ interface Props {
   options: PropOption[];
   path: string;
   guard: Guard;
+  /** Solo la selección simple pinta chips de color; en la múltiple no se ofrece elegir color. */
+  colors: boolean;
   /** Aplica la operación (con vista previa, confirmación y «Deshacer»); `confirmed` si ya se preguntó. */
   apply(op: SchemaOp, opts?: { confirmed?: boolean }): Promise<boolean>;
 }
 
-export function OptionsEditor({ prop, options, path, guard, apply }: Props) {
+export function OptionsEditor({ prop, options, path, guard, colors, apply }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const refocus = useRef<string | null>(null);
   const [palette, setPalette] = useState<string | null>(null);
@@ -34,25 +36,33 @@ export function OptionsEditor({ prop, options, path, guard, apply }: Props) {
     refocus.current = `${d < 0 ? "Subir" : "Bajar"} ${options[i].name}`;
     void apply({ op: "reorder-options", prop, options: names }).then((ok) => { if (!ok) refocus.current = null; });
   };
-  const rename = (o: PropOption, value: string) => {
-    const to = value.trim();
-    if (to && to !== o.name) void apply({ op: "rename-option", prop, option: o.name, to });
+  const rename = (o: PropOption, input: HTMLInputElement) => {
+    const to = input.value.trim();
+    const reset = () => { if (input.isConnected) input.value = o.name; };
+    if (!to || to === o.name) { reset(); return; }
+    // Si se rechaza o se cancela, el campo vuelve al nombre real de la opción.
+    void apply({ op: "rename-option", prop, option: o.name, to }).then((ok) => { if (!ok) reset(); });
   };
   const color = (o: PropOption, c: OptionColor | null) => {
     setPalette(null);
     if ((o.color ?? null) !== c) void apply({ op: "set-option-color", prop, option: o.name, color: c });
   };
   const remove = async (o: PropOption) => {
-    // El número de notas sale de previsualizar el borrado con `clear`; «Cancelar» conserva el valor en ellas (la opción se borra igual, con «Deshacer»).
+    // El número de notas sale de previsualizar el borrado con `clear`. Con notas que la usan hay tres salidas: cancelar (no toca nada),
+    // borrar la opción conservando el valor en las notas, o vaciarlo también.
     const plan = await guard(() => api<{ affected: number }>("POST", "/api/database/schema/preview", { path, op: { op: "delete-option", prop, option: o.name, clear: true } }));
     if (!plan) return;
     const n = plan.affected;
-    const clear = n > 0 && (await askConfirm({
-      title: `¿Vaciar «${o.name}» en ${n === 1 ? "1 nota" : `${n} notas`}?`,
-      body: `Se borrará la opción «${o.name}». «Cancelar» la borra sin tocar las notas, que conservan ese valor.`,
-      confirm: "Vaciar y borrar",
-      danger: true,
-    }));
+    let clear = false;
+    if (n > 0) {
+      const choice = await askChoice({
+        title: `Borrar la opción «${o.name}»`,
+        body: `La usan ${n === 1 ? "1 nota" : `${n} notas`}. Puedes conservar el valor en ellas o vaciarlo.`,
+        choices: [{ value: "keep", label: "Borrar y conservar el valor" }, { value: "clear", label: "Vaciar y borrar", danger: true }],
+      });
+      if (choice === null) return;
+      clear = choice === "clear";
+    }
     await apply({ op: "delete-option", prop, option: o.name, ...(clear ? { clear: true } : {}) }, { confirmed: clear });
   };
   const add = async (input: HTMLInputElement) => {
@@ -65,16 +75,16 @@ export function OptionsEditor({ prop, options, path, guard, apply }: Props) {
       <h3 class="pop-title">Opciones</h3>
       {options.map((o, i) => (
         <div key={o.name}>
-          <div class="opt-row">
-            <button class={`opt-dot ${optionClass(o.color)}`} aria-label={`Color de ${o.name}`} aria-expanded={palette === o.name} title={o.color ? OPTION_LABELS[o.color] : "Sin color"}
-              onClick={() => setPalette(palette === o.name ? null : o.name)} />
+          <div class={`opt-row${colors ? "" : " nodot"}`}>
+            {colors && <button class={`opt-dot ${optionClass(o.color)}`} aria-label={`Color de ${o.name}: ${o.color ? OPTION_LABELS[o.color] : "Sin color"}`} aria-expanded={palette === o.name} title={o.color ? OPTION_LABELS[o.color] : "Sin color"}
+              onClick={() => setPalette(palette === o.name ? null : o.name)} />}
             <input key={o.name} defaultValue={o.name} aria-label={`Renombrar ${o.name}`}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); rename(o, e.currentTarget.value); } }} />
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); rename(o, e.currentTarget); } }} />
             <button aria-label={`Subir ${o.name}`} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
             <button aria-label={`Bajar ${o.name}`} disabled={i === options.length - 1} onClick={() => move(i, 1)}>↓</button>
             <button class="danger" aria-label={`Borrar ${o.name}`} onClick={() => void remove(o)}>×</button>
           </div>
-          {palette === o.name && (
+          {colors && palette === o.name && (
             <div class="opt-swatches" role="group" aria-label={`Colores de ${o.name}`}>
               {OPTION_COLORS.map((c) => <button key={c} class={optionClass(c)} aria-label={OPTION_LABELS[c]} aria-pressed={o.color === c} onClick={() => color(o, c)}>{OPTION_LABELS[c]}</button>)}
               <button class="opt-none" aria-label="Sin color" aria-pressed={!o.color} onClick={() => color(o, null)}>Sin color</button>

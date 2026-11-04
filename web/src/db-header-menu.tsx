@@ -74,7 +74,7 @@ export function HeaderMenu({ col, view, keys, ctx }: { col: Column; view: View; 
           )}
           {isProp && (col.type === "select" || col.type === "multi") && (
             <div class="pop-section">
-              <OptionsEditor prop={col.key} options={col.options ?? []} path={ctx.path} guard={ctx.guard} apply={(op, o) => run(op, { keepOpen: true, confirmed: o?.confirmed })} />
+              <OptionsEditor prop={col.key} options={col.options ?? []} path={ctx.path} guard={ctx.guard} colors={col.type === "select"} apply={(op, o) => run(op, { keepOpen: true, confirmed: o?.confirmed })} />
             </div>
           )}
           <div class="pop-section pop-list">

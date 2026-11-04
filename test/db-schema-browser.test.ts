@@ -270,6 +270,12 @@ async function withBase(opts: { mobile?: boolean }, fn: (p: Page, root: string) 
   }
 }
 
+/** Como `clickText`, pero espera a que el elemento exista: toasts y diálogos llegan un instante después de que el fichero cambie. */
+const clickWhen = async (p: Page, sel: string, text: string) => {
+  await until(() => p.ev<boolean>(`[...document.querySelectorAll(${JSON.stringify(sel)})].some((e) => e.textContent.trim() === ${JSON.stringify(text)})`), `«${text}» en ${sel}`);
+  await clickText(p, sel, text);
+};
+
 /** Escribe en un campo (enfocado) como lo haría el usuario y, si se pide, pulsa Enter. */
 const typeInto = async (p: Page, sel: string, value: string, enter = false) => {
   await p.ev(`(() => { const i = ${q(sel)}; i.focus(); i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
@@ -300,17 +306,17 @@ test("opciones: añadir «Pausado» en verde da al chip de la celda la clase opt
   await withBase({}, async (p, root) => {
     await openMenu(p, "Estado");
     await typeInto(p, `[role=dialog] input[aria-label="Nueva opción"]`, "Pausado", true);
-    await until(() => p.ev<boolean>(`!!${q(`[role=dialog] button[aria-label="Color de Pausado"]`)}`), "la opción aparece en el editor");
+    await until(() => p.ev<boolean>(`!!${q(`[role=dialog] button[aria-label^="Color de Pausado"]`)}`), "la opción aparece en el editor");
     assert.match(read(root, "Bases/Libros.md"), /Pausado/);
     assert.ok(await p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Propiedad Estado"]`)}`), "el menú sigue abierto para seguir editando");
-    await clickSel(p, `[role=dialog] button[aria-label="Color de Pausado"]`);
+    await clickSel(p, `[role=dialog] button[aria-label^="Color de Pausado"]`);
     await clickSel(p, `[role=dialog] [role=group][aria-label="Colores de Pausado"] button[aria-label="Verde"]`);
     await until(() => /name: Pausado\s*\n\s+color: green/.test(read(root, "Bases/Libros.md")), "color guardado en la base");
     await key(p, "Escape", 27);
     await until(() => p.ev<boolean>(`!${q("[role=dialog]")}`), "menú cerrado");
 
     await openCell(p, "Hyperion");
-    await clickText(p, "[role=dialog] button", "Pausado");
+    await clickWhen(p, "[role=dialog] button", "Pausado");
     await until(() => /^Estado: Pausado$/m.test(read(root, "Libros/Hyperion.md")), "valor asignado");
     await until(() => p.ev<boolean>(`${q(cellBtn("Hyperion"))}.classList.contains("opt-green")`), "chip verde en la celda");
     assert.equal(await p.ev(`${q(cellBtn("Dune"))}.classList.contains("opt-none")`), true, "una opción sin color usa la clase neutra");
@@ -339,44 +345,112 @@ test("selector de la celda: filtra, elige la coincidencia exacta y «Crear» añ
     await openCell(p, "Hyperion");
     await typeInto(p, `[role=dialog] input[aria-label="Filtrar opciones"]`, "Releyendo");
     await until(async () => (await labels()).includes("Crear «Releyendo»"), "se ofrece «Crear» (2)");
-    await clickText(p, "[role=dialog] button", "Crear «Releyendo»");
+    await clickWhen(p, "[role=dialog] button", "Crear «Releyendo»");
     await until(() => /^Estado: Releyendo$/m.test(read(root, "Libros/Hyperion.md")), "celda asignada");
     assert.match(read(root, "Bases/Libros.md"), /Releyendo/);
     await until(() => p.ev<boolean>(`${q(cellBtn("Hyperion"))}.textContent.trim() === "Releyendo"`), "el chip muestra el valor");
 
     // Vaciar quita el valor.
     await openCell(p, "Hyperion");
-    await clickText(p, "[role=dialog] button", "Vaciar");
+    await clickWhen(p, "[role=dialog] button", "Vaciar");
     await until(() => !/^Estado:/m.test(read(root, "Libros/Hyperion.md")), "valor vaciado");
   });
 });
 
-test("opciones: renombrar con filas pide confirmación, actualiza las notas y Deshacer lo revierte; borrar pregunta si vaciar", { skip, timeout: 90_000 }, async () => {
+test("opciones: renombrar con filas pide confirmación, actualiza las notas y Deshacer lo revierte; reordenar", { skip, timeout: 90_000 }, async () => {
   await withBase({}, async (p, root) => {
     await openMenu(p, "Estado");
-    await typeInto(p, `[role=dialog] input[aria-label="Renombrar Leyendo"]`, "Releyendo", true);
+    const rename = `[role=dialog] input[aria-label="Renombrar Leyendo"]`;
+    await until(() => p.ev<boolean>(`!!${q(rename)}`), "campo para renombrar «Leyendo»");
+    // Cancelar la confirmación deja el campo con el nombre real.
+    await typeInto(p, rename, "Releyendo", true);
+    await until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "confirmación (cancelar)");
+    await clickWhen(p, "[role=alertdialog] button", "Cancelar");
+    await until(() => p.ev<boolean>(`${q(rename)}.value === "Leyendo"`), "el campo vuelve al nombre real");
+    await typeInto(p, rename, "Releyendo", true);
     await until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "confirmación de renombrado");
     assert.match(await p.ev<string>(`${q("[role=alertdialog]")}.textContent`), /Se reescribirán 1 nota\b/);
-    await clickText(p, "[role=alertdialog] button", "Renombrar");
+    await clickWhen(p, "[role=alertdialog] button", "Renombrar");
     await until(() => /^Estado: Releyendo$/m.test(read(root, "Libros/Hyperion.md")), "nota actualizada");
     assert.match(read(root, "Bases/Libros.md"), /Releyendo/);
     assert.doesNotMatch(read(root, "Bases/Libros.md"), /^\s*- Leyendo\s*$/m, "la opción vieja ya no está");
-    await clickText(p, ".toast button", "Deshacer");
+    await clickWhen(p, ".toast button", "Deshacer");
     await until(() => /^Estado: Leyendo$/m.test(read(root, "Libros/Hyperion.md")), "Deshacer restaura la nota");
     assert.doesNotMatch(read(root, "Bases/Libros.md"), /Releyendo/);
 
     // Reordenar con los botones accesibles.
     await p.ev(`document.querySelector('[role=dialog] button[aria-label="Bajar Leyendo"]').click()`);
     await until(() => /-\s+Leído\s*\n\s+-\s+Leyendo/.test(read(root, "Bases/Libros.md")), "orden invertido en la base");
+  });
+});
 
-    // Borrar «Leído» (lo usa Dune): pregunta si vaciar también el valor.
+test("opciones: borrar una opción en uso ofrece Cancelar, conservar el valor o vaciarlo; sin uso se borra directo", { skip, timeout: 90_000 }, async () => {
+  await withBase({}, async (p, root) => {
+    const files = () => [read(root, "Bases/Libros.md"), read(root, "Libros/Dune.md"), read(root, "Libros/Hyperion.md")];
+    const choiceDialog = () => until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "pregunta de borrado");
+    const listed = (name: string) => p.ev<boolean>(`!!${q(`[role=dialog] button[aria-label="Borrar ${name}"]`)}`);
+    await openMenu(p, "Estado");
+    const before = files();
+
+    // Cancelar y Esc: no se toca nada y la opción sigue en la lista.
     await clickSel(p, `[role=dialog] button[aria-label="Borrar Leído"]`);
-    await until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "pregunta de vaciar");
-    assert.match(await p.ev<string>(`${q("[role=alertdialog]")}.textContent`), /1 nota\b/);
-    await clickText(p, "[role=alertdialog] button", "Vaciar y borrar");
-    await until(() => !/^Estado:/m.test(read(root, "Libros/Dune.md")), "valor vaciado en la nota");
-    assert.doesNotMatch(read(root, "Bases/Libros.md"), /Leído/);
+    await choiceDialog();
+    const text = await p.ev<string>(`${q("[role=alertdialog]")}.textContent`);
+    assert.match(text, /1 nota\b/);
+    assert.deepEqual(await p.ev<string[]>(`[...document.querySelectorAll("[role=alertdialog] button")].map((b) => b.textContent.trim())`), ["Cancelar", "Borrar y conservar el valor", "Vaciar y borrar"]);
+    await until(() => p.ev<boolean>(`document.activeElement.textContent.trim() === "Cancelar"`), "el foco empieza en Cancelar");
+    await clickWhen(p, "[role=alertdialog] button", "Cancelar");
+    await until(() => p.ev<boolean>(`!${q("[role=alertdialog]")}`), "diálogo cerrado (Cancelar)");
+    await sleep(400);
+    assert.deepEqual(files(), before, "Cancelar no escribe nada");
+    assert.ok(await listed("Leído"), "la opción sigue listada");
+    await clickSel(p, `[role=dialog] button[aria-label="Borrar Leído"]`);
+    await choiceDialog();
+    await key(p, "Escape", 27);
+    await until(() => p.ev<boolean>(`!${q("[role=alertdialog]")}`), "diálogo cerrado (Esc)");
+    await sleep(400);
+    assert.deepEqual(files(), before, "Esc no escribe nada");
+    assert.ok(await listed("Leído") && (await p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Propiedad Estado"]`)}`)), "opción y menú siguen ahí");
+
+    // Borrar y conservar el valor: la opción desaparece del esquema, la nota conserva su valor, y no hay una segunda pregunta.
+    await clickSel(p, `[role=dialog] button[aria-label="Borrar Leído"]`);
+    await choiceDialog();
+    await clickWhen(p, "[role=alertdialog] button", "Borrar y conservar el valor");
+    await until(() => !/Leído/.test(read(root, "Bases/Libros.md")), "opción borrada del esquema");
+    assert.match(read(root, "Libros/Dune.md"), /^Estado: Leído$/m, "la nota conserva el valor");
     assert.equal(await p.ev(`!!${q("[role=alertdialog]")}`), false, "una sola pregunta, no dos");
+
+    // Vaciar y borrar: también se quita el valor de las notas.
+    await clickSel(p, `[role=dialog] button[aria-label="Borrar Leyendo"]`);
+    await choiceDialog();
+    await clickWhen(p, "[role=alertdialog] button", "Vaciar y borrar");
+    await until(() => !/^Estado:/m.test(read(root, "Libros/Hyperion.md")), "valor vaciado en la nota");
+    assert.doesNotMatch(read(root, "Bases/Libros.md"), /Leyendo/);
+    assert.equal(await p.ev(`!!${q("[role=alertdialog]")}`), false, "una sola pregunta, no dos");
+
+    // Sin notas que la usen: se borra directo, sin diálogo.
+    await typeInto(p, `[role=dialog] input[aria-label="Nueva opción"]`, "Nunca", true);
+    await until(() => listed("Nunca"), "opción nueva listada");
+    await clickSel(p, `[role=dialog] button[aria-label="Borrar Nunca"]`);
+    await until(async () => !(await listed("Nunca")), "borrada sin preguntar");
+    assert.equal(await p.ev(`!!${q("[role=alertdialog]")}`), false);
+  });
+});
+
+test("opciones de multiselección: sin color, con renombrar, reordenar y borrar", { skip, timeout: 60_000 }, async () => {
+  await withBase({}, async (p, root) => {
+    await openMenu(p, "Estado");
+    assert.ok(await p.ev<boolean>(`!!${q(`[role=dialog] button[aria-label="Color de Leyendo: Sin color"]`)}`), "el punto de color nombra el color actual");
+    await p.ev(`(() => { const s = ${q(`[role=dialog] select[aria-label="Tipo de la propiedad"]`)}; s.value = "multi"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+    await until(() => /type: multi/.test(read(root, "Bases/Libros.md")), "tipo cambiado a multi");
+    await until(() => p.ev<boolean>(`!${q("[role=dialog]")}`), "el menú se cierra tras cambiar el tipo");
+    await until(() => p.ev<boolean>(`${header("Estado")}.getAttribute("aria-expanded") === "false"`), "cabecera lista");
+    await openMenu(p, "Estado");
+    await until(() => p.ev<boolean>(`!!${q(`[role=dialog] input[aria-label="Renombrar Leyendo"]`)}`), "editor de opciones de la multiselección");
+    await until(() => p.ev<boolean>(`!${q(`[role=dialog] button[aria-label^="Color de"]`)}`), "sin selector de color en multi");
+    for (const sel of [`[role=dialog] input[aria-label="Renombrar Leyendo"]`, `[role=dialog] button[aria-label="Bajar Leyendo"]`, `[role=dialog] button[aria-label="Borrar Leyendo"]`]) {
+      assert.ok(await p.ev<boolean>(`!!${q(sel)}`), `sigue ${sel}`);
+    }
   });
 });
 

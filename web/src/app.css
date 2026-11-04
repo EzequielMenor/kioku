@@ -530,6 +530,7 @@ button.opt-chip:focus-visible { outline: 2px solid var(--accent); outline-offset
 .popover .pop-title { margin: 2px 0 6px; font-size: 12px; font-weight: 500; color: var(--muted); }
 /* Editor de opciones del menú de columna */
 .opt-row { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 4px; align-items: center; margin-bottom: 4px; }
+.opt-row.nodot { grid-template-columns: 1fr auto auto auto; }
 .opt-row input { min-width: 0; color: var(--fg); font-size: 13px; }
 .opt-row button { padding: 2px 7px; min-height: 0; }
 .opt-dot { width: 22px; height: 22px; padding: 0 !important; border-radius: 50%; border: 1px solid var(--line2); }
