@@ -183,3 +183,197 @@ test("bases: dos saveView simultáneos conservan ambas vistas y ninguno falla", 
     j.close();
   } finally { cleanup(); }
 });
+
+/* ---------------- editDatabase / planDatabaseEdit ---------------- */
+
+const LIBROS_DB = `---
+type: database
+source:
+  folder: Libros/
+properties:
+  Autor:
+    type: text
+  Estado:
+    type: select
+    options:
+      - Leyendo
+      - Leído
+views:
+  - name: Tabla
+    kind: table
+    columns: [title, Autor, Estado]
+    filter: []
+    sort: []
+    group: null
+---
+
+# Libros
+`;
+const DUNE = "---\nAutor: Herbert\nEstado: Leyendo\nFecha: 2026-10-27 # x\n---\n\nDune\n";
+const UBIK = "---\nAutor: Dick\nEstado: Leído\n---\n\nUbik\n";
+const NEUROMANTE = "---\nEstado: Leído\n---\n\nNeuromante\n";
+
+async function setupLibros(extra: Record<string, string> = {}) {
+  const files = { "Bases/Libros.md": LIBROS_DB, "Libros/Dune.md": DUNE, "Libros/Ubik.md": UBIK, "Libros/Neuromante.md": NEUROMANTE, ...extra };
+  const { root, cleanup } = tmpVault(files);
+  const j = await Kioku.open({ root });
+  const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
+  const snapshot = () => Object.fromEntries(Object.keys(files).map((f) => [f, read(f)]));
+  return { j, root, cleanup, read, snapshot, db: "Bases/Libros.md" };
+}
+
+test("editDatabase rename-property reescribe base y filas", async () => {
+  const { j, cleanup, read, snapshot, db } = await setupLibros();
+  try {
+    const before = snapshot();
+    const r = await j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" });
+    assert.equal(r.affected, 2);
+    assert.deepEqual(r.paths, [db, "Libros/Dune.md", "Libros/Ubik.md"]);
+    assert.equal(r.note.path, db);
+    assert.ok(r.summary.length > 0);
+    assert.match(read("Libros/Dune.md"), /^---\nEscritor: Herbert\n/);
+    assert.match(read("Libros/Ubik.md"), /^---\nEscritor: Dick\n/);
+    assert.equal(read("Libros/Neuromante.md"), before["Libros/Neuromante.md"]);
+    assert.match(read(db), /Escritor:/);
+    const q = j.queryDatabase(db);
+    assert.ok(q.database.available.some((c) => c.key === "Escritor"));
+    assert.ok(!q.database.available.some((c) => c.key === "Autor"));
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase: renombrar conserva fechas sin comillas y comentarios", async () => {
+  const { j, cleanup, read, db } = await setupLibros();
+  try {
+    await j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" });
+    assert.equal(read("Libros/Dune.md"), "---\nEscritor: Herbert\nEstado: Leyendo\nFecha: 2026-10-27 # x\n---\n\nDune\n");
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase: colisión lanza invalid y no cambia ningún fichero", async () => {
+  const { j, cleanup, snapshot, db } = await setupLibros({ "Libros/Minusculas.md": "---\nautor: x\n---\n\nM\n" });
+  try {
+    const before = snapshot();
+    await assert.rejects(() => j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Estado" }), (e: any) => e.code === "invalid");
+    assert.deepEqual(snapshot(), before);
+    await assert.rejects(() => j.editDatabase(db, { op: "rename-property", name: "Autor", to: "autor" }), (e: any) => e.code === "invalid");
+    assert.deepEqual(snapshot(), before);
+    assert.throws(() => j.planDatabaseEdit(db, { op: "rename-property", name: "Autor", to: "Estado" }), (e: any) => e.code === "invalid");
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase: base inexistente es not-found y una nota que no es base es invalid", async () => {
+  const { j, cleanup } = await setupLibros();
+  try {
+    const op = { op: "add-property", name: "X", type: "text" } as const;
+    await assert.rejects(() => j.editDatabase("Bases/Nada.md", op), (e: any) => e.code === "not-found");
+    await assert.rejects(() => j.editDatabase("Libros/Dune.md", op), (e: any) => e.code === "invalid");
+    assert.throws(() => j.planDatabaseEdit("Bases/Nada.md", op), (e: any) => e.code === "not-found");
+    assert.throws(() => j.planDatabaseEdit("Libros/Dune.md", op), (e: any) => e.code === "invalid");
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase expect: si tras planificar aparece otra fila afectada, lanza conflict y no escribe nada", async () => {
+  const { j, cleanup, snapshot, db } = await setupLibros();
+  try {
+    const before = snapshot();
+    const op = { op: "rename-property", name: "Autor", to: "Escritor" } as const;
+    const planned = j.planDatabaseEdit(db, op);
+    assert.deepEqual(planned.paths, [db, "Libros/Dune.md", "Libros/Ubik.md"]);
+    await assert.rejects(() => j.editDatabase(db, op, { expect: [db, "Libros/Dune.md"] }), (e: any) => e.code === "conflict");
+    assert.deepEqual(snapshot(), before);
+    const ok = await j.editDatabase(db, op, { expect: planned.paths });
+    assert.equal(ok.affected, 2);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase: fallo a mitad de lote restaura los ficheros ya escritos", async () => {
+  const { j, cleanup, snapshot, db } = await setupLibros();
+  try {
+    const before = snapshot();
+    const orig = j.vault.write.bind(j.vault);
+    let calls = 0;
+    j.vault.write = (async (...args: Parameters<typeof orig>) => {
+      calls++;
+      if (calls === 3) throw new Error("disco lleno");
+      return orig(...args);
+    }) as typeof j.vault.write;
+    await assert.rejects(() => j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" }), /disco lleno/);
+    assert.deepEqual(snapshot(), before);
+    j.vault.write = orig;
+    const q = j.queryDatabase(db);
+    assert.ok(q.database.available.some((c) => c.key === "Autor"));
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase: una fila con YAML inválido aborta nombrando su ruta, sin escribir nada", async () => {
+  const { j, root, cleanup, snapshot, db } = await setupLibros();
+  try {
+    const { writeFileSync } = await import("node:fs");
+    // el índice la ve bien; el fichero se rompe después (edición externa aún no reindexada)
+    writeFileSync(path.join(root, "Libros/Ubik.md"), "---\nAutor: [sin cerrar\nEstado: Leído\n---\n\nUbik\n");
+    const before = snapshot();
+    await assert.rejects(() => j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" }), (e: any) => e.code === "invalid" && /Libros\/Ubik\.md/.test(e.message));
+    assert.deepEqual(snapshot(), before);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase skip: las filas excluidas no se tocan ni aparecen en paths", async () => {
+  const { j, cleanup, read, snapshot, db } = await setupLibros();
+  try {
+    const before = snapshot();
+    const skip = (p: string) => p === "Libros/Ubik.md";
+    const op = { op: "rename-property", name: "Autor", to: "Escritor" } as const;
+    assert.deepEqual(j.planDatabaseEdit(db, op, { skip }).paths, [db, "Libros/Dune.md"]);
+    const r = await j.editDatabase(db, op, { skip });
+    assert.deepEqual(r.paths, [db, "Libros/Dune.md"]);
+    assert.equal(r.affected, 1);
+    assert.equal(read("Libros/Ubik.md"), before["Libros/Ubik.md"]);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase: filas de otra base con la misma clave no se tocan", async () => {
+  const otra = "---\ntype: database\nsource:\n  folder: Cine/\nproperties:\n  Autor:\n    type: text\nviews: []\n---\n\n# Cine\n";
+  const { j, cleanup, read, db } = await setupLibros({ "Bases/Cine.md": otra, "Cine/Alien.md": "---\nAutor: Scott\n---\n\nAlien\n" });
+  try {
+    await j.editDatabase(db, { op: "rename-property", name: "Autor", to: "Escritor" });
+    assert.equal(read("Cine/Alien.md"), "---\nAutor: Scott\n---\n\nAlien\n");
+    assert.equal(read("Bases/Cine.md"), otra);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("editDatabase: dos ediciones simultáneas se aplican las dos", async () => {
+  const { j, cleanup, read, db } = await setupLibros();
+  try {
+    await Promise.all([
+      j.editDatabase(db, { op: "add-property", name: "Paginas", type: "number" }),
+      j.editDatabase(db, { op: "add-property", name: "Idioma", type: "text" }),
+    ]);
+    const text = read(db);
+    assert.match(text, /Paginas:/);
+    assert.match(text, /Idioma:/);
+    j.close();
+  } finally { cleanup(); }
+});
+
+test("planDatabaseEdit no escribe y devuelve los mismos paths/affected que luego aplica editDatabase", async () => {
+  const { j, cleanup, snapshot, db } = await setupLibros();
+  try {
+    const before = snapshot();
+    const op = { op: "delete-property", name: "Autor" } as const;
+    const plan = j.planDatabaseEdit(db, op);
+    assert.deepEqual(snapshot(), before);
+    assert.equal(plan.affected, 2);
+    const r = await j.editDatabase(db, op);
+    assert.deepEqual({ paths: r.paths, affected: r.affected, summary: r.summary }, plan);
+    j.close();
+  } finally { cleanup(); }
+});
