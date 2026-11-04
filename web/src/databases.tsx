@@ -111,7 +111,7 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
     // Lo que el filtro exige se rellena solo: así la fila nueva no desaparece al crearla.
     const props: Record<string, unknown> = {};
     for (const f of view.filter) if (f.op === "is" && f.value !== undefined && !READONLY.has(f.prop)) props[f.prop] = f.value;
-    const firstLane = db.available.find((c) => c.key === view.group)?.options?.[0];
+    const firstLane = db.available.find((c) => c.key === view.group)?.options?.[0]?.name;
     if (kind === "board" && view.group && !READONLY.has(view.group) && props[view.group] === undefined && firstLane) props[view.group] = firstLane;
     const r = await guard(() => api<{ path: string }>("POST", "/api/database/row", { path, title: t, props }));
     if (r) setTitle("");
@@ -207,7 +207,7 @@ function ViewPanel({ view, available, edit }: { view: View; available: Column[];
               </select>
               {spec.needsValue && (col?.options
                 ? <select value={String(f.value ?? "")} onChange={(e) => setFilter(i, { ...f, value: e.currentTarget.value })} aria-label="Valor">
-                    <option value="">—</option>{col.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                    <option value="">—</option>{col.options.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
                   </select>
                 : <input value={String(f.value ?? "")} type={col?.type === "date" || f.op === "before" || f.op === "after" ? "date" : "text"} aria-label="Valor"
                     onInput={(e) => setFilter(i, { ...f, value: col?.type === "number" && e.currentTarget.value !== "" && !Number.isNaN(Number(e.currentTarget.value)) ? Number(e.currentTarget.value) : e.currentTarget.value })} />)}
@@ -270,8 +270,8 @@ function Cell({ col, row, setCell }: { col: Column; row: ResultRow; setCell(r: R
       return (
         <select class="cell-select" value={cur} aria-label={aria} onChange={(e) => setCell(row, col.key, e.currentTarget.value)}>
           <option value="">—</option>
-          {cur && !options.includes(cur) && <option value={cur}>{cur}</option>}
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          {cur && !options.some((o) => o.name === cur) && <option value={cur}>{cur}</option>}
+          {options.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
         </select>
       );
     }
@@ -370,7 +370,8 @@ function Board({ res, view, available, edit, setCell }: { res: Result; view: Vie
   const col = available.find((c) => c.key === group);
   const byKey = new Map((res.groups ?? []).map((g) => [g.key, g.rows]));
   // Columnas del tablero: todas las opciones del esquema (aunque estén vacías), luego otros valores presentes y «Sin valor».
-  const lanes = [...(col?.options ?? []), ...[...byKey.keys()].filter((k) => k !== "" && !(col?.options ?? []).includes(k)), ""];
+  const optionNames = (col?.options ?? []).map((o) => o.name);
+  const lanes = [...optionNames, ...[...byKey.keys()].filter((k) => k !== "" && !optionNames.includes(k)), ""];
   const movable = !READONLY.has(group) && col?.type !== "multi";
   const drop = (lane: string, e: DragEvent) => {
     e.preventDefault();

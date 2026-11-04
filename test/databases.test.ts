@@ -132,7 +132,7 @@ test("bases: queryDatabase expone las propiedades disponibles (esquema + las vis
     const byKey = Object.fromEntries(keys.map((c) => [c.key, c]));
     for (const k of ["title", "Estado", "Autor", "Nota", "Editorial", "Terminado", "tags"]) assert.ok(byKey[k], `falta ${k}`);
     assert.equal(byKey.Estado.type, "select");
-    assert.deepEqual(byKey.Estado.options, ["Quiero leer", "Leyendo", "Leído"]);
+    assert.deepEqual(byKey.Estado.options, [{ name: "Quiero leer" }, { name: "Leyendo" }, { name: "Leído" }]);
     assert.equal(byKey.Terminado.type, "checkbox");
     assert.equal(byKey.Editorial.type, "text");
     assert.ok(!("id" in byKey) && !("created" in byKey) && !("type" in byKey), "las claves del sistema no son columnas");

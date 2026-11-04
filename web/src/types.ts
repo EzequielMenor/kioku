@@ -26,4 +26,4 @@ export interface NoteInfo {
   unlinked: { path: string; title: string; type: string; context: string }[];
 }
 export type { UndoRecord } from "../../src/assistant/undo.ts";
-export type { Column, Filter, FilterOp, PropType, QueryResult, ResultRow, Sort, View } from "../../src/core/database.ts";
+export type { Column, Filter, FilterOp, OptionColor, PropOption, PropType, QueryResult, ResultRow, Sort, View } from "../../src/core/database.ts";

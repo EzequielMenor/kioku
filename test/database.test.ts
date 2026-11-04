@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inferType, matchesSource, parseDatabase, queryRows, type DbRow } from "../src/core/database.ts";
+import { availableColumns, inferType, matchesSource, parseDatabase, queryRows, serializeOptions, type DbRow } from "../src/core/database.ts";
 
 const row = (path: string, title: string, fm: Record<string, unknown> = {}, extra: Partial<DbRow> = {}): DbRow =>
   ({ path, title, type: "note", tags: [], mtime: 0, fm, ...extra });
@@ -35,7 +35,7 @@ test("parseDatabase: lee origen, esquema y vistas", () => {
   });
   assert.equal(d.title, "Libros");
   assert.deepEqual(d.source, { folder: "Libros/", type: null, tags: ["scifi"] });
-  assert.deepEqual(d.properties.Estado, { type: "select", options: ["Quiero leer", "Leyendo", "Leído"] });
+  assert.deepEqual(d.properties.Estado, { type: "select", options: [{ name: "Quiero leer" }, { name: "Leyendo" }, { name: "Leído" }] });
   assert.equal(d.views.length, 1);
   assert.deepEqual(d.views[0].sort, [{ prop: "Nota", dir: "desc" }]);
   assert.deepEqual(d.warnings, []);
@@ -53,6 +53,47 @@ test("parseDatabase: es tolerante — lo inválido se descarta con aviso y nunca
   assert.deepEqual(d.views[0].sort, []);
   assert.ok(d.warnings.length >= 4, d.warnings.join(" | "));
   assert.doesNotThrow(() => parseDatabase({ path: "Bases/X.md", title: "X", fm: { type: "database", views: 5, properties: [] } }));
+});
+
+test("parseDatabase normaliza opciones de texto y {name,color}", () => {
+  const d = def({ properties: { Estado: { type: "select", options: ["A", { name: "B", color: "green" }, { name: "C" }] } } });
+  assert.deepEqual(d.properties.Estado.options, [{ name: "A" }, { name: "B", color: "green" }, { name: "C" }]);
+  assert.deepEqual(d.warnings, []);
+});
+
+test("un color desconocido se descarta con aviso y la opción se conserva", () => {
+  const d = def({ properties: { Estado: { type: "select", options: [{ name: "B", color: "fucsia" }] } } });
+  assert.deepEqual(d.properties.Estado.options, [{ name: "B" }]);
+  assert.equal(d.warnings.length, 1);
+  assert.match(d.warnings[0], /color/);
+});
+
+test("las opciones duplicadas (sin distinguir mayúsculas) se descartan, y las inválidas en silencio", () => {
+  const d = def({ properties: { Estado: { type: "select", options: ["Leyendo", { name: "leyendo", color: "blue" }, "Leído", "Leído", "", "  ", 3, null, {}, { name: "" }, { name: 5 }] } } });
+  assert.deepEqual(d.properties.Estado.options, [{ name: "Leyendo" }, { name: "Leído" }], "se conserva la primera aparición");
+  assert.deepEqual(d.warnings, []);
+});
+
+test("availableColumns y queryRows devuelven options como PropOption[]", () => {
+  const opts = [{ name: "Quiero leer" }, { name: "Leyendo", color: "blue" }, { name: "Leído" }];
+  const d = def({ properties: { Estado: { type: "select", options: ["Quiero leer", { name: "Leyendo", color: "blue" }, "Leído"] } } });
+  assert.deepEqual(availableColumns(d, libros).find((c) => c.key === "Estado")!.options, opts);
+  const r = queryRows(d, { name: "t", kind: "table", columns: ["title", "Estado"], filter: [], sort: [], group: null }, libros);
+  assert.deepEqual(r.columns.find((c) => c.key === "Estado")!.options, opts);
+});
+
+test("agrupar sigue ordenando por el orden de las opciones del esquema (también con color)", () => {
+  const d = def({ properties: { Estado: { type: "select", options: [{ name: "Quiero leer", color: "gray" }, { name: "Leyendo", color: "blue" }, { name: "Leído", color: "green" }] } } });
+  const r = queryRows(d, { name: "b", kind: "board", columns: ["title"], filter: [], sort: [], group: "Estado" }, [...libros, row("Libros/Sin.md", "Sin estado", {})]);
+  assert.deepEqual(r.groups!.map((g) => [g.key, g.rows.map((x) => x.title)]), [
+    ["Quiero leer", ["Neuromante"]], ["Leyendo", ["Dune"]], ["Leído", ["Ubik", "Solaris"]], ["", ["Sin estado"]],
+  ]);
+});
+
+test("serializeOptions: sin color → string, con color → objeto (y vuelve a leerse igual)", () => {
+  const opts = [{ name: "A" }, { name: "B", color: "green" as const }];
+  assert.deepEqual(serializeOptions(opts), ["A", { name: "B", color: "green" }]);
+  assert.deepEqual(parseDatabase({ path: "Bases/X.md", title: "X", fm: { type: "database", properties: { S: { type: "select", options: serializeOptions(opts) } } } }).properties.S.options, opts);
 });
 
 test("parseDatabase: sin vistas crea una tabla por defecto", () => {
