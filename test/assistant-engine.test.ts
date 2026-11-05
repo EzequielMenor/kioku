@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { HermesEngine, buildJailArgs, hermesConfigYaml, parseHermesOutput, secretsFdPayload, soulText } from "../src/assistant/engine.ts";
 import { SessionRegistry } from "../src/assistant/session.ts";
+import { FakeEngine } from "../src/assistant/fake-engine.ts";
 
 const jail = (over: Partial<Parameters<typeof buildJailArgs>[0]> = {}) => buildJailArgs({
   hermesDir: "/vault/.kioku/hermes", bridgePath: "/repo/src/assistant/bridge.mjs", realAuth: "/home/u/.hermes/auth.json",
@@ -454,5 +455,71 @@ test("móvil: cambiar el alcance separa también memorias y skills, no solo el i
     assert.notEqual(mount(seen[0].args), mount(seen[1].args));
     assert.ok(!seen[1].args.includes("--resume"), "sin conversación anterior con otra privacidad");
     assert.ok(!seen[1].args.includes(mount(seen[0].args)), "memoria y skills anteriores no están montados");
+  } finally { e.done(); }
+});
+
+// ---------- Gestión del modelo desde la interfaz (JARV-36 T2) ----------
+
+test("gestión: HermesEngine expone la gestión con el home inyectado; FakeEngine no la tiene", async () => {
+  const e = engineEnv();
+  try {
+    writeFileSync(path.join(e.userHome, ".hermes/config.yaml"), "model:\n  provider: deepseek\n  default: d-inyectado\n");
+    const eng = new HermesEngine({ homeDir: e.home, userHome: e.userHome, bwrapBin: "/usr/bin/env" });
+    const st = await eng.modelManagement.state();
+    assert.equal(st.effective?.model, "d-inyectado");
+    assert.equal(st.effective?.source, "hermes");
+    assert.equal("modelManagement" in new FakeEngine(), false);
+    assert.equal((new FakeEngine() as { modelManagement?: unknown }).modelManagement, undefined);
+  } finally { e.done(); }
+});
+
+test("gestión: lo guardado desde la interfaz es lo que lanza Hermes (provider, modelo, clave por fd 3) y manda sobre assistant.json", async () => {
+  const e = engineEnv();
+  try {
+    mkdirSync(path.join(e.home, ".kioku"), { recursive: true });
+    writeFileSync(path.join(e.home, ".kioku/assistant.json"), JSON.stringify({ model: "gpt-5.5", exclude: ["Privado/"] }));
+    writeFileSync(path.join(e.userHome, ".hermes/.env"), "OPENROUTER_API_KEY=sk-or-SECRETO\n");
+    const seen: Parameters<typeof recordingSpawn>[1] = [];
+    const eng = new HermesEngine({ homeDir: e.home, userHome: e.userHome, bwrapBin: "/usr/bin/env", spawnFn: recordingSpawn(e.cfg, seen), env: {} });
+    await eng.modelManagement.save({ provider: "openrouter", model: "anthropic/claude-x" });
+    await ask(eng);
+    assert.match(seen[0].config, /provider: openrouter/);
+    assert.match(seen[0].config, /default: "anthropic\/claude-x"/);
+    assert.equal(seen[0].fd3, "--setenv\0OPENROUTER_API_KEY\0sk-or-SECRETO\0");
+    await eng.modelManagement.reset();
+    await ask(eng);
+    assert.match(seen[1].config, /provider: openai-codex/);
+    assert.match(seen[1].config, /default: "gpt-5\.5"/);
+    assert.equal(JSON.parse(readFileSync(path.join(e.home, ".kioku/assistant.json"), "utf8")).exclude[0], "Privado/");
+  } finally { e.done(); }
+});
+
+test("gestión: override inválido → available() no ok y ask rechaza sin lanzar ningún proceso (falla cerrado)", async () => {
+  const e = engineEnv();
+  try {
+    mkdirSync(path.join(e.home, ".kioku"), { recursive: true });
+    writeFileSync(path.join(e.home, ".kioku/assistant-model.json"), '{"managed_by":"kioku-ui","model":{"provider":"openrouter","api_key":"sk-no"}}');
+    writeFileSync(path.join(e.home, ".kioku/assistant.json"), '{"model":"gpt-5.5"}');
+    const seen: Parameters<typeof recordingSpawn>[1] = [];
+    const eng = new HermesEngine({ homeDir: e.home, userHome: e.userHome, bwrapBin: "/usr/bin/env", spawnFn: recordingSpawn(e.cfg, seen) });
+    const a = await eng.available();
+    assert.equal(a.ok, false);
+    assert.match(a.reason!, /assistant-model\.json/);
+    assert.ok(!a.reason!.includes("sk-no"));
+    await assert.rejects(ask(eng), /assistant-model\.json/);
+    assert.equal(seen.length, 0);
+  } finally { e.done(); }
+});
+
+test("gestión (compatibilidad): un custom remoto de assistant.json, sin confirmación de la interfaz, sigue lanzándose como antes", async () => {
+  const e = engineEnv();
+  try {
+    mkdirSync(path.join(e.home, ".kioku"), { recursive: true });
+    writeFileSync(path.join(e.home, ".kioku/assistant.json"), JSON.stringify({ model: { provider: "custom", default: "m", base_url: "https://llm.example.com/v1" } }));
+    writeFileSync(path.join(e.userHome, ".hermes/.env"), "OPENAI_API_KEY=sk-SECRETO\n");
+    const seen: Parameters<typeof recordingSpawn>[1] = [];
+    await ask(new HermesEngine({ homeDir: e.home, userHome: e.userHome, bwrapBin: "/usr/bin/env", spawnFn: recordingSpawn(e.cfg, seen), env: {} }));
+    assert.match(seen[0].config, /base_url: "https:\/\/llm\.example\.com\/v1"/);
+    assert.equal(seen[0].fd3, "--setenv\0OPENAI_API_KEY\0sk-SECRETO\0");
   } finally { e.done(); }
 });
