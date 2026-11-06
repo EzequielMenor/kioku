@@ -1,0 +1,38 @@
+/* Gestión del asistente: solo variables de app.css (colores, tipografía, radios); sin valores nuevos de marca. */
+.am { display: grid; gap: 4px; }
+.am-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.am-head h2 { margin-bottom: 4px; }
+
+.am-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.am-tabs button { color: var(--fg2); }
+.am-tabs button.on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+
+.am h3 { font-size: 15px; line-height: 1.4; margin: 0 0 8px; }
+.am p { margin: 0 0 10px; }
+
+.am-now { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; }
+.am-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.am-facts dt { color: var(--muted); font-size: 12.5px; }
+.am-facts dd { margin: 0; overflow-wrap: anywhere; }
+.am code { font-family: var(--mono); font-size: 12.5px; background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; overflow-wrap: anywhere; }
+
+.am-form { display: grid; gap: 12px; }
+.am-form label { display: grid; gap: 6px; color: var(--fg2); font-size: 12.5px; }
+.am-form label input, .am-form label select { color: var(--fg); font-size: 14px; width: 100%; }
+.am-form input[aria-invalid="true"] { border-color: var(--bad); }
+.am-form .notice { margin: 0; }
+.am-form .notice p { margin: 6px 0 10px; }
+.am-form .row { margin-top: 2px; }
+.am-keys { margin: 0; }
+
+.am-rows { list-style: none; margin: 0 0 12px; padding: 0; border-top: 1px solid var(--line); }
+.am-rows li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.am-rows li p { flex-basis: 100%; margin: 0; }
+
+.am-steps { margin: 12px 0; padding-left: 22px; display: grid; gap: 10px; color: var(--fg2); }
+.am-steps li::marker { color: var(--accent); font-family: var(--mono); }
+
+@media (max-width: 720px) {
+  .am-facts { grid-template-columns: 1fr; gap: 0; }
+  .am-facts dd { margin-bottom: 8px; }
+}

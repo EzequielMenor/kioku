@@ -9,6 +9,8 @@ import { VaultError } from "../core/vault.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
 import type { CalendarInput } from "../core/calendar-store.ts";
 import type { AssistantEngine } from "../assistant/engine.ts";
+import { ModelConfigError } from "../assistant/model-config.ts";
+import { ModelManagementError } from "../assistant/model-management.ts";
 import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry, type AssistantSession } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
@@ -223,6 +225,29 @@ export async function startServer(
     return mk && keyMatches(mk, given) ? "mobile" : null;
   }
 
+  /**
+   * Modelo del asistente (solo escritorio): estado real, guardar y «heredar». Rol completo comprobado antes de leer o escribir
+   * nada; la lista blanca del móvil ya la deniega, y el token Bearer de sesión no abre esta ruta. Nunca devuelve ni acepta claves.
+   */
+  async function assistantModel(method: string, role: Role, body: Record<string, unknown>, res: http.ServerResponse): Promise<void> {
+    if (role !== "full") throw new HttpError(403, "El modelo del asistente se gestiona solo desde el portátil");
+    if (method !== "GET" && method !== "PUT") throw new HttpError(405, "Método no permitido");
+    const engine = opts.assistant?.engine;
+    if (!engine) throw new HttpError(503, "El asistente no está configurado en este daemon");
+    const management = engine.modelManagement;
+    if (!management) throw new HttpError(503, "Este motor del asistente no permite gestionar el modelo desde Kioku: fíjalo en .kioku/assistant.json o en ~/.hermes/config.yaml");
+    try {
+      const state = method === "GET" ? await management.state() : Object.keys(body).length === 1 && body.inherit === true ? await management.reset() : await management.save(body);
+      // Solo lo detectado (binarios y credenciales presentes): no ejecuta Hermes ni Docker.
+      const readiness = await engine.available().catch(() => ({ ok: false, reason: "No se pudieron comprobar los requisitos del asistente" }));
+      return sendJson(res, 200, { ...state, readiness });
+    } catch (e) {
+      if (e instanceof ModelConfigError) throw new HttpError(400, e.message);
+      if (e instanceof ModelManagementError) throw new HttpError(409, e.message);
+      throw e;
+    }
+  }
+
   async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL, role: Role): Promise<void> {
     const m = req.method ?? "GET";
     const p = url.pathname;
@@ -242,6 +267,8 @@ export async function startServer(
     }
     const send = role === "mobile" ? (r: http.ServerResponse, status: number, b: unknown) => sendJson(r, status, mobileView(p, b, mobileExclude)) : sendJson;
     const skip = role === "mobile" ? (x: string) => isPrivate(x, mobileExclude) : undefined;
+
+    if (p === "/api/assistant/model") return assistantModel(m, role, body, res);
 
     if (m === "GET") {
       switch (p) {
