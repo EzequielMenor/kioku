@@ -315,7 +315,7 @@ test("override: serializar y volver a leer conserva exactamente la selección, c
 
 test("proveedores: lista cerrada con las variables de clave de cada uno (nunca valores)", () => {
   const list = describeProviders();
-  assert.deepEqual(list.map((p) => p.id), ["openai-codex", "openrouter", "anthropic", "gemini", "deepseek", "zai", "kimi-coding", "minimax", "custom"]);
+  assert.deepEqual(list.map((p) => p.id), ["openai-codex", "openrouter", "anthropic", "gemini", "deepseek", "zai", "kimi-coding", "minimax", "ollama", "ollama-launch", "custom"]);
   assert.deepEqual(list.find((p) => p.id === "gemini")?.keys, ["GOOGLE_API_KEY", "GEMINI_API_KEY"]);
   assert.deepEqual(list.find((p) => p.id === "custom"), { id: "custom", keys: ["OPENAI_API_KEY"], keylessLocal: true, ownBaseUrl: true });
 });

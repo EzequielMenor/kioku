@@ -22,7 +22,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const PROVIDER_LABEL: Record<string, string> = {
   "openai-codex": "Codex (tu suscripción)", openrouter: "OpenRouter", anthropic: "Anthropic", gemini: "Google Gemini", deepseek: "DeepSeek",
-  zai: "Z.AI (GLM)", "kimi-coding": "Kimi", minimax: "MiniMax", custom: "Personalizado · endpoint compatible",
+  zai: "Z.AI (GLM)", "kimi-coding": "Kimi", minimax: "MiniMax", ollama: "Ollama (local)", "ollama-launch": "Ollama lanzado por Hermes (local)", custom: "Personalizado · endpoint compatible",
 };
 const SOURCE_LABEL: Record<string, string> = {
   ui: "Elegido aquí, en Kioku", "assistant.json": "Fichero .kioku/assistant.json", hermes: "Tu configuración de Hermes (~/.hermes/config.yaml)", default: "Valor por defecto (Codex)",
