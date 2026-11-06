@@ -8,11 +8,12 @@ import { buildPayload, LlmProvider, MAX_CAPTURES, parseLlmConfig, type LlmConfig
 import { parseCapture, type ParsedCapture } from "./capture.ts";
 import { addDays, diffDays, localDate, localTime } from "./dates.ts";
 import { availableColumns, matchesSource, parseDatabase, queryRows, type Column, type DatabaseDef, type QueryResult, type View } from "./database.ts";
+import { planSchemaOp, SchemaError, type RowEdit, type SchemaOp, type SchemaPlan } from "./database-schema.ts";
 import { fuzzyScore, Index, relationTarget, type NoteRow, type NoteType, type TaskRow, type TaskStatus } from "./index.ts";
 import { ulid } from "./ids.ts";
 import { Areas } from "./areas.ts";
 import { Calendar } from "./calendar-store.ts";
-import { appendToSection, normKey, parseNote, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
+import { appendToSection, normKey, parseNote, renameFrontmatterKey, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
 import { ProposalStore, type Op, type Proposal, type ProposalDraft } from "./proposals.ts";
 import { sanitizeFileName, Vault, VaultError } from "./vault.ts";
 
@@ -464,6 +465,92 @@ export class Kioku {
   }
 
   private viewsQueue: Promise<unknown> = Promise.resolve();
+
+  /** Plan de un cambio de esquema sobre el frontmatter `fm` de la base y las filas visibles (no toca disco). */
+  private schemaPlan(rel: string, title: string, fm: Record<string, unknown>, op: SchemaOp, skip?: (path: string) => boolean): { plan: SchemaPlan; paths: string[] } {
+    const def = parseDatabase({ path: rel, title, fm });
+    const rows = this.index.noteRows().filter((r) => !skip?.(r.path) && matchesSource(def, r));
+    let plan: SchemaPlan;
+    try { plan = planSchemaOp({ properties: fm.properties, views: fm.views }, rows, op); }
+    catch (e) { throw e instanceof SchemaError ? new VaultError("invalid", e.message) : e; }
+    const paths = [rel, ...new Set(plan.rowEdits.map((e) => e.path).filter((p) => p !== rel))];
+    return { plan, paths };
+  }
+
+  /** Qué tocaría un cambio de esquema, sin escribir nada. `paths`: la base y luego las filas editadas. */
+  planDatabaseEdit(rel: string, op: SchemaOp, opts: { skip?: (path: string) => boolean } = {}): { paths: string[]; summary: string; affected: number } {
+    this.databaseDef(rel);
+    const n = this.index.getNote(rel)!;
+    const { plan, paths } = this.schemaPlan(rel, n.title, n.fm, op, opts.skip);
+    return { paths, summary: plan.summary, affected: paths.length - 1 };
+  }
+
+  /**
+   * Aplica un cambio de esquema a la base y a sus filas como una sola operación: parte del texto del fichero de la base
+   * (no del índice), calcula los textos nuevos de TODOS los ficheros antes de escribir ninguno, y si una escritura falla
+   * restaura los ya escritos. `expect`: rutas que el cliente vio en la vista previa; si ahora salen otras, no se escribe.
+   * `before`: el texto previo de cada fichero que sí se escribió (en orden de escritura).
+   */
+  async editDatabase(rel: string, op: SchemaOp, opts: { skip?: (path: string) => boolean; expect?: string[] } = {}): Promise<{ note: NoteRow; paths: string[]; summary: string; affected: number; before: Map<string, string | null> }> {
+    this.databaseDef(rel);
+    const run = async () => {
+      const cur = await this.vault.read(rel);
+      const parsed = parseNote(cur.text, rel);
+      if (parsed.frontmatterError) throw new VaultError("invalid", `El frontmatter de «${rel}» no es YAML válido`);
+      const { plan, paths } = this.schemaPlan(rel, parsed.title, parsed.frontmatter, op, opts.skip);
+      if (opts.expect) {
+        const extra = paths.filter((p) => !opts.expect!.includes(p));
+        if (extra.length) throw new VaultError("conflict", `La base cambió desde la vista previa: ahora también afectaría a ${extra.join(", ")}`);
+      }
+      // Todos los textos nuevos, antes de escribir nada.
+      const files: { path: string; before: string; hash: string; after: string }[] = [];
+      for (const p of paths) {
+        const f = p === rel ? cur : await this.vault.read(p);
+        let after = f.text;
+        try {
+          if (p === rel) after = setFrontmatter(after, { properties: plan.properties, ...(plan.views ? { views: plan.views } : {}) });
+          for (const e of plan.rowEdits) if (e.path === p) after = this.applyRowEdit(after, e);
+        } catch (e) {
+          throw new VaultError("invalid", `No se puede editar «${p}»: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        files.push({ path: p, before: f.text, hash: f.hash, after });
+      }
+      const written: { path: string; text: string }[] = [];
+      try {
+        for (const f of files) {
+          if (f.after === f.before) continue;
+          await this.vault.write(f.path, f.after, f.hash);
+          written.push({ path: f.path, text: f.before });
+        }
+      } catch (e) {
+        // Cada fichero se restaura por separado: que uno falle no impide intentar los demás ni oculta el error original.
+        const stuck: string[] = [];
+        for (const w of written.reverse()) {
+          try { await this.restoreSnapshot([w]); } catch { stuck.push(w.path); }
+        }
+        if (!stuck.length) throw e;
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new VaultError(e instanceof VaultError ? e.code : "conflict", `No se pudo completar la edición («${msg}») y estas notas no se pudieron restaurar: ${stuck.join(", ")}`);
+      }
+      let note: NoteRow | undefined;
+      for (const f of files) {
+        const n = await this.reindexPath(f.path);
+        if (f.path === rel) note = n;
+        this.changed("note", f.path);
+      }
+      // Lo que había en cada fichero que se sobrescribió (leído con el hash que protegió la escritura): base exacta para Deshacer.
+      return { note: note!, paths, summary: plan.summary, affected: paths.length - 1, before: new Map(written.map((w) => [w.path, w.text])) };
+    };
+    const result = this.viewsQueue.then(run, run);
+    this.viewsQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  private applyRowEdit(text: string, e: RowEdit): string {
+    if (e.kind === "rename-key") return renameFrontmatterKey(text, e.from, e.to);
+    if (e.kind === "delete-key") return setFrontmatter(text, { [e.key]: null });
+    return setFrontmatter(text, { [e.key]: e.value });
+  }
 
   /** Nueva fila: una nota normal en la carpeta/tipo de origen. `id`, `type` y `created` son del sistema y nunca se aceptan. */
   async createRow(rel: string, opts: { title: string; props?: Record<string, unknown> }): Promise<NoteRow> {

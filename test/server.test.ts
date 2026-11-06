@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Kioku } from "../src/core/kioku.ts";
@@ -140,5 +140,107 @@ test("API bases: errores claros y las mismas protecciones que el resto de la API
     assert.equal((await s.call("POST", "/api/database/create", { name: "" })).status, 400);
     assert.equal((await s.call("POST", "/api/database/create", { name: "X", template: "rara" })).status, 400);
     assert.equal((await s.call("POST", "/api/database/row", { path: db.path, title: "Z" }, { origin: "http://evil.example" })).status, 403);
+  } finally { await s.done(); }
+});
+
+test("API bases: esquema con vista previa, Deshacer idéntico y errores", async () => {
+  const s = await setup();
+  try {
+    const db = (await s.call("POST", "/api/database/create", { name: "Libros", template: "libros" })).json;
+    const row = (await s.call("POST", "/api/database/row", { path: db.path, title: "Dune", props: { Estado: "Leyendo", Nota: 9 } })).json;
+    const read = (p: string) => readFileSync(path.join(s.root, p), "utf8");
+    const baseBefore = read(db.path), rowBefore = read(row.path);
+    const op = { op: "rename-property", name: "Nota", to: "Puntuación" };
+
+    const prev = await s.call("POST", "/api/database/schema/preview", { path: db.path, op });
+    assert.equal(prev.status, 200);
+    assert.equal(prev.json.affected, 1);
+    assert.equal(typeof prev.json.summary, "string");
+    assert.equal(read(db.path), baseBefore, "la vista previa no escribe");
+    assert.equal(read(row.path), rowBefore);
+
+    const done = await s.call("POST", "/api/database/schema", { path: db.path, op });
+    assert.equal(done.status, 200);
+    assert.equal(done.json.affected, 1);
+    assert.ok(done.json.undoId);
+    assert.match(read(row.path), /Puntuación/);
+    assert.notEqual(read(db.path), baseBefore);
+    const actions = (await s.call("GET", "/api/assistant/actions")).json;
+    assert.equal(actions[0].sessionId, "ui");
+    assert.equal(actions[0].tool, "database.rename-property");
+
+    assert.equal((await s.call("POST", "/api/assistant/undo", { id: done.json.undoId })).status, 200);
+    assert.equal(read(db.path), baseBefore);
+    assert.equal(read(row.path), rowBefore);
+  } finally { await s.done(); }
+});
+
+test("API bases: Deshacer restaura el texto que el cambio sobrescribió, incluida una edición manual hecha tras la vista previa", async () => {
+  const s = await setup();
+  try {
+    const db = (await s.call("POST", "/api/database/create", { name: "Libros", template: "libros" })).json;
+    const row = (await s.call("POST", "/api/database/row", { path: db.path, title: "Dune", props: { Estado: "Leyendo", Nota: 9 } })).json;
+    const op = { op: "rename-property", name: "Nota", to: "Puntuación" };
+    assert.equal((await s.call("POST", "/api/database/schema/preview", { path: db.path, op })).status, 200);
+    // Edición a mano entre la vista previa y la aplicación: cambia el texto, no el conjunto de rutas.
+    const handEdited = readFileSync(path.join(s.root, row.path), "utf8") + "\nNotas escritas a mano.\n";
+    writeFileSync(path.join(s.root, row.path), handEdited);
+    const done = await s.call("POST", "/api/database/schema", { path: db.path, op });
+    assert.equal(done.status, 200);
+    const renamed = readFileSync(path.join(s.root, row.path), "utf8");
+    assert.match(renamed, /Puntuación/);
+    assert.match(renamed, /Notas escritas a mano/);
+    assert.equal((await s.call("POST", "/api/assistant/undo", { id: done.json.undoId })).status, 200);
+    assert.equal(readFileSync(path.join(s.root, row.path), "utf8"), handEdited, "Deshacer devuelve exactamente lo que se sobrescribió");
+  } finally { await s.done(); }
+});
+
+test("API bases: el Deshacer de un cambio de esquema no pisa una edición manual posterior (409)", async () => {
+  const s = await setup();
+  try {
+    const db = (await s.call("POST", "/api/database/create", { name: "Libros", template: "libros" })).json;
+    const row = (await s.call("POST", "/api/database/row", { path: db.path, title: "Dune", props: { Estado: "Leyendo", Nota: 9 } })).json;
+    const done = await s.call("POST", "/api/database/schema", { path: db.path, op: { op: "rename-property", name: "Nota", to: "Puntuación" } });
+    assert.equal(done.status, 200);
+    assert.equal((await s.call("POST", "/api/note/props", { path: row.path, props: { Puntuación: 3 } })).status, 200);
+    const after = readFileSync(path.join(s.root, row.path), "utf8");
+    assert.equal((await s.call("POST", "/api/assistant/undo", { id: done.json.undoId })).status, 409);
+    assert.equal(readFileSync(path.join(s.root, row.path), "utf8"), after, "no pisó nada");
+  } finally { await s.done(); }
+});
+
+test("API bases: esquema — petición inválida 400, base inexistente 404", async () => {
+  const s = await setup();
+  try {
+    const db = (await s.call("POST", "/api/database/create", { name: "Libros", template: "libros" })).json;
+    const normal = (await s.call("POST", "/api/note/create", { title: "Normal" })).json;
+    for (const route of ["/api/database/schema/preview", "/api/database/schema"]) {
+      const c = async (path_: string, op: unknown) => (await s.call("POST", route, { path: path_, op })).status;
+      assert.equal(await c(db.path, undefined), 400, `${route} sin op`);
+      assert.equal(await c(db.path, "rename-property"), 400, `${route} op no objeto`);
+      assert.equal(await c(db.path, { name: "x" }), 400, `${route} op sin etiqueta`);
+      assert.equal(await c(db.path, { op: "explotar" }), 400, `${route} op desconocida`);
+      assert.equal(await c(db.path, { op: "add-property", name: "title", type: "text" }), 400, `${route} nombre reservado`);
+      assert.equal(await c(normal.path, { op: "add-property", name: "X", type: "text" }), 400, `${route} no es base`);
+      assert.equal(await c("Bases/Nada.md", { op: "add-property", name: "X", type: "text" }), 404, `${route} base inexistente`);
+      // Campos con la forma equivocada: 400, nunca 500.
+      for (const bad of [
+        { op: "add-property", name: 5, type: "text" },
+        { op: "add-property", name: "X", type: "galaxia" },
+        { op: "add-property", name: "x".repeat(201), type: "text" },
+        { op: "add-property", name: "__proto__", type: "text" },
+        { op: "rename-property", name: { a: 1 }, to: "Y" },
+        { op: "rename-property", name: "Nota", to: null },
+        { op: "delete-property" },
+        { op: "constructor" },
+        { op: "__proto__" },
+        { op: "add-option", prop: "Estado", option: 3 },
+        { op: "add-option", prop: "Estado", option: "Nueva", color: "fucsia" },
+        { op: "set-option-color", prop: "Estado", option: "Leyendo", color: 5 },
+        { op: "reorder-options", prop: "Estado", options: "Leyendo" },
+        { op: "reorder-options", prop: "Estado", options: [1, 2] },
+        { op: "delete-option", prop: "Estado", option: "Leyendo", clear: "no" },
+      ]) assert.equal(await c(db.path, bad), 400, `${route} ${JSON.stringify(bad)}`);
+    }
   } finally { await s.done(); }
 });

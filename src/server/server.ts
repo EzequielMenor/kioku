@@ -15,6 +15,7 @@ import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry, type AssistantSession } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore, type UndoRecord } from "../assistant/undo.ts";
+import type { SchemaOp } from "../core/database-schema.ts";
 import type { PushStore } from "./webpush.ts";
 import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobileAreaCreateDenied, mobileCreateDenied } from "./calendar.ts";
 import { OpsLedger, validOp } from "./ops.ts";
@@ -45,6 +46,13 @@ function userPath(p: unknown): string {
   if (typeof p !== "string" || !p.toLowerCase().endsWith(".md")) throw new HttpError(400, "Ruta de nota inválida");
   if (p.split("/").some((seg) => seg.startsWith(".") || seg === "..")) throw new HttpError(400, "Ruta no permitida");
   return p;
+}
+
+/** Petición de esquema: ruta de usuario y `op` objeto con etiqueta; la validación completa es del planificador. */
+function schemaRequest(body: Record<string, unknown>): { path: string; op: SchemaOp } {
+  const op = body.op as { op?: unknown } | null | undefined;
+  if (!op || typeof op !== "object" || Array.isArray(op) || typeof op.op !== "string") throw new HttpError(400, "Falta «op» (objeto con «op»)");
+  return { path: userPath(body.path), op: op as SchemaOp };
 }
 
 const MEMORY_DIR = "hermes/memories";
@@ -534,6 +542,19 @@ export async function startServer(
           if (typeof props !== "object" || Array.isArray(props)) throw new HttpError(400, "«props» debe ser un objeto");
           const n = await j.createRow(userPath(body.path), { title: str(body.title, "title"), props: props as Record<string, unknown> });
           return send(res, 200, { path: n.path });
+        }
+        case "/api/database/schema/preview": {
+          const { path: rel, op } = schemaRequest(body);
+          const plan = j.planDatabaseEdit(rel, op, { skip });
+          return send(res, 200, { affected: plan.affected, summary: plan.summary });
+        }
+        case "/api/database/schema": {
+          const { path: rel, op } = schemaRequest(body);
+          const plan = j.planDatabaseEdit(rel, op, { skip });
+          const done = await j.editDatabase(rel, op, { skip, expect: plan.paths });
+          // La instantánea es lo que `editDatabase` sobrescribió de verdad (no una foto previa, que otra escritura podría adelantar).
+          const rec = await undo.commit({ before: done.before }, { sessionId: "ui", tool: `database.${op.op}`, summary: done.summary });
+          return send(res, 200, { undoId: rec.id, summary: done.summary, affected: done.affected });
         }
         case "/api/project/create": { const n = await j.createProject(str(body.title, "title")); return send(res, 200, { path: n.path }); }
         case "/api/project/checkpoint": { await j.addCheckpoint(userPath(body.path), str(body.text, "text")); return send(res, 200, { ok: true }); }

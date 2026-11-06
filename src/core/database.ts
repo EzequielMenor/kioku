@@ -13,7 +13,12 @@ export const FILTER_OPS: readonly FilterOp[] = ["is", "is_not", "contains", "emp
 export const VIEW_KINDS: readonly ViewKind[] = ["table", "board", "list"];
 const NOTE_TYPES: readonly string[] = ["note", "task", "project", "journal", "resource", "capture", "database"];
 
-export interface PropSchema { type?: PropType; options?: string[] }
+export type OptionColor = "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "red";
+export const OPTION_COLORS: readonly OptionColor[] = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "red"];
+/** Opción de un select: nombre y, opcionalmente, color. */
+export interface PropOption { name: string; color?: OptionColor }
+
+export interface PropSchema { type?: PropType; options?: PropOption[] }
 export interface Filter { prop: string; op: FilterOp; value?: unknown }
 export interface Sort { prop: string; dir: "asc" | "desc" }
 export interface View { name: string; kind: ViewKind; columns: string[]; filter: Filter[]; sort: Sort[]; group: string | null }
@@ -30,7 +35,7 @@ export interface DatabaseDef {
 
 /** Lo mínimo que el motor necesita de una nota. */
 export interface DbRow { path: string; title: string; type: NoteType; tags: string[]; mtime: number; fm: Frontmatter }
-export interface Column { key: string; type: PropType; options?: string[] }
+export interface Column { key: string; type: PropType; options?: PropOption[] }
 export interface ResultRow { path: string; title: string; cells: Record<string, unknown> }
 export interface QueryResult {
   columns: Column[];
@@ -69,6 +74,36 @@ export function inferType(value: unknown): PropType {
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()) : []);
 
+/**
+ * Opciones de un select: texto («Leído») o {name, color}. Lo inválido se descarta en silencio, como hace `strArr`;
+ * una opción repetida (sin distinguir mayúsculas) se queda con su primera aparición; un color desconocido avisa y la opción se conserva sin color.
+ */
+function parseOptions(key: string, v: unknown, warnings: string[]): PropOption[] {
+  if (!Array.isArray(v)) return [];
+  const out: PropOption[] = [];
+  const seen = new Set<string>();
+  for (const raw of v) {
+    const name = typeof raw === "string" ? raw : isObj(raw) ? raw.name : undefined;
+    if (typeof name !== "string" || !name.trim()) continue;
+    const trimmed = name.trim();
+    if (seen.has(fold(trimmed))) continue;
+    seen.add(fold(trimmed));
+    const opt: PropOption = { name: trimmed };
+    const color = isObj(raw) ? raw.color : undefined;
+    if (color !== undefined && color !== null) {
+      if (OPTION_COLORS.includes(color as OptionColor)) opt.color = color as OptionColor;
+      else warnings.push(`Propiedad «${key}»: color desconocido «${String(color)}»`);
+    }
+    out.push(opt);
+  }
+  return out;
+}
+
+/** Forma en que se guardan las opciones: sin color, texto plano (como antes); con color, objeto {name, color}. */
+export function serializeOptions(options: PropOption[]): (string | { name: string; color: OptionColor })[] {
+  return options.map((o) => (o.color ? { name: o.name, color: o.color } : o.name));
+}
+
 /** Lee la definición de una base desde su frontmatter. Tolerante: lo inválido se descarta y queda como aviso. */
 export function parseDatabase(note: { path: string; title: string; fm: Frontmatter }): DatabaseDef {
   const warnings: string[] = [];
@@ -98,7 +133,7 @@ export function parseDatabase(note: { path: string; title: string; fm: Frontmatt
           if (PROP_TYPES.includes(raw.type as PropType)) p.type = raw.type as PropType;
           else warnings.push(`Propiedad «${key}»: tipo desconocido «${String(raw.type)}»`);
         }
-        const options = strArr(raw.options);
+        const options = parseOptions(key, raw.options, warnings);
         if (options.length) p.options = options;
         properties[key] = p;
       }
@@ -280,10 +315,10 @@ export function queryRows(def: DatabaseDef, view: View, rows: DbRow[]): QueryRes
       const gk = isEmptyValue(v) ? [""] : Array.isArray(v) ? v.map(String) : [String(v)];
       for (const k of gk) byKey.set(k, [...(byKey.get(k) ?? []), result[i]]);
     });
-    const options = def.properties[view.group]?.options ?? [];
+    const order = (def.properties[view.group]?.options ?? []).map((o) => o.name);
     const ordKeys = [
-      ...options.filter((o) => byKey.has(o)),
-      ...[...byKey.keys()].filter((k) => k !== "" && !options.includes(k)),
+      ...order.filter((o) => byKey.has(o)),
+      ...[...byKey.keys()].filter((k) => k !== "" && !order.includes(k)),
       ...(byKey.has("") ? [""] : []),
     ];
     groups = ordKeys.map((key) => ({ key, rows: byKey.get(key)! }));
