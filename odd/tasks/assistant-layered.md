@@ -1,6 +1,6 @@
 # Layered assistant implementation — JARV-36
-Branch `feat/assistant-layered`, base `f38ffe5a49fbab360a6de4017599d2a13a7cf5b4` (fresh origin/main). Visual spec: `design/assistant-mobile-access/03-layered-conversation.html`; tokens: `design/system.md`.
-Checks: temporary vaults/homes only; focused TDD + `npm test`, `npm run typecheck`, `npm run build:web`, real Chromium and a temporary-data preview. Delivery: ask-on-risk, forecast 1200–1800 authored lines; no push/PR/merge. Engram tools unavailable: mirror pending.
+Original branch `feat/assistant-layered`, base `f38ffe5a49fbab360a6de4017599d2a13a7cf5b4`. Integrated into main via PR #13, merge `5b2660f`; scanner-safe commit map and final evidence: `odd/tasks/jarv-36-scanner-remediation.md`. Visual spec: `design/assistant-mobile-access/03-layered-conversation.html`; tokens: `design/system.md`.
+Checks: temporary vaults/homes only; focused TDD + `npm test`, `npm run typecheck`, `npm run build:web`, real Chromium and a temporary-data preview. Delivery: initially local-only (forecast 1200–1800 authored lines); later explicitly authorized PR/main integration completed via #13, with 664/664 integrated tests and independent security PASS. Mac/iPhone execution remains unverified. Engram tools unavailable: mirror pending.
 
 ## Specs
 S1. "Implement the design artboard design/assistant-mobile-access/03-layered-conversation.html"
