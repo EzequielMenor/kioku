@@ -1,0 +1,28 @@
+{
+  "title": "Kioku · Asistente móvil y acceso Mac–iPhone",
+  "feature": "odd/tasks/assistant-layered.md",
+  "brief": "Tres propuestas visuales para un asistente móvil más limpio y un acceso/gestión sencillos desde Mac e iPhone. Mantener Hermes, hacer visibles las aprobaciones críticas y el estado de conexión. Solo prototipos: no modificar la app, no instalar nada, no añadir embeddings. Tema y estados son simulados; la validación real Mac/iPhone sigue siendo una tarea independiente.",
+  "artboards": [
+    {
+      "file": "01-calm-conversation.html",
+      "title": "Conversación tranquila",
+      "tradeoff": "Prioriza conversar y revisar cambios sin ruido; ofrece menos información de agenda en la pantalla inicial.",
+      "width": 1440,
+      "height": 1120
+    },
+    {
+      "file": "02-day-companion.html",
+      "title": "Tu día, conversado",
+      "tradeoff": "Da orientación y hace visible el estado del sistema; incorpora más elementos y deja menos espacio inicial al diálogo.",
+      "width": 1440,
+      "height": 1120
+    },
+    {
+      "file": "03-layered-conversation.html",
+      "title": "Conversación con capas",
+      "tradeoff": "Máximo foco y separación entre pensar y actuar; historial y gestión quedan un nivel más adentro.",
+      "width": 1440,
+      "height": 1120
+    }
+  ]
+}
