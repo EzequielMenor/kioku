@@ -4,6 +4,7 @@ import "./app.css";
 import { UNAUTHORIZED_EVENT, api, lsGet, lsSet } from "./api.ts";
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
 import { AssistantManagement } from "./assistant-management.tsx";
+import { ConnectionsView } from "./connections.tsx";
 import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { CalendarView } from "./calendar.tsx";
 import { askConfirm, askText } from "./dialogs.tsx";
@@ -57,6 +58,7 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/grafo", label: "Grafo", key: "g", icon: "grafo" },
   { route: "/asistente", label: "Asistente", key: "a", icon: "asistente" },
   { route: "/propuestas", label: "Propuestas", key: "r", icon: "propuestas" },
+  { route: "/conexiones", label: "Conexiones y sincronización", key: "s", icon: "grafo" },
 ];
 
 /** Entradas de navegación que ve quien usa la interfaz (`MOBILE_HIDDEN` lista las que el móvil no tiene). */
@@ -215,6 +217,7 @@ function App() {
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
     case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : arg === "memoria" ? <AssistantMemory rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
+    case "conexiones": view = <ConnectionsView mobile={mobile} demo={lsGet("kioku.demo.active") === "1"}>{mobile && <OfflineSection off={off} />}</ConnectionsView>; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
     default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} onCapture={() => setOverlay("capture")} />;
   }
@@ -766,7 +769,7 @@ function LockedScreen() {
 }
 
 /** Pantallas que en el móvil viven dentro de «Más»: con una de ellas abierta, ese botón es el activo. */
-const MORE_ROUTES = ["/bandeja", "/proyectos", "/notas", "/bases", "/grafo", "/diario"];
+const MORE_ROUTES = ["/bandeja", "/proyectos", "/notas", "/bases", "/grafo", "/diario", "/conexiones"];
 
 /** Barra inferior (solo se ve en pantallas estrechas): lo más usado a un pulgar. */
 function BottomNav({ active, pending, onCapture, onMore }: { active: string; pending: number; onCapture(): void; onMore(): void }) {
@@ -966,7 +969,7 @@ function snippetHtml(s: string): string {
 function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
     ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
-    ["g h · b · p · t · c · n · d · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Calendario · Notas · Bases · Grafo · Asistente · Propuestas"],
+    ["g h · b · p · t · c · n · d · g · a · r · s", "Ir a Hoy · Bandeja · Proyectos · Tareas · Calendario · Notas · Bases · Grafo · Asistente · Propuestas · Conexiones"],
     ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (

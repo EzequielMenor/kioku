@@ -83,6 +83,10 @@ kioku url                                        # URL de acceso con la clave (p
 
 Si no haces el paso 3, usa `bin/kioku` desde la carpeta del proyecto.
 
+### Conectar tus dispositivos
+
+Ejecuta `kioku setup` para seguir la guía y `kioku doctor` para comprobar el daemon, el nombre permitido y el proxy privado de Tailscale sin cambiar tu configuración ni mostrar claves. Abre **Conexiones y sincronización** en la barra lateral o en **Más** para comprobar el acceso y revisar la cola móvil. El ordenador debe permanecer encendido; no hay sincronización garantizada en segundo plano. Sigue la [guía de conexiones](docs/connections.md), con los pasos específicos para Mac/Docker.
+
 ### Dónde se guardan tus datos
 
 Por defecto en **`~/Documents/Kioku`**. Cámbialo con la variable `KIOKU_HOME`:
@@ -258,6 +262,7 @@ El móvil usa una clave **limitada** (`.kioku/secret-mobile`): puede leer, captu
 | `reindex` | Reconstruye el índice desde los ficheros |
 | `export` · `restore` · `import-obsidian` | Portabilidad |
 | `url` · `pair [--revoke]` | URL de acceso con clave · emparejar (o desemparejar) el móvil |
+| `setup` · `doctor` | Guía de instalación/conexión · diagnóstico privado de solo lectura |
 | `daemon` · `status` · `service install\|uninstall\|status` | Servidor y arranque automático |
 
 `kioku --help` lista todo con ejemplos.
