@@ -9,7 +9,7 @@ import { normKey, setFrontmatter } from "../core/markdown.ts";
 import type { Op } from "../core/proposals.ts";
 import { VaultError } from "../core/vault.ts";
 import { AssistantError, MAX_NOTES_PER_QUERY, checkAssistantPath, filterProps, hideExcluded, isExcludedPath, isProtectedPath } from "./policy.ts";
-import type { AssistantSession } from "./session.ts";
+import { proposalOrigin, type AssistantSession } from "./session.ts";
 import type { UndoStore } from "./undo.ts";
 
 export type ToolLevel = "read" | "auto" | "approval";
@@ -251,9 +251,11 @@ function writeDef(spec: Omit<ToolSpec, "level">, plan: (c: ToolCtx, a: Record<st
       const p = await plan(c, a);
       const all = [...p.touches, ...(p.creates ?? [])];
       c.path = all[0];
+      // Desde el móvil, nada de lo que el asistente cree o toque puede caer donde el móvil no ve (ni siquiera como propuesta).
+      if (c.s.role === "mobile") for (const x of all) if (isExcluded(x, c.exclude)) throw new AssistantError("excluded", "Esa carpeta es privada y no se toca desde el móvil");
       const reason = escalationReason(c.s, all) ?? externalContentReason(a);
       if (reason) {
-        const prop = await c.j.createProposal({ source: "assistant", title: p.summary, rationale: reason, ops: await p.ops() });
+        const prop = await c.j.createProposal({ source: "assistant", title: p.summary, rationale: reason, ops: await p.ops(), ...proposalOrigin(c.s) });
         return { escalated: true, proposalId: prop.id, reason, message: "No se ha cambiado nada: queda una propuesta pendiente para que el usuario la apruebe." };
       }
       for (const x of all) c.s.touched.add(x); // se reserva antes de actuar: el límite cuenta también lo que falle a medias
@@ -499,7 +501,7 @@ const PROPOSE_DEF: Def = {
     const ops = await buildProposalOps(c, a.ops);
     const first = ops[0];
     c.path = first.op === "move" ? first.from : first.path;
-    const p = await c.j.createProposal({ source: "assistant", title, rationale, ops });
+    const p = await c.j.createProposal({ source: "assistant", title, rationale, ops, ...proposalOrigin(c.s) });
     return { proposalId: p.id, status: "pending", message: "Propuesta creada: el usuario debe aprobarla en Propuestas." };
   },
 };
@@ -523,17 +525,22 @@ export class AssistantTools {
     return [...this.defs.values()].map((d) => d.spec);
   }
 
-  call(s: AssistantSession, name: string, args: unknown): Promise<ToolResult> {
-    const run = (this.queues.get(s) ?? Promise.resolve()).then(() => this.callNow(s, name, args));
+  /**
+   * `exclude`: exclusiones de ESTA llamada. Las sesiones del móvil la exigen (unión de assistant.json, mobile.json y actividades ocultas,
+   * releída en cada llamada); sin ella no se ejecuta nada. Las de escritorio usan la lista compartida de assistant.json.
+   */
+  call(s: AssistantSession, name: string, args: unknown, exclude?: string[]): Promise<ToolResult> {
+    const run = (this.queues.get(s) ?? Promise.resolve()).then(() => this.callNow(s, name, args, exclude));
     this.queues.set(s, run.catch(() => undefined));
     return run;
   }
 
-  private async callNow(s: AssistantSession, name: string, args: unknown): Promise<ToolResult> {
+  private async callNow(s: AssistantSession, name: string, args: unknown, exclude?: string[]): Promise<ToolResult> {
     const def = this.defs.get(name);
     if (!def) return { isError: true, text: `Herramienta desconocida: ${name}` };
+    if (s.role === "mobile" && !exclude) return { isError: true, text: "Sin las exclusiones de privacidad del móvil no se ejecuta ninguna herramienta" };
     const a = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
-    const ctx: ToolCtx = { j: this.j, undo: this.undo, s, exclude: this.exclude };
+    const ctx: ToolCtx = { j: this.j, undo: this.undo, s, exclude: s.role === "mobile" ? exclude! : this.exclude };
     try {
       const out = await def.run(ctx, a);
       await this.report(ctx, def.spec, a);

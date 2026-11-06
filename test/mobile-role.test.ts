@@ -91,14 +91,14 @@ test("móvil: la clave del móvil abre la API y /api/session dice qué rol tiene
   } finally { await s.done(); }
 });
 
-test("móvil: solo puede leer y escribir lo permitido; borrar, asistente, escritorio, propuestas y mantenimiento → 403", async () => {
+test("móvil: solo puede leer y escribir lo permitido; borrar, memoria y herramientas del asistente, escritorio y mantenimiento → 403", async () => {
   const s = await setup();
   try {
     const forbidden: [string, string, unknown?][] = [
       ["POST", "/api/note/delete", { path: "Notas/Publica.md" }],
-      ["POST", "/api/assistant/ask", { message: "hola" }], ["GET", "/api/assistant/memory"], ["GET", "/api/assistant/actions"], ["POST", "/api/assistant/undo", { id: "x" }],
+      ["GET", "/api/assistant/memory"], ["POST", "/api/assistant/memory/delete", { path: "a.md" }], ["GET", "/api/assistant/tools/list"], ["POST", "/api/assistant/tools/call", { name: "today" }],
       ["POST", "/api/desktop/open", { route: "/hoy" }], ["POST", "/api/desktop/quick/hide", {}],
-      ["POST", "/api/proposals/01ABC/apply", {}], ["GET", "/api/proposals"],
+      ["PUT", "/api/proposals/01ABC/apply", {}], ["POST", "/api/proposals/01ABC/otra", {}], ["POST", "/api/proposals", {}],
       ["POST", "/api/reindex", {}], ["POST", "/api/triage", {}], ["GET", "/api/ai"], ["POST", "/api/ai/triage", {}],
       ["POST", "/api/focus/start", { taskPath: "Tareas/Tarea publica.md" }], ["POST", "/api/project/create", { title: "X" }],
       ["POST", "/api/database/create", { name: "X", template: "libros" }],

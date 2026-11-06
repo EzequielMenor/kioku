@@ -4,7 +4,9 @@ import { api, lsGet, lsSet, onChange } from "./api.ts";
 import { useApi } from "./hooks.ts";
 import { askConfirm } from "./dialogs.tsx";
 import type { Proposal, UndoRecord } from "./types.ts";
-import { activityOrigin, createChat, type Msg } from "./assistant-chat.ts";
+import { activityOrigin, askErrorText, createChat, type Msg } from "./assistant-chat.ts";
+import { isMobile } from "./role.ts";
+import { useOffline } from "./offline/runtime.ts";
 
 type Say = (text: string, error?: boolean) => void;
 
@@ -12,6 +14,7 @@ type Say = (text: string, error?: boolean) => void;
 // con una consulta en curso) y no a recargar.
 const chat = createChat({
   ask: (message, conversation) => api("POST", "/api/assistant/ask", { message, conversation }),
+  describeError: (e) => askErrorText(e, isMobile()),
   pendingProposals: () => api<Proposal[]>("GET", "/api/proposals?status=pending"),
   actionsSince: (ts) => api<UndoRecord[]>("GET", "/api/assistant/actions").then((l) => l.filter((a) => a.ts >= ts && !a.undone && !activityOrigin(a))),
 });
@@ -44,7 +47,10 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
   const [{ msgs, busy, live }, setChat] = useState(chat.getState());
   useEffect(() => { setChat(chat.getState()); return chat.subscribe(setChat); }, []);
   const [text, setText] = useState("");
-  const [ack, setAck] = useState(lsGet("assistant.privacy") === "1");
+  const [ack, setAck] = useState(lsGet("assistant.privacy.v2") === "1");
+  const mobile = isMobile();
+  const online = useOffline().online;
+  const offline = mobile && !online; // el asistente es solo en línea: sin conexión no se pregunta ni se encola nada
   const status = useApi<{ ok: boolean; reason?: string }>("/api/assistant/status", rev).data;
   const bottom = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -53,7 +59,7 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
   useEffect(() => { input.current?.focus(); }, [ack]);
 
   const send = (message: string) => {
-    if (!message.trim() || chat.getState().busy) return Promise.resolve();
+    if (!message.trim() || chat.getState().busy || offline) return Promise.resolve();
     setText("");
     return chat.send(message);
   };
@@ -65,26 +71,27 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
         <h1>Asistente</h1>
         <div class="row">
           <a class="pill" href="#/asistente/actividad">Actividad</a>
-          <a class="pill" href="#/asistente/memoria">Memoria</a>
+          {!mobile && <a class="pill" href="#/asistente/memoria">Memoria</a>}
           {msgs.length > 0 && <button class="mini" onClick={reset} disabled={busy}>Nueva conversación</button>}
         </div>
       </header>
 
       {status && !status.ok && <div class="notice bad">El asistente no está disponible: {status.reason}</div>}
+      {offline && <div class="notice bad" role="status">Sin conexión con tu portátil. El asistente solo funciona con el portátil encendido y con red; no se guarda nada para después.</div>}
 
       {!ack && (
         <div class="card notice-card">
           <div class="eyebrow">Antes de empezar</div>
-          <p>Para responder, el asistente <b>lee las notas que necesita</b> y su texto se envía al proveedor del modelo (OpenAI, a través de tu suscripción de Codex). Queda registrado qué notas lee en cada consulta y puedes excluir carpetas en <code>.kioku/assistant.json</code>.</p>
-          <p class="muted small">Lo pequeño y reversible lo hace solo, con botón <b>Deshacer</b>. Borrar, mover o tocar muchas notas siempre te lo propone antes.</p>
-          <button class="primary" onClick={() => { lsSet("assistant.privacy", "1"); setAck(true); }}>Entendido</button>
+          <p>Para responder, el asistente <b>lee las notas que necesita</b> y su texto se envía al modelo y proveedor que configuraste en Hermes. Si el proveedor es remoto, esas notas salen de tu equipo; con un modelo local permanecen allí. Queda registrado qué notas lee en cada consulta y puedes excluir carpetas en <code>.kioku/assistant.json</code>.{mobile && <> Desde el móvil tampoco ve las carpetas privadas del móvil (<code>.kioku/mobile.json</code>).</>}</p>
+          <p class="muted small">Lo pequeño y reversible lo hace solo, con botón <b>Deshacer</b>. Borrar, mover o tocar muchas notas siempre te lo propone antes{mobile && <>, y lo apruebas tú aquí mismo en Propuestas</>}.</p>
+          <button class="primary" onClick={() => { lsSet("assistant.privacy.v2", "1"); setAck(true); }}>Entendido</button>
         </div>
       )}
 
       <div class="chat" aria-live="polite">
         {msgs.length === 0 && ack && (
           <div class="chat-empty">
-            <p class="muted">Pídeme lo que quieras sobre tu espacio: organizar la Bandeja, ver qué hacer hoy, retomar un proyecto, crear tareas…</p>
+            <p class="muted">Preguntame lo que quieras: pensar una idea, organizar la Bandeja, planificar tu día o retomar un proyecto. No reescribo tus notas sin que me lo pidas.</p>
             <div class="pills">{SUGGESTIONS.map((s) => <button key={s} class="pill" onClick={() => void send(s)}>{s.length > 40 ? "Revisar mi espacio" : s}</button>)}</div>
           </div>
         )}
@@ -94,10 +101,10 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
       </div>
 
       <form class="composer" onSubmit={(e) => { e.preventDefault(); void send(text); }}>
-        <textarea ref={input} rows={2} value={text} disabled={!ack} placeholder={ack ? "Escribe al asistente…  (Enter envía · Shift+Enter nueva línea)" : "Acepta el aviso para empezar"}
+        <textarea ref={input} rows={2} value={text} disabled={!ack || offline} aria-label="Mensaje para el asistente" placeholder={!ack ? "Acepta el aviso para empezar" : offline ? "Sin conexión con el portátil" : mobile ? "Escribe al asistente…" : "Escribe al asistente…  (Enter envía · Shift+Enter nueva línea)"}
           onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); void send(text); } }} />
-        <button class="primary" type="submit" disabled={!ack || busy || !text.trim()}>Enviar</button>
+        <button class="primary" type="submit" disabled={!ack || offline || busy || !text.trim()}>Enviar</button>
       </form>
     </div>
   );

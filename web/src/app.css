@@ -548,3 +548,18 @@ button.opt-chip:focus-visible { outline: 2px solid var(--accent); outline-offset
 .dbtable th.addcol { width: 1%; }
 .dbtable th .th.add-prop { text-align: center; padding: 9px 12px; font-size: 14px; white-space: nowrap; }
 .dbtable th .th.add-prop::after { content: none; }
+
+/* Móvil: asistente y propuestas con el mismo diseño, ajustado al pulgar (el compositor sube sobre la barra inferior) */
+@media (max-width: 720px) {
+  .assistant-page { min-height: 0; padding-bottom: 12px; }
+  .assistant-page .page-head .row { flex-wrap: wrap; gap: 8px; }
+  .composer { bottom: calc(54px + var(--nav-pad)); }
+  .composer textarea { font-size: 16px; } /* 16 px: iOS no amplía la pantalla al enfocar */
+  .composer .primary { min-height: 44px; }
+  .bubble { max-width: 100%; overflow-wrap: anywhere; }
+  .action { flex-wrap: wrap; }
+  .action .mini { min-height: 36px; }
+  .op code { overflow-wrap: anywhere; }
+  .proposal-actions { gap: 10px; }
+  .proposal-actions button { flex: 1 1 0; min-height: 44px; }
+}

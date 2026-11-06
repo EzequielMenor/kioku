@@ -55,7 +55,7 @@ Además trae **bases de datos** (tabla, tablero y lista sobre tus propias notas)
 |---|---|---|
 | **Node.js ≥ 24** | Sí | Ejecuta el servidor y la CLI (usa `node:sqlite`, sin dependencias nativas). |
 | **Chromium, Chrome o Brave** | Recomendado | Abre la interfaz como ventana de aplicación. Sin él puedes abrir la URL del daemon en cualquier navegador. |
-| **bubblewrap (`bwrap`) y [Hermes Agent](https://github.com/NousResearch/hermes-agent)** | Opcional | Solo para el asistente conversacional (ver [Asistente](#asistente)). |
+| **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** con `bwrap` (Linux) o Docker Desktop (Mac) | Opcional | Solo para el asistente conversacional; [modelos](docs/assistant-models.md) y [Mac](docs/assistant-macos.md). |
 
 Desarrollado y probado en **Arch Linux / Omarchy con Hyprland**. En Linux, el Workspace funciona con Node y un navegador Chromium; la ventana flotante de captura (Quick) está pensada para Hyprland. En macOS puedes probar Kioku con **Docker Desktop**, sin instalar Node en el Mac; consulta la [guía de instalación](docs/local-macos.md). Para el despliegue privado con Dokploy, consulta la [guía de Dokploy](docs/dokploy.md). Windows no está probado.
 
@@ -190,7 +190,9 @@ kioku restore ~/respaldo.tar.gz ~/carpeta-nueva
 
 Es opcional y la forma más cómoda de organizar el espacio: pídele que clasifique la Bandeja, que revise enlaces rotos o que te diga qué hacer hoy. Se abre en la pestaña **Asistente** (`g a`), con `kioku ask "…"` o con `a:` en Quick.
 
-- **Motor:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) con tu suscripción de Codex (`~/.hermes/auth.json`), dentro de una jaula `bwrap`. Comprueba tus requisitos con `kioku assistant status`.
+- **Motor:** [Hermes Agent](https://github.com/NousResearch/hermes-agent), con [proveedor y modelo configurables](docs/assistant-models.md): Codex por defecto, otras APIs o un modelo local compatible. Linux usa `bwrap`; [Mac usa Docker](docs/assistant-macos.md), pendiente de validación real en macOS. Comprueba los requisitos con `kioku assistant status`.
+- **Centro de Kioku:** organiza y ayuda a pensar; responde preguntas generales sin leer notas innecesariamente y no reescribe tus notas sin petición explícita. Los cambios críticos requieren propuestas que tú apruebas.
+- **Desde el móvil:** [Más → Asistente](docs/assistant-mobile.md), con el ordenador encendido, sin suspensión y accesible por la conexión emparejada. Puede proponer cambios y pedir aprobación allí mismo; no hay chat sin conexión ni cola de preguntas. Su memoria y conversaciones no comparten datos privados del escritorio.
 - **Qué hace solo:** lo pequeño y reversible (clasificar capturas, consultar tus bases, añadirles filas). Cada acción queda con un botón **Deshacer** (`kioku assistant actions` · `kioku assistant undo <id>`).
 - **Qué te pide aprobar:** borrar, mover o tocar más de 5 notas, o escribir contenido externo, se convierte en una **propuesta** con diff (`kioku proposals`).
 - **Qué ve:** solo lo que lee a través de las herramientas de Kioku; nunca monta tu bóveda. Puedes excluir carpetas en `.kioku/assistant.json`: `{"exclude": ["Privado/"]}`. `Notas/Importado/` es de solo lectura para él.

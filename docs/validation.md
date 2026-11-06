@@ -160,3 +160,19 @@ La bóveda de Obsidian (`~/Documents/Mi espacio`) no se ha leído ni modificado.
 - **Push en un iPhone real:** el cifrado y la firma están comprobados contra el RFC y con un servicio push simulado, pero no contra los servidores de Apple (que exigen la app instalada, iOS ≥ 16.4 y permiso concedido desde un toque).
 - Que `notify-send` llegue a tu sesión cuando el daemon corre como servicio de usuario (hay que verlo con el servicio real; ver checklist del README).
 - Avisos con el portátil dormido: no existen (el daemon es el que avisa).
+
+
+## JARV-34: Hermes central, modelos y acceso móvil
+
+**Verificado en Linux**
+- `npm run typecheck`, `npm run build:web` y `npm test`: 534/534, sin fallos ni omisiones. El build produjo app.js de ~828 KB.
+- Configuración proveedor/modelo, credenciales por fd en bwrap, configuración sin secretos, compatibilidad Codex y aislamiento real de bwrap (señuelos fuera de la jaula rechazados).
+- Móvil: exclusiones por sesión y llamada, memoria/skills/conversaciones por huella de privacidad, bloqueo si cambia la privacidad durante la consulta, revocación, propuestas y Deshacer con procedencia y visibilidad comprobadas.
+- Chromium real a 390 px: conversación y respuesta, compositor visible, nota intacta antes de aprobar, cancelar no modifica, confirmar una propuesta de borrado la aplica; modo offline bloquea el chat sin encolar preguntas.
+- Docker/macOS: solo pruebas de construcción de argumentos y proceso simulado (montajes estrechos, claves fuera de argv, selección de plataforma, timeout y retirada del contenedor propio). Apertura de navegador Mac probada como contrato; Linux conserva su comando.
+- Exportar/restaurar conserva las memorias de escritorio y móvil y excluye auth, .env, configuración generada con token y logs/cachés.
+
+**Prueba imprescindible todavía no disponible**
+- Este host es Linux; Docker responde `permission denied` al socket. No se reintentó ni se elevó el permiso. No se ha ejecutado la imagen, el puente de red de host ni la renovación de credenciales en un Mac.
+- No se probó un iPhone físico. Chromium y la API no demuestran por sí solos el comportamiento de Safari/iOS ni la conectividad de tu Mac real.
+- Checklist manual y preparación: [assistant-macos.md](assistant-macos.md). No se modificaron datos reales ni `~/.hermes`.

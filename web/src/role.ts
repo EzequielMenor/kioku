@@ -13,5 +13,8 @@ export function setRole(r: Role): void {
   lsSet("role", r);
 }
 
-/** Pantallas que el rol móvil no tiene: el asistente y las propuestas se usan en el portátil. */
-export const MOBILE_HIDDEN = new Set(["/asistente", "/propuestas"]);
+/**
+ * Pantallas que el rol móvil no tiene. Ahora ninguna: el asistente y las propuestas funcionan también en el móvil
+ * (con la privacidad del móvil que impone el daemon y solo con el portátil encendido).
+ */
+export const MOBILE_HIDDEN = new Set<string>();

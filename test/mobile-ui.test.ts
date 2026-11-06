@@ -5,6 +5,8 @@ import path from "node:path";
 import { extractKey } from "../web/src/pairing.ts";
 import { pinchZoom } from "../web/src/graph-math.ts";
 import { MOBILE_HIDDEN } from "../web/src/role.ts";
+import { cacheableRead } from "../web/src/sw-rules.ts";
+import { makeOfflineReader } from "../web/src/offline/reader.ts";
 
 const K = "0123456789abcdef".repeat(4);
 
@@ -50,7 +52,7 @@ test("navegación: las pantallas de antes siguen en su orden con sus atajos y el
   assert.deepEqual(cal && [cal.label, cal.key, cal.icon], ["Calendario", "c", "calendario"]);
   assert.equal(new Set(nav.map((n) => n.key)).size, nav.length, "ningún atajo «g …» se repite");
   assert.ok(!MOBILE_HIDDEN.has("/calendario"), "el móvil sí tiene calendario");
-  assert.deepEqual([...MOBILE_HIDDEN].sort(), ["/asistente", "/propuestas"]);
+  assert.deepEqual([...MOBILE_HIDDEN], [], "el asistente y las propuestas ya no se esconden en el móvil: el daemon impone su privacidad");
   assert.match(app, /case "calendario": view = <CalendarView/);
   assert.match(app, /\["g h · b · p · t · c · n · d · g · a · r"/, "la ayuda de atajos lista «g c»");
 });
@@ -62,4 +64,36 @@ test("móvil: la barra inferior es Hoy · Tareas · «+» central · Calendario 
   assert.doesNotMatch(app, /class="fab"/);
   assert.match(app, /\["\/hoy", "\/calendario", "\/tareas"\]\.includes\(n\.route\)/, "«Más» no repite lo que ya está abajo");
   assert.match(appCss, /\.bottomnav span\s*{[^}]*text-overflow:\s*ellipsis/, "con seis botones, «Calendario» se recorta en lugar de ensanchar la barra");
+});
+
+// ───────── Asistente y propuestas en el móvil: la vista de siempre, solo en línea y sin atajos peligrosos ─────────
+
+const assistantSrc = readFileSync(path.join(import.meta.dirname, "..", "web", "src", "assistant.tsx"), "utf8");
+
+test("móvil: asistente y propuestas entran en «Más» y en «Hoy»; la bandeja y el triaje con IA siguen siendo del portátil", () => {
+  assert.doesNotMatch(app, /t\.proposals > 0 && !mobile/, "«Hoy» avisa de propuestas también en el móvil");
+  assert.match(app, /{!mobile && <AiPanel/, "el panel de IA (ruta que el móvil no tiene) se esconde");
+  assert.match(app, /{!mobile && <button onClick={\(\) => void guard\(async \(\) => { const r = await api<Proposal\[\]>\("POST", "\/api\/triage"\)/, "«Revisar bandeja» tampoco");
+});
+
+test("móvil: aplicar una propuesta pide confirmación y sin conexión no se puede aplicar ni descartar", () => {
+  assert.match(app, /if \(mobile && what === "apply" && !\(await askConfirm\(/, "un toque suelto no aplica nada");
+  assert.match(app, /disabled={mobile && !online} onClick={\(\) => void act\(p, "apply"\)}/);
+  assert.match(app, /disabled={mobile && !online} onClick={\(\) => void act\(p, "reject"\)}/);
+  assert.match(app, /Sin conexión: las propuestas solo se aprueban con el portátil encendido/);
+});
+
+test("móvil: el asistente es solo en línea (no pregunta sin red), sin memoria y con su compositor sobre la barra inferior", () => {
+  assert.match(assistantSrc, /const online = useOffline\(\)\.online;\s*const offline = mobile && !online;/, "el hook se llama siempre, no en cortocircuito");
+  assert.match(assistantSrc, /offline\) return Promise\.resolve\(\)/, "sin conexión no se envía ni se encola");
+  assert.match(assistantSrc, /disabled={!ack \|\| offline \|\| busy \|\| !text\.trim\(\)}/);
+  assert.match(assistantSrc, /{!mobile && <a class="pill" href="#\/asistente\/memoria">/, "la memoria no es accesible desde el móvil");
+  assert.match(appCss, /@media \(max-width: 720px\) {\s*\.assistant-page[^}]*}[\s\S]*\.composer { bottom: calc\(54px \+ var\(--nav-pad\)\); }/);
+  assert.match(appCss, /\.composer textarea { font-size: 16px; }/, "iOS no amplía al enfocar");
+});
+
+test("móvil: ni la caché del service worker ni la réplica sin conexión guardan o sirven el asistente y las propuestas", async () => {
+  for (const p of ["/api/assistant/status", "/api/assistant/actions", "/api/assistant/ask", "/api/proposals", "/api/proposals?status=pending"]) assert.equal(cacheableRead("GET", p.split("?")[0]), false, p);
+  const reader = makeOfflineReader({ getNote: async () => ({ path: "x", text: "t", hash: "h" }), allNotes: async () => [] } as never);
+  for (const p of ["/api/assistant/status", "/api/assistant/actions", "/api/proposals?status=pending"]) assert.equal(await reader(p), undefined, p);
 });

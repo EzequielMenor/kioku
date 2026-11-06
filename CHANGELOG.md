@@ -9,6 +9,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 - **Opciones con color:** editor de opciones en el menú de las propiedades de selección y multiselección (renombrar, subir/bajar, borrar con la opción de conservar o vaciar el valor en las notas y «Nueva opción»). El color (paleta de 8 o sin color) y los chips coloreados en la celda de la tabla, la lista y el tablero, en tema claro y oscuro, son solo de la selección simple; la multiselección no pinta colores.
 - **Selector de la celda con «Crear»:** el valor de una selección es un chip que abre un selector con filtro; si lo escrito no coincide con ninguna opción se ofrece **Crear «…»**, que la añade al esquema y la asigna a la fila.
 
+### Asistente central (JARV-34)
+- Hermes conserva el papel de agente con proveedor y modelo configurables; claves aisladas por proveedor y sin guardarlas en la configuración de la bóveda.
+- Chat, Deshacer y aprobación de propuestas desde el móvil emparejado, con privacidad y memoria separadas por política de exclusiones. Sin chat offline ni preguntas en cola.
+- Lanzamiento aislado en Mac mediante Docker Desktop (requiere preparación manual y validación real en macOS); Linux mantiene `bwrap`.
+- Rol de organización y reflexión: no reescribe notas sin petición explícita; las acciones críticas siguen requiriendo aprobación.
+
 ## [0.8.0] — 2026-11-04
 
 ### Avisos y asistente (MVP)

@@ -1,12 +1,16 @@
 // Acceso desde el móvil: lista blanca del rol `mobile` (la impone el servidor, la UI solo la refleja),
 // privacidad (`.kioku/mobile.json`: carpetas que nunca salen del portátil) y filtrado de respuestas.
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { isExcludedPath, parseAssistantConfig } from "../assistant/policy.ts";
+import { MOBILE_PROPOSAL_PREFIX, isMobileSessionId } from "../assistant/session.ts";
+import type { UndoRecord } from "../assistant/undo.ts";
+import type { Proposal } from "../core/proposals.ts";
 import { relationTarget } from "../core/index.ts";
 
 export type Role = "full" | "mobile";
 
-/** Lo único que el móvil puede escribir: capturar, tareas (estado y formulario en línea) y notas. Borrar, asistente, escritorio y mantenimiento quedan fuera. */
+/** Lo único que el móvil puede escribir: capturar, tareas (estado y formulario en línea), notas y el asistente (preguntar y deshacer). Borrar, escritorio y mantenimiento quedan fuera. */
 const WRITES = new Set([
   "POST /api/capture", "POST /api/capture/convert", "POST /api/note/create", "PUT /api/note", "POST /api/note/props",
   "POST /api/task/status", "POST /api/task/create", "POST /api/task/update", "POST /api/journal", "POST /api/note/open", "POST /api/mobile/operation",
@@ -14,13 +18,18 @@ const WRITES = new Set([
   "POST /api/push/subscribe", "POST /api/push/unsubscribe", // avisos al móvil: cada móvil gestiona su propia suscripción
   "POST /api/calendar/create", "POST /api/calendar/move", "POST /api/calendar/finish", // calendario en línea; sin cola sin conexión
   "POST /api/calendar/areas/create", "POST /api/calendar/areas/update", "POST /api/calendar/area", // áreas del calendario y su asignación
+  "POST /api/assistant/ask", "POST /api/assistant/undo", // asistente: solo en línea (nunca en la cola sin conexión) y con la privacidad del móvil
 ]);
+
+/** Del asistente el móvil solo lee su estado y su actividad: ni memoria ni herramientas (esas son del escritorio y del puente). */
+const ASSISTANT_READS = new Set(["/api/assistant/status", "/api/assistant/actions"]);
+const PROPOSAL_ACTION = /^\/api\/proposals\/[0-9A-Z]{26}\/(?:apply|reject)$/;
 
 const under = (p: string, base: string) => p === base || p.startsWith(`${base}/`);
 
 export function mobileAllowed(method: string, p: string): boolean {
-  if (method === "GET") return !(under(p, "/api/assistant") || under(p, "/api/proposals") || under(p, "/api/ai"));
-  return WRITES.has(`${method} ${p}`);
+  if (method === "GET") return !(under(p, "/api/ai") || (under(p, "/api/assistant") && !ASSISTANT_READS.has(p)) || (under(p, "/api/proposals") && p !== "/api/proposals"));
+  return WRITES.has(`${method} ${p}`) || (method === "POST" && PROPOSAL_ACTION.test(p));
 }
 
 /** Parámetros que nombran una nota: si alguno cae en una carpeta privada, la petición no se atiende. */
@@ -96,4 +105,63 @@ export function mobileView(route: string, v: unknown, exclude: string[]): unknow
 export function mobileEvent(ev: { kind?: string; path?: unknown }, exclude: string[]): boolean {
   if (ev.kind === "navigate" || ev.kind?.startsWith("assistant")) return false;
   return !(typeof ev.path === "string" && isPrivate(ev.path, exclude));
+}
+
+/* ───────── Asistente en el móvil ───────── */
+
+const fold = (s: string) => s.normalize("NFC").toLowerCase();
+
+/** Entrada de exclusión lista para buscarla dentro de un texto (misma normalización que `isExcludedPath`). */
+function needle(x: string): string {
+  const k = fold(x.trim()).replace(/^(\.?\/)+/, "");
+  return k && !k.endsWith("/") && !k.endsWith(".md") ? `${k}/` : k;
+}
+
+/** ¿El texto nombra una carpeta o nota oculta? Guarda extra para lo que no es una ruta (títulos, resúmenes, textos de propuestas). */
+export function mentionsHidden(text: string, exclude: string[]): boolean {
+  const t = fold(text).replace(/\\/g, "/");
+  return exclude.some((x) => { const n = needle(x); return n !== "" && t.includes(n); });
+}
+
+/** Huella corta de las exclusiones: si cambian, la conversación y la memoria del motor cambian de espacio (nada se borra). */
+export function exclusionScope(exclude: string[]): string {
+  const keys = [...new Set(exclude.map(needle).filter(Boolean))].sort();
+  return createHash("sha256").update(JSON.stringify(keys)).digest("hex").slice(0, 12);
+}
+
+/** Identificador de conversación del móvil: atado al rol y a la huella de privacidad vigente, nunca igual al del escritorio. */
+export const mobileConversation = (scope: string, id: string) => `mobile:${scope}:${id}`;
+
+/** Resultado de una herramienta para una sesión del móvil: el mismo filtro que las lecturas del móvil, y fuera los elementos de lista que nombran algo oculto. */
+export function mobileToolText(text: string, exclude: string[], patch?: (v: Obj) => void): string {
+  let v: unknown;
+  try { v = JSON.parse(text); } catch { return text; }
+  const scrub = (x: unknown): unknown => Array.isArray(x)
+    ? x.filter((i) => !(isObj(i) && mentionsHidden(JSON.stringify(i), exclude))).map(scrub)
+    : isObj(x) ? Object.fromEntries(Object.entries(x).map(([k, i]) => [k, scrub(i)])) : x;
+  const out = scrub(mobileView("/api/assistant/tools", v, exclude));
+  if (patch && isObj(out)) patch(out);
+  return JSON.stringify(out);
+}
+
+/** Acción automática tal como la ve el móvil: solo las de sesiones del móvil con todo visible hoy, y sin las instantáneas previas. */
+export function mobileAction(rec: UndoRecord, exclude: string[]): UndoRecord | null {
+  if (!isMobileSessionId(rec.sessionId)) return null;
+  if (rec.files.some((f) => isPrivate(f.path, exclude)) || mentionsHidden(rec.summary, exclude)) return null;
+  return { ...rec, files: rec.files.map((f) => ({ path: f.path, beforeText: null, afterHash: null })) };
+}
+
+const stringsOf = (v: unknown): string[] => typeof v === "string" ? [v] : Array.isArray(v) ? v.flatMap(stringsOf) : isObj(v) ? Object.values(v).flatMap(stringsOf) : [];
+
+/**
+ * Propuesta visible para el móvil: nacida de una sesión del móvil, con TODAS sus rutas (origen y destino), textos y enlaces
+ * [[…]] visibles hoy. `resolve` es la del índice: un enlace a una nota oculta esconde la propuesta entera.
+ */
+export function mobileProposalVisible(p: Proposal, exclude: string[], resolve: (target: string) => string | null): boolean {
+  if (!p.key?.startsWith(MOBILE_PROPOSAL_PREFIX)) return false;
+  const paths = p.ops.flatMap((op) => (op.op === "move" ? [op.from, op.to] : [op.path]));
+  if (paths.some((x) => isPrivate(x, exclude))) return false;
+  const texts = [p.title, p.rationale, p.error ?? "", ...stringsOf(p.ops)];
+  if (texts.some((t) => mentionsHidden(t, exclude))) return false;
+  return !texts.some((t) => [...t.matchAll(/\[\[([^\]|#]+)/g)].some((m) => { const found = resolve(m[1].trim()); return !!found && isPrivate(found, exclude); }));
 }

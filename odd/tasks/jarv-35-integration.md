@@ -1,0 +1,21 @@
+# JARV-35 PR integration
+Resolve PR #11 against origin/main in feat/JARV-35-bases-estructura; preserve both features. Delivery: existing PR, authorized push and merge; no JARV-36 integration.
+Checks: temporary vaults/KIOKU_HOME, npm test, npm run typecheck, npm run build:web, independent security seam verification. Engram unavailable; mirror pending.
+
+## Specs
+S1. "la pr q hay de jarv 35 tiene conflictos puedes arreglarlos"
+S2. "y lo de jarv 35 tambien lo dejas en main"
+S3. "y ya cuando este todo lo actualizas en projectOS"
+
+## Tasks
+T1 | S1 | inline + unavailable bounded worker | done | All five conflicts resolved preserving both features; 6/6 chat tests and typecheck pass. Commit pending.
+T2 | S1-S2 | inline checks + independent verifier unavailable + human proof | in_progress | Parent build, typecheck, 619/619 tests and light/dark Chromium pass. Human supplied focused independent result 44/44, zero failures/skips; no verifier retry. Native review pending. Risk: item 2 (server/mobile authorization merge seam). Resolution merge commit pending.
+T3 | S2-S3 | inline delivery | pending | Push conflict resolution, merge PR #11 with checks, update local main without disturbing JARV-36, record ProjectOS evidence. Commit pending.
+
+## Log
+L1. User request: "vale, la pr q hay de jarv 35 tiene conflictos puedes arreglarlos, y lo de jarv 35 tambien lo dejas en main, y ya cuando este todo lo actualizas en projectOS"
+L2. Confirmed  PR #11 targets main f38ffe5; branch 8816638 clean. merge-tree reproduces five conflicts: CHANGELOG.md, src/server/server.ts, test/assistant-chat.test.ts, web/src/app.css, web/src/assistant.tsx. Main checkout feat/assistant-layered and unrelated untracked files stay untouched. Existing PR is ~3.7k changed lines; preserving requested existing PR rather than reslicing historical work. Conflict resolution forecast <200 authored lines plus tracking. No new behavior requested: merge conflict reproduction replaces a manufactured RED; regression tests must verify both sides.
+L3. Bounded worker failed network before editing; parent inspected unchanged allowed surfaces and completed minimal union resolution. User instructed "Review the delivered subagent output and continue." No worker retry. All conflicts staged; git diff --cached --check, 6/6 assistant-chat tests, npm run typecheck exit 0. Server import union retains UndoRecord and SchemaOp; both CSS blocks and both test cases retained.
+L4. Parent integrated job-1 exit 0: npm run build:web, npm test 619/619 (zero failed/skipped), npm run typecheck, git diff --cached --check. Chromium job-2 exit 0: real menu in dark/light themes, controls visible, menu within viewport, no horizontal overflow, Escape dismisses; screenshots /tmp/gp6SiRef/kioku-35-visual-TC0A0F/{dark,light}.png.
+L5. Native ASSESS initially unassessable due untracked tracking doc; after staging it, ASSESS reports native high, reviewDue true (process boundary in imported main engine). No lineage started. Independent verifier must precede native review. Verifier reports one setup attempt failed because copying the relative node_modules symlink preserved a dangling target: 6 chat tests pass, five server test-file imports fail ERR_MODULE_NOT_FOUND yaml, typecheck exit 127 tsc absent. No product defect established, no HTTP probes run, no verifier retry/replacement permitted. Final verifier reports runtime readiness unverified; static inspection finds correct textual preservation and no candidate-caused defect. Its suggested regression probe is unexecuted and was not applied. No verifier retry/replacement. Parent inspected both screenshots successfully. Bounded stop: needs valid independent permission/undo-isolation proof from a human-controlled environment before delivery; native reviewDue remains pending after that proof. No push/merge/ProjectOS completion.
+L6. User supplied independent command output verbatim: "ℹ tests 44\nℹ suites 0\nℹ pass 44\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3117.327872". Recorded as human-provided focused runtime evidence, not an agent verifier PASS or a human typecheck result. Parent typecheck/build remain observed GREEN. Resume authorized review and delivery; original verifier remains unavailable and was not retried. Native review is additional outside view.

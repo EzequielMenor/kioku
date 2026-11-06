@@ -208,3 +208,33 @@ test("asistente API: assistant.json roto → ask 503 y tools/call 503, sin ejecu
     assert.equal(asked, 0);
   } finally { await s.done(); }
 });
+
+test("asistente API (escritorio sin cambios): la conversación viaja tal cual, la sesión es de rol «full» y las acciones conservan su instantánea", async () => {
+  const seen: { conversation: string; role: string; id: string }[] = [];
+  const s = await setup(async (i, tool) => {
+    seen.push({ conversation: i.conversation, role: i.session.role, id: i.session.id });
+    await tool("append_to_note", { path: "Notas/Cocina.md", text: "más" });
+    return "ok";
+  });
+  try {
+    await s.j.createNote({ title: "Cocina", body: "lentejas\n" });
+    const r = await s.call("POST", "/api/assistant/ask", { message: "haz algo", conversation: "c1" });
+    assert.deepEqual(seen.map((x) => [x.conversation, x.role]), [["c1", "full"]]);
+    assert.match(seen[0].id, /^[0-9a-f]{16}$/, "sin prefijo de móvil");
+    assert.equal(r.json.actions[0].files[0].beforeText.includes("lentejas"), true, "el escritorio sigue viendo la instantánea previa");
+    assert.equal((await s.call("POST", "/api/assistant/ask", { message: "otra" })).status, 200);
+    assert.equal(seen[1].conversation, "default");
+  } finally { await s.done(); }
+});
+
+test("asistente API: una sesión del móvil sin exclusiones explícitas no ejecuta ninguna herramienta (falla cerrado)", async () => {
+  const s = await setup();
+  try {
+    await s.j.createNote({ title: "Cocina", body: "lentejas\n" });
+    const sess = s.srv.sessions.open("mobile");
+    const r = await s.srv.assistantTools.call(sess, "create_note", { title: "Intruso" });
+    assert.equal(r.isError, true);
+    assert.equal(s.j.vault.exists("Notas/Intruso.md"), false);
+    assert.equal((await s.srv.assistantTools.call(sess, "search", { query: "lentejas" }, [])).isError, undefined, "con la lista (aunque vacía) sí");
+  } finally { await s.done(); }
+});
