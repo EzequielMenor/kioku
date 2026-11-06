@@ -9,6 +9,15 @@
   --bad: #e8786c; --good: #8fb573; --warn-bg: rgba(216,166,87,.10); --warn-line: rgba(216,166,87,.38);
   --t-project: #7f9bd6; --t-task: #8fb573; --t-note: #d2c3a3; --t-capture: #8a867c; --t-journal: #a891c9; --t-resource: #5fb3b3;
   --shadow: 0 24px 60px rgba(0,0,0,.5);
+  /* Opciones de selección: fondo y texto sólidos por color (contraste ≥ 6:1, comprobado en test/option-colors.test.ts) */
+  --opt-gray-bg: #34312c; --opt-gray-fg: #d6d0c4;
+  --opt-brown-bg: #43332a; --opt-brown-fg: #e6cdb8;
+  --opt-orange-bg: #4a3320; --opt-orange-fg: #f0c9a0;
+  --opt-yellow-bg: #46401f; --opt-yellow-fg: #ebdc8f;
+  --opt-green-bg: #26402b; --opt-green-fg: #b4dcae;
+  --opt-blue-bg: #24344f; --opt-blue-fg: #b3c8f0;
+  --opt-purple-bg: #3b2e52; --opt-purple-fg: #d4c2f0;
+  --opt-red-bg: #4d2a27; --opt-red-fg: #f5b9b2;
   --sans: Inter, "SF Pro Text", system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
@@ -22,6 +31,15 @@
   --bad: #b3342b; --good: #4c7a32; --warn-bg: #f6ead0; --warn-line: #dfc27f;
   --t-project: #2f4b8a; --t-task: #5a8a3c; --t-note: #9c8660; --t-capture: #7a766c; --t-journal: #7b5fa6; --t-resource: #2f8a8a;
   --shadow: 0 20px 50px rgba(60,45,20,.14);
+  /* Opciones de selección: fondo y texto sólidos por color (contraste ≥ 6:1, comprobado en test/option-colors.test.ts) */
+  --opt-gray-bg: #e6e1d6; --opt-gray-fg: #3d382f;
+  --opt-brown-bg: #ecdccf; --opt-brown-fg: #5a3a22;
+  --opt-orange-bg: #f8e0c4; --opt-orange-fg: #7a3f0c;
+  --opt-yellow-bg: #f5ecb8; --opt-yellow-fg: #5e5200;
+  --opt-green-bg: #dbebd0; --opt-green-fg: #2c5a1a;
+  --opt-blue-bg: #d6e2f5; --opt-blue-fg: #234680;
+  --opt-purple-bg: #e6dcf3; --opt-purple-fg: #54367f;
+  --opt-red-bg: #f6d9d5; --opt-red-fg: #8a2a22;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -33,6 +51,15 @@
     --bad: #b3342b; --good: #4c7a32; --warn-bg: #f6ead0; --warn-line: #dfc27f;
     --t-project: #2f4b8a; --t-task: #5a8a3c; --t-note: #9c8660; --t-capture: #7a766c; --t-journal: #7b5fa6; --t-resource: #2f8a8a;
     --shadow: 0 20px 50px rgba(60,45,20,.14);
+    /* Opciones de selección: fondo y texto sólidos por color (contraste ≥ 6:1, comprobado en test/option-colors.test.ts) */
+    --opt-gray-bg: #e6e1d6; --opt-gray-fg: #3d382f;
+    --opt-brown-bg: #ecdccf; --opt-brown-fg: #5a3a22;
+    --opt-orange-bg: #f8e0c4; --opt-orange-fg: #7a3f0c;
+    --opt-yellow-bg: #f5ecb8; --opt-yellow-fg: #5e5200;
+    --opt-green-bg: #dbebd0; --opt-green-fg: #2c5a1a;
+    --opt-blue-bg: #d6e2f5; --opt-blue-fg: #234680;
+    --opt-purple-bg: #e6dcf3; --opt-purple-fg: #54367f;
+    --opt-red-bg: #f6d9d5; --opt-red-fg: #8a2a22;
     color-scheme: light;
   }
 }
@@ -105,6 +132,7 @@ main { flex: 1; overflow: auto; }
 .ctitle { font-weight: 550; font-size: 15px; } .ctitle:hover { color: var(--accent); }
 .meta { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 6px; }
 .chip { display: inline-block; font-size: 11.5px; padding: 0 8px; border-radius: 6px; background: var(--raised); border: 1px solid var(--line); color: var(--fg2); white-space: nowrap; line-height: 20px; }
+.chip.origin { margin-left: 8px; }
 .chip.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 .chip.bad { color: var(--bad); border-color: var(--bad); background: transparent; }
 .chip.link { color: var(--accent); } .chip.link:hover { background: var(--accent-soft); }
@@ -461,6 +489,65 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .dbbar { flex-wrap: wrap; gap: 8px; }
   .dbbar > .muted.small { display: none; }
 }
+
+/* Menú de cabecera de una base (Popover) */
+.dbtable th .th[aria-haspopup]::after { content: " ▾"; opacity: 0; transition: opacity .12s; }
+.dbtable th .th[aria-haspopup]:hover::after, .dbtable th .th[aria-expanded="true"]::after, .dbtable th .th[aria-haspopup]:focus-visible::after { opacity: .7; }
+.dbtable th .th[aria-haspopup]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.popover { position: fixed; z-index: 45; /* sobre la tabla y la navegación (40), bajo los diálogos de confirmación (.scrim, 50) y el toast (80) */ box-sizing: border-box; min-width: 220px; max-width: min(320px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; background: var(--surface); color: var(--fg); border: 1px solid var(--line2); border-radius: 8px; box-shadow: var(--shadow); padding: 6px; font-size: 13.5px; font-weight: 400; letter-spacing: normal; text-align: left; }
+.popover .pop-section { padding: 4px; }
+.popover .pop-section + .pop-section { border-top: 1px solid var(--line); }
+.popover .pop-field { display: grid; gap: 4px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.popover .pop-field input, .popover .pop-field select { color: var(--fg); font-size: 13.5px; width: 100%; box-sizing: border-box; }
+.popover .pop-hint { margin: -4px 0 8px; }
+.popover .pop-list { display: grid; gap: 2px; }
+.popover .pop-item { text-align: left; background: transparent; border-color: transparent; color: var(--fg); width: 100%; }
+.popover .pop-item:hover:not(:disabled) { background: var(--hover); border-color: transparent; }
+.popover .pop-item[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.popover .pop-item:disabled { color: var(--muted); cursor: default; }
+.popover .pop-item.danger { color: var(--bad); }
+
+/* Chips de opciones de selección (celda, lista y tablero) y selector de valor de la celda */
+.chip.opt-gray, .chip.opt-brown, .chip.opt-orange, .chip.opt-yellow, .chip.opt-green, .chip.opt-blue, .chip.opt-purple, .chip.opt-red { border-color: transparent; }
+.opt-gray, button.opt-gray:hover { background: var(--opt-gray-bg); color: var(--opt-gray-fg); }
+.opt-brown, button.opt-brown:hover { background: var(--opt-brown-bg); color: var(--opt-brown-fg); }
+.opt-orange, button.opt-orange:hover { background: var(--opt-orange-bg); color: var(--opt-orange-fg); }
+.opt-yellow, button.opt-yellow:hover { background: var(--opt-yellow-bg); color: var(--opt-yellow-fg); }
+.opt-green, button.opt-green:hover { background: var(--opt-green-bg); color: var(--opt-green-fg); }
+.opt-blue, button.opt-blue:hover { background: var(--opt-blue-bg); color: var(--opt-blue-fg); }
+.opt-purple, button.opt-purple:hover { background: var(--opt-purple-bg); color: var(--opt-purple-fg); }
+.opt-red, button.opt-red:hover { background: var(--opt-red-bg); color: var(--opt-red-fg); }
+.opt-none { background: var(--raised); color: var(--fg2); border: 1px solid var(--line); }
+button.opt-chip { font: inherit; font-size: 12.5px; line-height: 20px; padding: 0 9px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; min-height: 0; }
+button.opt-chip.opt-none { border-color: var(--line); }
+button.opt-chip:hover { filter: brightness(1.12); }
+button.opt-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cell-chip { max-width: 100%; text-align: left; }
+.cell-misfit { font: inherit; font-size: 12.5px; line-height: 20px; padding: 0 9px; border-radius: 6px; cursor: pointer; max-width: 100%; text-align: left; min-height: 0; background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--fg2); }
+.cell-misfit:hover { filter: brightness(1.12); }
+.cell-misfit:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cell-chip.empty { background: transparent; border-color: transparent; color: var(--muted); }
+.cell-chip.empty:hover, .cell-chip.empty:focus-visible { border-color: var(--line2); background: var(--raised); filter: none; }
+.popover .opt-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 4px; max-height: 220px; overflow: auto; }
+.popover .opt-list button.opt-chip[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.popover .opt-filter { width: 100%; color: var(--fg); font-size: 13.5px; }
+.popover .pop-title { margin: 2px 0 6px; font-size: 12px; font-weight: 500; color: var(--muted); }
+/* Editor de opciones del menú de columna */
+.opt-row { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 4px; align-items: center; margin-bottom: 4px; }
+.opt-row.nodot { grid-template-columns: 1fr auto auto auto; }
+.opt-row input { min-width: 0; color: var(--fg); font-size: 13px; }
+.opt-row button { padding: 2px 7px; min-height: 0; }
+.opt-dot { width: 22px; height: 22px; padding: 0 !important; border-radius: 50%; border: 1px solid var(--line2); }
+.opt-dot.opt-none { background: transparent; }
+.opt-swatches { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 6px 26px; }
+.opt-swatches button { padding: 0 8px; font-size: 12px; line-height: 20px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; }
+.opt-swatches button.opt-none { border-color: var(--line); }
+.opt-swatches button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.opt-new { margin-top: 4px; }
+.opt-new input { width: 100%; color: var(--fg); font-size: 13px; }
+.dbtable th.addcol { width: 1%; }
+.dbtable th .th.add-prop { text-align: center; padding: 9px 12px; font-size: 14px; white-space: nowrap; }
+.dbtable th .th.add-prop::after { content: none; }
 
 /* Móvil: asistente y propuestas con el mismo diseño, ajustado al pulgar (el compositor sube sobre la barra inferior) */
 @media (max-width: 720px) {

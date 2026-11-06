@@ -120,7 +120,9 @@ const READ_DEFS: Def[] = [
       const groups = r.groups?.map((g) => { const rows = g.rows.slice(0, left); left -= rows.length; return { key: g.key, rows }; }) ?? null;
       return {
         database: { path: r.database.path, title: r.database.title, views: r.database.views.map((v) => v.name) },
-        columns: r.columns, total: r.total, truncated: r.total > LIMIT,
+        // El modelo recibe solo los nombres de las opciones: los colores son cosa de la UI.
+        columns: r.columns.map(({ options, ...c }) => (options ? { ...c, options: options.map((o) => o.name) } : c)),
+        total: r.total, truncated: r.total > LIMIT,
         rows: r.rows.slice(0, LIMIT), groups,
       };
     },

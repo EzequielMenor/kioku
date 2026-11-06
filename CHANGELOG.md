@@ -2,7 +2,12 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versionado [SemVer](https://semver.org/lang/es/).
 
-## [Unreleased]
+## [Sin publicar]
+
+### Bases (JARV-35)
+- **Estructura editable desde la tabla** (solo escritorio): columna final «+» para añadir una propiedad (nombre y tipo) y menú en cada cabecera para renombrar, cambiar el tipo, ordenar, ocultar en la vista y borrar. Los cambios que reescriben notas piden confirmación y ofrecen «Deshacer». El rol móvil no puede editar la estructura (el servidor lo rechaza) y conserva el selector nativo en las celdas.
+- **Opciones con color:** editor de opciones en el menú de las propiedades de selección y multiselección (renombrar, subir/bajar, borrar con la opción de conservar o vaciar el valor en las notas y «Nueva opción»). El color (paleta de 8 o sin color) y los chips coloreados en la celda de la tabla, la lista y el tablero, en tema claro y oscuro, son solo de la selección simple; la multiselección no pinta colores.
+- **Selector de la celda con «Crear»:** el valor de una selección es un chip que abre un selector con filtro; si lo escrito no coincide con ninguna opción se ofrece **Crear «…»**, que la añade al esquema y la asigna a la fila.
 
 ### Asistente central (JARV-34)
 - Hermes conserva el papel de agente con proveedor y modelo configurables; claves aisladas por proveedor y sin guardarlas en la configuración de la bóveda.
