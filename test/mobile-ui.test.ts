@@ -46,7 +46,7 @@ const appCss = readFileSync(path.join(import.meta.dirname, "..", "web", "src", "
 const nav = [...app.matchAll(/{ route: "(\/[a-z]+)", label: "([^"]+)", key: "(.)", icon: "([a-z]+)" }/g)].map((m) => ({ route: m[1], label: m[2], key: m[3], icon: m[4] }));
 
 test("navegación: las pantallas de antes siguen en su orden con sus atajos y el calendario tiene el suyo, único", () => {
-  const before = ["/hoy:h", "/bandeja:b", "/proyectos:p", "/tareas:t", "/notas:n", "/bases:d", "/grafo:g", "/asistente:a", "/propuestas:r"];
+  const before = ["/hoy:h", "/bandeja:b", "/proyectos:p", "/tareas:t", "/notas:n", "/bases:d", "/grafo:g", "/asistente:a", "/propuestas:r", "/conexiones:s"];
   assert.deepEqual(nav.filter((n) => n.route !== "/calendario").map((n) => `${n.route}:${n.key}`), before);
   const cal = nav.find((n) => n.route === "/calendario");
   assert.deepEqual(cal && [cal.label, cal.key, cal.icon], ["Calendario", "c", "calendario"]);
@@ -54,7 +54,7 @@ test("navegación: las pantallas de antes siguen en su orden con sus atajos y el
   assert.ok(!MOBILE_HIDDEN.has("/calendario"), "el móvil sí tiene calendario");
   assert.deepEqual([...MOBILE_HIDDEN], [], "el asistente y las propuestas ya no se esconden en el móvil: el daemon impone su privacidad");
   assert.match(app, /case "calendario": view = <CalendarView/);
-  assert.match(app, /\["g h · b · p · t · c · n · d · g · a · r"/, "la ayuda de atajos lista «g c»");
+  assert.match(app, /\["g h · b · p · t · c · n · d · g · a · r · s"/, "la ayuda mantiene «g c» y añade «g s»");
 });
 
 test("móvil: la barra inferior es Hoy · Tareas · «+» central · Calendario · Más (sin duplicarse en «Más») y sus etiquetas no desbordan", () => {
