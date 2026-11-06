@@ -2,7 +2,7 @@ name: kioku-local
 
 services:
   gateway:
-    image: kioku:local-a68f7da
+    image: kioku:local
     init: true
     # The daemon keeps listening on loopback in this shared network namespace.
     # Preserve its original Host/Origin headers and authentication unchanged.
@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
 
   kioku:
-    image: kioku:local-a68f7da
+    image: kioku:local
     build:
       context: .
       dockerfile: Dockerfile
@@ -42,6 +42,9 @@ services:
     environment:
       KIOKU_HOME: /data
       KIOKU_PORT: "47800"
+      # La imagen no incluye el binario de Tailscale: el nombre público se pasa explícito.
+      KIOKU_ALLOWED_HOSTS: ${KIOKU_ALLOWED_HOSTS:-}
+      KIOKU_PUBLIC_HOST: ${KIOKU_PUBLIC_HOST:-}
     volumes:
       - data:/data
     read_only: true
