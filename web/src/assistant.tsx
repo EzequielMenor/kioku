@@ -4,7 +4,7 @@ import { api, lsGet, lsSet, onChange } from "./api.ts";
 import { useApi } from "./hooks.ts";
 import { askConfirm } from "./dialogs.tsx";
 import type { Proposal, UndoRecord } from "./types.ts";
-import { askErrorText, createChat, type Msg } from "./assistant-chat.ts";
+import { activityOrigin, askErrorText, createChat, type Msg } from "./assistant-chat.ts";
 import { isMobile } from "./role.ts";
 import { useOffline } from "./offline/runtime.ts";
 
@@ -16,7 +16,7 @@ const chat = createChat({
   ask: (message, conversation) => api("POST", "/api/assistant/ask", { message, conversation }),
   describeError: (e) => askErrorText(e, isMobile()),
   pendingProposals: () => api<Proposal[]>("GET", "/api/proposals?status=pending"),
-  actionsSince: (ts) => api<UndoRecord[]>("GET", "/api/assistant/actions").then((l) => l.filter((a) => a.ts >= ts && !a.undone)),
+  actionsSince: (ts) => api<UndoRecord[]>("GET", "/api/assistant/actions").then((l) => l.filter((a) => a.ts >= ts && !a.undone && !activityOrigin(a))),
 });
 onChange((e) => { if (e.kind === "assistant.tool" && e.tool) chat.setLive(liveLabel(e.tool, e.path)); });
 
@@ -153,13 +153,13 @@ export function AssistantActivity({ rev, say }: { rev: number; say: Say }) {
   return (
     <div class="page narrow">
       <header class="page-head"><h1>Actividad del asistente</h1><a class="pill" href="#/asistente">Volver</a></header>
-      <p class="muted">Cada cambio automático queda aquí. Deshacer solo funciona si no has tocado la nota desde entonces (si la editaste tú, avisa del conflicto y no pisa nada).</p>
+      <p class="muted">Cada cambio automático queda aquí, y también los cambios de estructura que haces desde una tabla (marcados «Desde la tabla»). Deshacer solo funciona si no has tocado la nota desde entonces (si la editaste tú, avisa del conflicto y no pisa nada).</p>
       {data && data.length === 0 && <div class="empty">El asistente aún no ha hecho cambios por su cuenta.</div>}
       <ul class="cards">
         {(data ?? []).map((a) => (
           <li key={a.id} class="card activity">
             <div>
-              <div class="ctitle">{a.summary}</div>
+              <div class="ctitle">{a.summary}{activityOrigin(a) && <span class="chip origin">{activityOrigin(a)}</span>}</div>
               <div class="muted small">{new Date(a.ts).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" })} · {a.files.map((f) => f.path).join(", ")}</div>
             </div>
             <ActivityUndo a={a} say={say} onDone={reload} />

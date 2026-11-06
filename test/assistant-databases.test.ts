@@ -41,6 +41,18 @@ test("asistente/bases: list_databases y query_database (vista guardada, filtro y
   } finally { cleanup(); }
 });
 
+test("asistente/bases: query_database devuelve las opciones solo como nombres (sin colores)", async () => {
+  const { j, call, libros, cleanup } = await setup();
+  try {
+    await j.setProps(libros.path, { properties: { Estado: { type: "select", options: [{ name: "Quiero leer", color: "gray" }, { name: "Leyendo", color: "blue" }, { name: "Leído", color: "green" }] }, Autor: { type: "text" }, Nota: { type: "number" } } });
+    const r = await call("query_database", { path: libros.path });
+    assert.ok(!r.isError, r.text);
+    assert.deepEqual(r.json.columns.find((c: any) => c.key === "Estado").options, ["Quiero leer", "Leyendo", "Leído"]);
+    assert.ok(!r.text.includes('"color"'), "los colores no llegan al modelo");
+    j.close();
+  } finally { cleanup(); }
+});
+
 test("asistente/bases: query_database respeta exclude (filas, recuentos, propiedades y la propia base)", async () => {
   const { j, call, libros, cleanup } = await setup(["Libros/Ubik.md"]);
   try {

@@ -19,6 +19,11 @@ export interface ChatDeps {
   actionsSince(ts: string): Promise<UndoRecord[]>;
 }
 
+/** Los cambios de estructura hechos desde la tabla (sesión «ui») comparten el Deshacer con el asistente, pero no son suyos. */
+export function activityOrigin(a: Pick<UndoRecord, "sessionId" | "tool">): string | null {
+  return a.sessionId === "ui" && a.tool.startsWith("database.") ? "Desde la tabla" : null;
+}
+
 const newId = () => `ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
 export function createChat(deps: ChatDeps) {

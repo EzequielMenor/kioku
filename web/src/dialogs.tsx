@@ -55,6 +55,25 @@ function ConfirmDialog({ title, body, confirm, danger, done }: { title: string; 
   );
 }
 
+/** Elección entre varias salidas: «Cancelar» (también Esc y el velo) devuelve null y aborta; el foco empieza en «Cancelar». */
+export function askChoice<T extends string>(o: { title: string; body?: string; choices: { value: T; label: string; danger?: boolean }[] }): Promise<T | null> {
+  return mount<T | null>((done) => <ChoiceDialog {...o} done={done} />);
+}
+
+function ChoiceDialog<T extends string>({ title, body, choices, done }: { title: string; body?: string; choices: { value: T; label: string; danger?: boolean }[]; done(v: T | null): void }) {
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => cancel.current?.focus(), []);
+  return (
+    <Shell title={title} onCancel={() => done(null)}>
+      {body && <p class="muted">{body}</p>}
+      <div class="row end">
+        <button ref={cancel} onClick={() => done(null)}>Cancelar</button>
+        {choices.map((c) => <button key={c.value} class={c.danger ? "danger-solid" : "primary"} onClick={() => done(c.value)}>{c.label}</button>)}
+      </div>
+    </Shell>
+  );
+}
+
 export function askText(o: { title: string; placeholder?: string; confirm: string }): Promise<string | null> {
   return mount<string | null>((done) => <TextDialog {...o} done={done} />);
 }

@@ -127,7 +127,7 @@ function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), t.error || t.action ? 6000 : 2800);
   };
   toastApi = show;
-  const say = (text: string, error = false) => show({ text, error });
+  const say = (text: string, error = false, action?: Toast["action"]) => show({ text, error, action });
   const guard = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     try { return await fn(); } catch (e) { say(errText(e), true); return undefined; }
   };

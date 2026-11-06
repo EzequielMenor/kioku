@@ -102,6 +102,8 @@ test("móvil: solo puede leer y escribir lo permitido; borrar, memoria y herrami
       ["POST", "/api/reindex", {}], ["POST", "/api/triage", {}], ["GET", "/api/ai"], ["POST", "/api/ai/triage", {}],
       ["POST", "/api/focus/start", { taskPath: "Tareas/Tarea publica.md" }], ["POST", "/api/project/create", { title: "X" }],
       ["POST", "/api/database/create", { name: "X", template: "libros" }],
+      ["POST", "/api/database/schema/preview", { path: "Bases/Nada.md", op: { op: "add-property", name: "X", type: "text" } }],
+      ["POST", "/api/database/schema", { path: "Bases/Nada.md", op: { op: "add-property", name: "X", type: "text" } }],
     ];
     for (const [m, p, b] of forbidden) assert.equal((await s.call(m, p, b)).status, 403, `${m} ${p}`);
     assert.ok(s.j.index.getNote("Notas/Publica.md"), "nada se borró");
