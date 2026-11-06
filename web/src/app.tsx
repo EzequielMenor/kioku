@@ -1,13 +1,17 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import "./app.css";
-import { UNAUTHORIZED_EVENT, api, lsGet, lsSet } from "./api.ts";
+import { UNAUTHORIZED_EVENT, api, lsGet, lsSet, setDemoTransport } from "./api.ts";
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
+import { AssistantManagement } from "./assistant-management.tsx";
+import { ConnectionsView } from "./connections.tsx";
 import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { CalendarView } from "./calendar.tsx";
+import { enableDemoMode, handleDemoApi, isDemoMode, onDemoChange, resetDemoState } from "./demo/engine.ts";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
+import { DemoBar, LandingView } from "./landing.tsx";
 import { extractKey } from "./pairing.ts";
 import { SEAL_PATH } from "./seal.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
@@ -16,6 +20,7 @@ import type { TaskStatus } from "./offline/store.ts";
 import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
 import { priorityLabel } from "./priority.ts";
+import { OpView } from "./proposal-ops.tsx";
 import { currentState, disablePush, enablePush, type PushState } from "./push.ts";
 import { TaskForm } from "./task-form.tsx";
 import { TaskBoard, TaskTable } from "./task-views.tsx";
@@ -55,6 +60,7 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/grafo", label: "Grafo", key: "g", icon: "grafo" },
   { route: "/asistente", label: "Asistente", key: "a", icon: "asistente" },
   { route: "/propuestas", label: "Propuestas", key: "r", icon: "propuestas" },
+  { route: "/conexiones", label: "Conexiones y sincronización", key: "s", icon: "grafo" },
 ];
 
 /** Entradas de navegación que ve quien usa la interfaz (`MOBILE_HIDDEN` lista las que el móvil no tiene). */
@@ -97,27 +103,52 @@ function listNav(e: KeyboardEvent): boolean {
 
 // ───────────────────────────── App ─────────────────────────────
 
+const bootDemo = isDemoMode();
+if (bootDemo) {
+  enableDemoMode();
+  setDemoTransport(handleDemoApi, onDemoChange);
+}
+
 function App() {
   const [route, setRoute] = useRoute();
+  const [demo, setDemo] = useState(bootDemo);
   const [toast, setToast] = useState<Toast | null>(null);
-  const [overlay, setOverlay] = useState<null | "palette" | "capture" | "help" | "context" | "endfocus" | "more">(null);
+  const [overlay, setOverlay] = useState<null | "palette" | "capture" | "help" | "context" | "endfocus" | "more" | "assistant-management">(null);
   const [ctxPath, setCtxPath] = useState<string | null>(null);
   const [theme, setTheme] = useState(lsGet("theme") ?? "dark");
+  const isLanding = route === "/inicio";
   const rev = useRevision((e) => { if (e.kind === "navigate" && e.route) setRoute(e.route); });
-  const focus = useApi<FocusState>("/api/focus", rev).data;
-  const counts = useApi<TodayView>("/api/today", rev).data;
+  const focus = useApi<FocusState>(isLanding ? null : "/api/focus", rev).data;
+  const counts = useApi<TodayView>(isLanding ? null : "/api/today", rev).data;
   const toastTimer = useRef(0);
   const [locked, setLocked] = useState(false);
+
+  const activateDemo = (targetRoute = "/hoy") => {
+    enableDemoMode();
+    setDemoTransport(handleDemoApi, onDemoChange);
+    setDemo(true);
+    setLocked(false);
+    setRoute(targetRoute);
+  };
+
   useEffect(() => {
-    const on = () => { setLocked(true); void wipeOffline(); };
+    if (route === "/demo") activateDemo("/hoy");
+  }, [route]);
+
+  useEffect(() => {
+    const on = () => { if (!demo) { setLocked(true); void wipeOffline(); } };
     addEventListener(UNAUTHORIZED_EVENT, on);
     return () => removeEventListener(UNAUTHORIZED_EVENT, on);
-  }, []);
+  }, [demo]);
   const [, setRoleTick] = useState(0);
   useEffect(() => {
+    if (demo) { setRole("full"); return; }
     startOffline(); // sin red el rol sale de lo último visto; startOffline solo actúa en el móvil
-    api<{ role: "full" | "mobile" }>("GET", "/api/session").then((r) => { const changed = r.role !== getRole(); setRole(r.role); startOffline(); if (changed) setRoleTick((n) => n + 1); }, () => {});
-  }, []);
+    api<{ role: "full" | "mobile" }>("GET", "/api/session").then(
+      (r) => { const changed = r.role !== getRole(); setRole(r.role); startOffline(); if (changed) setRoleTick((n) => n + 1); },
+      () => {},
+    );
+  }, [demo]);
   const off = useOffline();
   const mobile = isMobile();
 
@@ -127,7 +158,7 @@ function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), t.error || t.action ? 6000 : 2800);
   };
   toastApi = show;
-  const say = (text: string, error = false) => show({ text, error });
+  const say = (text: string, error = false, action?: Toast["action"]) => show({ text, error, action });
   const guard = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     try { return await fn(); } catch (e) { say(errText(e), true); return undefined; }
   };
@@ -195,6 +226,10 @@ function App() {
     setRoute(`/nota/${r.path}`);
   });
 
+  if (isLanding) {
+    return <LandingView theme={theme} setTheme={setTheme} onStartDemo={(r) => activateDemo(r ?? "/hoy")} />;
+  }
+
   if (locked) {
     return <LockedScreen />;
   }
@@ -213,6 +248,7 @@ function App() {
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
     case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : arg === "memoria" ? <AssistantMemory rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
+    case "conexiones": view = <ConnectionsView mobile={mobile} demo={demo}>{mobile && <OfflineSection off={off} />}</ConnectionsView>; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
     default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} onCapture={() => setOverlay("capture")} />;
   }
@@ -239,6 +275,7 @@ function App() {
         <button class="side-btn subtle" onClick={() => setOverlay("help")}>Atajos <kbd>?</kbd></button>
       </nav>
       <div class="content">
+        {demo && <DemoBar onReset={() => { resetDemoState(); say("Datos de prueba restaurados."); }} onLanding={() => setRoute("/inicio")} />}
         {focus?.active && !mobile && <FocusBar focus={focus} onEnd={() => setOverlay("endfocus")} go={setRoute} />}
         <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{view}</main>
       </div>
@@ -247,7 +284,8 @@ function App() {
       {overlay === "more" && <MoreSheet off={off} counts={counts} theme={theme} setTheme={setTheme} onClose={() => setOverlay(null)} onSearch={() => setOverlay("palette")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
       {overlay === "palette" && <Palette go={(r) => { setOverlay(null); setRoute(r); }} onClose={() => setOverlay(null)} newNote={() => { setOverlay(null); void newNote("note"); }}
         newProject={() => { setOverlay(null); void newNote("project"); }} journal={() => { setOverlay(null); void openJournal(); }} toggleFocus={() => { setOverlay(null); void toggleFocus(); }}
-        focusActive={!!focus?.active} />}
+        focusActive={!!focus?.active} manageAssistant={() => setOverlay("assistant-management")} />}
+      {overlay === "assistant-management" && !mobile && <AssistantManagement onClose={() => setOverlay(null)} go={setRoute} />}
       {overlay === "capture" && <CaptureOverlay onClose={() => setOverlay(null)} say={say} />}
       {overlay === "help" && <Help onClose={() => setOverlay(null)} />}
       {overlay === "endfocus" && focus?.active && <EndFocus focus={focus} onClose={() => setOverlay(null)} say={say} guard={guard} />}
@@ -660,25 +698,6 @@ function NotesView({ rev, go, onNew }: { rev: number; go: Go; onNew(): void }) {
 
 // ───────────────────────────── Propuestas ─────────────────────────────
 
-function OpView({ op }: { op: Proposal["ops"][number] & { current?: Record<string, unknown> | null } }) {
-  switch (op.op) {
-    case "create": return <div class="op"><b>Crear</b> <code>{op.path}</code><pre>{op.text}</pre></div>;
-    case "update": return <div class="op"><b>Reemplazar contenido de</b> <code>{op.path}</code><pre>{op.text}</pre></div>;
-    case "move": return <div class="op"><b>Mover</b> <code>{op.from}</code> → <code>{op.to}</code></div>;
-    case "trash": return <div class="op"><b>Mover a la papelera</b> <code>{op.path}</code></div>;
-    case "setProp":
-      return (
-        <div class="op"><b>Cambiar propiedades de</b> <code>{op.path}</code>
-          <table class="diff"><tbody>
-            {Object.entries(op.props).map(([k, v]) => (
-              <tr key={k}><td>{k}</td><td class="old">{op.current && k in op.current ? JSON.stringify(op.current[k]) : "—"}</td><td>→</td><td class="new">{v === null ? "(quitar)" : JSON.stringify(v)}</td></tr>
-            ))}
-          </tbody></table>
-        </div>
-      );
-  }
-}
-
 
 interface AiStatus { configured: boolean; model?: string; baseUrl?: string; local?: boolean; apiKeyEnv?: string | null }
 interface AiPayload { endpoint: string; model: string; local: boolean; captures: number; hash: string; messages: { role: string; content: string }[] }
@@ -723,7 +742,11 @@ function ProposalsView({ rev, say, guard }: { rev: number; say: Say; guard: Guar
     // En el móvil un toque suelto no aplica nada: se confirma lo que se va a tocar (nunca se aplica solo).
     if (mobile && what === "apply" && !(await askConfirm({ title: "¿Aplicar esta propuesta?", body: `${p.title} · ${plural(p.ops.length, "cambio", "cambios")}. Revisa lo que se tocará antes de confirmar.`, confirm: "Aplicar", danger: p.ops.some((o) => o.op === "trash" || o.op === "move" || o.op === "update") }))) return;
     const r = await guard(() => api<Proposal>("POST", `/api/proposals/${p.id}/${what}`));
-    if (r) { say(what === "apply" ? "Aplicada." : "Descartada."); reload(); }
+    if (r) {
+      if (r.status === (what === "apply" ? "applied" : "rejected")) say(what === "apply" ? "Aplicada." : "Descartada.");
+      else say(r.error || "La propuesta no se resolvió.", true);
+      reload();
+    }
   };
   return (
     <div class="page narrow">
@@ -778,7 +801,7 @@ function LockedScreen() {
 }
 
 /** Pantallas que en el móvil viven dentro de «Más»: con una de ellas abierta, ese botón es el activo. */
-const MORE_ROUTES = ["/bandeja", "/proyectos", "/notas", "/bases", "/grafo", "/diario"];
+const MORE_ROUTES = ["/bandeja", "/proyectos", "/notas", "/bases", "/grafo", "/diario", "/conexiones"];
 
 /** Barra inferior (solo se ve en pantallas estrechas): lo más usado a un pulgar. */
 function BottomNav({ active, pending, onCapture, onMore }: { active: string; pending: number; onCapture(): void; onMore(): void }) {
@@ -915,14 +938,14 @@ function CaptureOverlay({ onClose, say }: { onClose(): void; say: Say }) {
 
 interface PaletteItem { label: string; hint?: string; run(): void }
 
-function Palette(p: { go(r: string): void; onClose(): void; newNote(): void; newProject(): void; journal(): void; toggleFocus(): void; focusActive: boolean }) {
+function Palette(p: { go(r: string): void; onClose(): void; newNote(): void; newProject(): void; journal(): void; toggleFocus(): void; focusActive: boolean; manageAssistant(): void }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [sel, setSel] = useState(0);
   const cmds: PaletteItem[] = [
     ...visibleNav().map((n) => ({ label: `Ir a ${n.label}`, hint: isMobile() ? undefined : `g ${n.key}`, run: () => p.go(n.route) })),
     { label: "Nueva nota", run: p.newNote },
-    ...(isMobile() ? [] : [{ label: "Nuevo proyecto", run: p.newProject }]),
+    ...(isMobile() ? [] : [{ label: "Nuevo proyecto", run: p.newProject }, { label: "Modelo de Hermes", run: p.manageAssistant }]),
     { label: "Abrir diario de hoy", run: p.journal },
     ...(isMobile() ? [] : [{ label: p.focusActive ? "Terminar foco" : "Iniciar foco", hint: "f", run: p.toggleFocus }]),
   ];
@@ -978,7 +1001,7 @@ function snippetHtml(s: string): string {
 function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
     ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
-    ["g h · b · p · t · c · n · d · g · a · r", "Ir a Hoy · Bandeja · Proyectos · Tareas · Calendario · Notas · Bases · Grafo · Asistente · Propuestas"],
+    ["g h · b · p · t · c · n · d · g · a · r · s", "Ir a Hoy · Bandeja · Proyectos · Tareas · Calendario · Notas · Bases · Grafo · Asistente · Propuestas · Conexiones"],
     ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (

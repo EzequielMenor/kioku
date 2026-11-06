@@ -1,0 +1,28 @@
+.assistant-page .layered-head { display: flex; align-items: center; gap: 12px; }
+.assistant-page .layered-head h1 { flex: 1; text-align: center; font: 500 22px/1.2 var(--serif); margin: 0; }
+.assistant-page .layered-head button { min-width: 48px; min-height: 48px; background: transparent; border-color: transparent; }
+.assistant-page .assistant-menu { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 12px; background: var(--surface); border: 1px solid var(--line2); border-radius: 8px; }
+.assistant-page .assistant-menu span { color: var(--fg2); padding: 8px; }
+.assistant-page .assistant-menu a, .assistant-page .assistant-menu button { text-align: left; min-height: 44px; }
+.assistant-page .assistant-connection { color: var(--fg2); padding: 8px; font-size: 12.5px; }
+.assistant-page .chat { gap: 20px; }
+.assistant-page .bubble { max-width: 100%; border: 0; border-radius: 0; background: transparent; padding: 0; font-size: 16px; line-height: 1.65; }
+.assistant-page .bubble.user { align-self: stretch; border-left: 2px solid var(--line2); color: var(--fg2); padding-left: 14px; }
+.assistant-page .bubble.error { color: var(--bad); }
+.assistant-page .reads { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 8px; font-size: 12.5px; }
+.assistant-page .reads summary, .assistant-page .action summary { cursor: pointer; min-height: 44px; }
+.assistant-page .action { display: block; }
+.assistant-page .assistant-input-area { position: sticky; bottom: 0; background: var(--bg); }
+.assistant-page .composer { position: static; padding-top: 10px; }
+.assistant-page .assistant-dock { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-top: 1px solid var(--accent-line); background: var(--accent-soft); }
+.assistant-page .assistant-dock button { min-height: 48px; }
+.assistant-review .assistant-review-item { border-top: 1px solid var(--line); padding: 16px 0; overflow-wrap: anywhere; }
+.assistant-review .op { max-width: 100%; overflow-x: auto; }
+@media (max-width: 720px) {
+  .page.narrow.assistant-page { display: flex; flex-direction: column; min-height: 100%; padding-bottom: 12px; }
+  .assistant-page .assistant-input-area { bottom: 0; }
+  .assistant-page .composer textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-page *, .assistant-review * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

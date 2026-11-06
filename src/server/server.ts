@@ -9,10 +9,13 @@ import { VaultError } from "../core/vault.ts";
 import type { NoteType, TaskStatus } from "../core/index.ts";
 import type { CalendarInput } from "../core/calendar-store.ts";
 import type { AssistantEngine } from "../assistant/engine.ts";
+import { ModelConfigError } from "../assistant/model-config.ts";
+import { ModelManagementError } from "../assistant/model-management.ts";
 import { parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry, type AssistantSession } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore, type UndoRecord } from "../assistant/undo.ts";
+import type { SchemaOp } from "../core/database-schema.ts";
 import type { PushStore } from "./webpush.ts";
 import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobileAreaCreateDenied, mobileCreateDenied } from "./calendar.ts";
 import { OpsLedger, validOp } from "./ops.ts";
@@ -43,6 +46,13 @@ function userPath(p: unknown): string {
   if (typeof p !== "string" || !p.toLowerCase().endsWith(".md")) throw new HttpError(400, "Ruta de nota inválida");
   if (p.split("/").some((seg) => seg.startsWith(".") || seg === "..")) throw new HttpError(400, "Ruta no permitida");
   return p;
+}
+
+/** Petición de esquema: ruta de usuario y `op` objeto con etiqueta; la validación completa es del planificador. */
+function schemaRequest(body: Record<string, unknown>): { path: string; op: SchemaOp } {
+  const op = body.op as { op?: unknown } | null | undefined;
+  if (!op || typeof op !== "object" || Array.isArray(op) || typeof op.op !== "string") throw new HttpError(400, "Falta «op» (objeto con «op»)");
+  return { path: userPath(body.path), op: op as SchemaOp };
 }
 
 const MEMORY_DIR = "hermes/memories";
@@ -215,6 +225,29 @@ export async function startServer(
     return mk && keyMatches(mk, given) ? "mobile" : null;
   }
 
+  /**
+   * Modelo del asistente (solo escritorio): estado real, guardar y «heredar». Rol completo comprobado antes de leer o escribir
+   * nada; la lista blanca del móvil ya la deniega, y el token Bearer de sesión no abre esta ruta. Nunca devuelve ni acepta claves.
+   */
+  async function assistantModel(method: string, role: Role, body: Record<string, unknown>, res: http.ServerResponse): Promise<void> {
+    if (role !== "full") throw new HttpError(403, "El modelo del asistente se gestiona solo desde el portátil");
+    if (method !== "GET" && method !== "PUT") throw new HttpError(405, "Método no permitido");
+    const engine = opts.assistant?.engine;
+    if (!engine) throw new HttpError(503, "El asistente no está configurado en este daemon");
+    const management = engine.modelManagement;
+    if (!management) throw new HttpError(503, "Este motor del asistente no permite gestionar el modelo desde Kioku: fíjalo en .kioku/assistant.json o en ~/.hermes/config.yaml");
+    try {
+      const state = method === "GET" ? await management.state() : Object.keys(body).length === 1 && body.inherit === true ? await management.reset() : await management.save(body);
+      // Solo lo detectado (binarios y credenciales presentes): no ejecuta Hermes ni Docker.
+      const readiness = await engine.available().catch(() => ({ ok: false, reason: "No se pudieron comprobar los requisitos del asistente" }));
+      return sendJson(res, 200, { ...state, readiness });
+    } catch (e) {
+      if (e instanceof ModelConfigError) throw new HttpError(400, e.message);
+      if (e instanceof ModelManagementError) throw new HttpError(409, e.message);
+      throw e;
+    }
+  }
+
   async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL, role: Role): Promise<void> {
     const m = req.method ?? "GET";
     const p = url.pathname;
@@ -234,6 +267,8 @@ export async function startServer(
     }
     const send = role === "mobile" ? (r: http.ServerResponse, status: number, b: unknown) => sendJson(r, status, mobileView(p, b, mobileExclude)) : sendJson;
     const skip = role === "mobile" ? (x: string) => isPrivate(x, mobileExclude) : undefined;
+
+    if (p === "/api/assistant/model") return assistantModel(m, role, body, res);
 
     if (m === "GET") {
       switch (p) {
@@ -507,6 +542,19 @@ export async function startServer(
           if (typeof props !== "object" || Array.isArray(props)) throw new HttpError(400, "«props» debe ser un objeto");
           const n = await j.createRow(userPath(body.path), { title: str(body.title, "title"), props: props as Record<string, unknown> });
           return send(res, 200, { path: n.path });
+        }
+        case "/api/database/schema/preview": {
+          const { path: rel, op } = schemaRequest(body);
+          const plan = j.planDatabaseEdit(rel, op, { skip });
+          return send(res, 200, { affected: plan.affected, summary: plan.summary });
+        }
+        case "/api/database/schema": {
+          const { path: rel, op } = schemaRequest(body);
+          const plan = j.planDatabaseEdit(rel, op, { skip });
+          const done = await j.editDatabase(rel, op, { skip, expect: plan.paths });
+          // La instantánea es lo que `editDatabase` sobrescribió de verdad (no una foto previa, que otra escritura podría adelantar).
+          const rec = await undo.commit({ before: done.before }, { sessionId: "ui", tool: `database.${op.op}`, summary: done.summary });
+          return send(res, 200, { undoId: rec.id, summary: done.summary, affected: done.affected });
         }
         case "/api/project/create": { const n = await j.createProject(str(body.title, "title")); return send(res, 200, { path: n.path }); }
         case "/api/project/checkpoint": { await j.addCheckpoint(userPath(body.path), str(body.text, "text")); return send(res, 200, { ok: true }); }

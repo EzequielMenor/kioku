@@ -33,3 +33,19 @@ export function safeHref(v: string): string | null {
     return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
   } catch { return null; }
 }
+
+/** Aviso si un valor no vacío no encaja con el tipo de la columna (tras «Cambiar tipo» los valores no se reescriben): `null` si encaja. */
+export function misfit(type: PropType | undefined, v: unknown): string | null {
+  if (v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) return null;
+  if (type === "number") {
+    const ok = (typeof v === "number" && Number.isFinite(v)) || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()));
+    return ok ? null : "No es un número";
+  }
+  if (type === "date") {
+    const m = typeof v === "string" ? /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(v) : null;
+    const d = m ? new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`) : null;
+    return d && !Number.isNaN(d.getTime()) && d.toISOString().startsWith(`${m![1]}-${m![2]}-${m![3]}`) ? null : "No es una fecha";
+  }
+  if (type === "checkbox") return typeof v === "boolean" ? null : "No es un valor sí/no";
+  return null;
+}

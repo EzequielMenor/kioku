@@ -1,6 +1,6 @@
 // Parsing de notas: frontmatter, enlaces, etiquetas, secciones.
 // Todo es puro (sin disco) para poder probarlo aislado.
-import YAML from "yaml";
+import YAML, { type Scalar } from "yaml";
 
 export type Frontmatter = Record<string, unknown>;
 
@@ -154,6 +154,43 @@ export function setFrontmatter(text: string, patch: Record<string, unknown>): st
   }
   const yaml = String(doc).trimEnd();
   return `---\n${yaml}\n---\n${body}`;
+}
+
+/**
+ * Renombra una clave del frontmatter tocando solo el texto de la clave: valor, comentarios,
+ * orden y el resto del fichero quedan byte a byte (no se re-serializa el documento).
+ * Si `from` no existe, o no hay frontmatter, devuelve el texto idéntico.
+ * Lanza si el YAML es inválido o si `to` ya existe.
+ */
+export function renameFrontmatterKey(text: string, from: string, to: string): string {
+  const { fmText } = splitFrontmatter(text);
+  if (fmText === null) return text;
+  const doc = YAML.parseDocument(fmText);
+  if (doc.errors.length) throw new Error("Frontmatter YAML inválido: no se renombra la clave");
+  const map = doc.contents;
+  if (!YAML.isMap(map)) return text;
+  const keyNamed = (name: string) =>
+    map.items.map((p) => p.key).find((k): k is Scalar.Parsed => YAML.isScalar(k) && String(k.value) === name);
+  const key = keyNamed(from);
+  if (!key || from === to) return text;
+  if (keyNamed(to)) throw new Error(`La clave "${to}" ya existe en el frontmatter`);
+  const range = key.range;
+  if (!range) throw new Error("Frontmatter YAML inválido: no se renombra la clave");
+  // Solo cambia el texto de la clave; el BOM, la línea "---" y el resto se copian tal cual.
+  const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const bom = text.slice(0, text.length - src.length);
+  const open = src.indexOf("\n") + 1;
+  const renamed = fmText.slice(0, range[0]) + renderKey(to, key.type) + fmText.slice(range[1]);
+  return bom + src.slice(0, open) + renamed + src.slice(open + fmText.length);
+}
+
+/** Clave YAML con el mismo estilo de comillas que la original; plana si era plana y es válida. */
+function renderKey(name: string, original: string | undefined): string {
+  const sc = new YAML.Scalar(name);
+  if (/[\r\n]/.test(name) || original === "QUOTE_DOUBLE") sc.type = "QUOTE_DOUBLE";
+  else if (original === "QUOTE_SINGLE") sc.type = "QUOTE_SINGLE";
+  else sc.type = "PLAIN";
+  return new YAML.Document(sc).toString({ lineWidth: 0 }).trimEnd();
 }
 
 export function renderNote(frontmatter: Frontmatter, body: string): string {

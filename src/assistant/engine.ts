@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Writable } from "node:stream";
+import { ModelManagement } from "./model-management.ts";
 import { ModelConfigError, describeModel, resolveModelSettings, resolveProviderSecrets, DEFAULT_PROVIDER, type ModelSettings } from "./model-config.ts";
 import type { AssistantSession } from "./session.ts";
 import { buildDockerArgs, DOCKER_IMAGE } from "./docker-jail.ts";
@@ -16,6 +17,8 @@ import { buildDockerArgs, DOCKER_IMAGE } from "./docker-jail.ts";
 export interface AssistantEngine {
   /** Verdadero solo si el motor mantiene estado (memoria, sesiones, skills) separado para el rol móvil. */
   readonly isolatesMobile?: boolean;
+  /** Gestión del modelo desde la interfaz de escritorio; los motores que no la ofrecen (p. ej. el de pruebas) la omiten. */
+  readonly modelManagement?: ModelManagement;
   available(): Promise<{ ok: boolean; reason?: string }>;
   ask(i: { message: string; conversation: string; session: AssistantSession; daemonUrl: string }): Promise<{ answer: string }>;
 }
@@ -157,10 +160,13 @@ export class HermesEngine implements AssistantEngine {
   /** Estado propio para el móvil (`.kioku/hermes-mobile`): memoria, sesiones y skills no se comparten con el escritorio. */
   readonly isolatesMobile = true;
   private o: HermesOptions;
+  /** Lee y escribe el override del modelo con el mismo `userHome` y entorno que usa el propio motor. */
+  readonly modelManagement: ModelManagement;
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(o: HermesOptions) {
     this.o = o;
+    this.modelManagement = new ModelManagement({ homeDir: o.homeDir, userHome: () => this.userHome, env: o.env });
   }
 
   private get userHome(): string { return this.o.userHome ?? os.homedir(); }

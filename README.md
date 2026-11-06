@@ -83,6 +83,10 @@ kioku url                                        # URL de acceso con la clave (p
 
 Si no haces el paso 3, usa `bin/kioku` desde la carpeta del proyecto.
 
+### Conectar tus dispositivos
+
+Ejecuta `kioku setup` para seguir la guía y `kioku doctor` para comprobar el daemon, el nombre permitido y el proxy privado de Tailscale sin cambiar tu configuración ni mostrar claves. Abre **Conexiones y sincronización** en la barra lateral o en **Más** para comprobar el acceso y revisar la cola móvil. El ordenador debe permanecer encendido; no hay sincronización garantizada en segundo plano. Sigue la [guía de conexiones](docs/connections.md), con los pasos específicos para Mac/Docker.
+
 ### Dónde se guardan tus datos
 
 Por defecto en **`~/Documents/Kioku`**. Cámbialo con la variable `KIOKU_HOME`:
@@ -141,6 +145,8 @@ Lo mismo desde la terminal, sin abrir ventana: `kioku add "t Llamar a Ana !maña
 Entra en **Bases** (`g d`) para reunir notas como filas de una tabla. Eliges de dónde salen (una carpeta, un tipo de nota o etiquetas) y obtienes:
 
 - **Propiedades tipadas:** texto, número, fecha, casilla, selección, selección múltiple, URL y relación. El tipo se deduce de los valores o lo fijas tú.
+- **Estructura editable desde la tabla** (escritorio): el botón **+** de la última columna añade una propiedad; el menú de cada cabecera renombra, cambia el tipo, ordena, oculta o borra la propiedad. Si el cambio reescribe notas se pide confirmación y después puedes **Deshacer**. En el móvil la estructura es de solo lectura.
+- **Opciones con color:** en las propiedades de selección editas las opciones (renombrar, reordenar, borrar y, en la selección simple, color de una paleta de 8; la multiselección no pinta colores). La celda es un chip de color con un selector que filtra y ofrece **Crear «…»** cuando lo escrito no existe.
 - **Tres vistas:** Tabla, Tablero (arrastrar y soltar entre columnas) y Lista.
 - **Filtros, orden, agrupación y columnas**, y **vistas guardadas** por base.
 - **Plantillas** para empezar: vacía, tareas, proyectos y libros.
@@ -256,6 +262,7 @@ El móvil usa una clave **limitada** (`.kioku/secret-mobile`): puede leer, captu
 | `reindex` | Reconstruye el índice desde los ficheros |
 | `export` · `restore` · `import-obsidian` | Portabilidad |
 | `url` · `pair [--revoke]` | URL de acceso con clave · emparejar (o desemparejar) el móvil |
+| `setup` · `doctor` | Guía de instalación/conexión · diagnóstico privado de solo lectura |
 | `daemon` · `status` · `service install\|uninstall\|status` | Servidor y arranque automático |
 
 `kioku --help` lista todo con ejemplos.

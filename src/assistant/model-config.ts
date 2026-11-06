@@ -1,5 +1,6 @@
-// Qué modelo usa Hermes y con qué credenciales. Dos fuentes: `.kioku/assistant.json` (sección `model`) manda sobre
-// el `~/.hermes/config.yaml` del usuario, y sin ninguna de las dos se usa Codex (la suscripción), como siempre.
+// Qué modelo usa Hermes y con qué credenciales. Tres fuentes, de más a menos prioridad: el override de la interfaz
+// (`.kioku/assistant-model.json`, solo lo escribe Kioku), `.kioku/assistant.json` (sección `model`) y el
+// `~/.hermes/config.yaml` del usuario; sin ninguna se usa Codex (la suscripción), como siempre.
 // Todo falla cerrado con errores accionables que nunca repiten el valor recibido (podría ser una clave pegada por error),
 // y las credenciales se resuelven una a una: jamás se copian a ficheros del vault ni se reenvía el entorno entero.
 import { promises as fs } from "node:fs";
@@ -7,6 +8,12 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
 export const DEFAULT_PROVIDER = "openai-codex";
+
+/** Override que escribe la interfaz de Kioku: es un fichero aparte para no reescribir `assistant.json` (y sus exclusiones). */
+export const MODEL_OVERRIDE_FILE = "assistant-model.json";
+export const MODEL_OVERRIDE_OWNER = "kioku-ui";
+
+export type ModelSource = "ui" | "assistant.json" | "hermes" | "default";
 
 export interface ModelSettings {
   provider: string;
@@ -89,6 +96,104 @@ function checkApiMode(v: unknown, where: string): string {
 
 interface Raw { provider?: string; default?: string; base_url?: string; api_mode?: string }
 
+export interface ModelOverride {
+  provider: string;
+  model?: string;
+  baseUrl?: string;
+  apiMode?: string;
+  /** Origen remoto que el usuario confirmó que recibirá la clave; solo existe con un `base_url` no local. */
+  acknowledgedOrigin?: string;
+}
+
+export interface ProviderInfo { id: string; keys: string[]; keylessLocal: boolean; ownBaseUrl: boolean }
+
+export function describeProviders(): ProviderInfo[] {
+  return Object.entries(PROVIDERS).map(([id, p]) => ({ id, keys: [...p.keys], keylessLocal: !!p.keylessLocal, ownBaseUrl: !!p.ownBaseUrl }));
+}
+
+export const apiModes = (): string[] => [...API_MODES];
+
+const OVERRIDE_WHERE = `.kioku/${MODEL_OVERRIDE_FILE}`;
+const SECRET_SHAPE = /^(?:(?:sk|pk|rk|gsk|xai|hf|ghp|gho|pplx)[-_][A-Za-z0-9_-]{16,}|github_pat_\S+|AIza[A-Za-z0-9_-]{20,})$/;
+
+/** Solo campos conocidos; los que parecen una clave se rechazan sin repetir el valor (el nombre solo si es corto y neutro). */
+export function rejectFields(o: Record<string, unknown>, allowed: string[], where: string): void {
+  for (const k of Object.keys(o)) {
+    if (/key|token|secret|password/i.test(k)) throw new ModelConfigError(`${where}: no pongas claves aquí (${/^[a-z_]{1,32}$/.test(k) ? `«${k}»` : "ese campo"} no está permitido). Guarda la clave en ~/.hermes/.env o en el entorno de Kioku`);
+    if (!allowed.includes(k)) throw new ModelConfigError(`${where}: campo no permitido. Solo ${allowed.join(", ")}`);
+  }
+}
+
+/**
+ * Selección completa del override, la misma para el fichero y para lo que envía la interfaz. Más estricta que `assistant.json`:
+ * sin query en la URL (ahí viajan claves) y, si el destino es remoto, el origen exacto debe haber sido confirmado.
+ */
+export function checkModelOverride(raw: { provider?: unknown; model?: unknown; base_url?: unknown; api_mode?: unknown }, ack: unknown, where: string, ackField: string): ModelOverride {
+  const o: ModelOverride = { provider: checkProvider(raw.provider, where) };
+  if (raw.model !== undefined) {
+    o.model = checkModelName(raw.model, where, "default");
+    if (SECRET_SHAPE.test(o.model)) throw new ModelConfigError(`${where}: «default» parece una clave de API; ahí va el nombre del modelo, y la clave en ~/.hermes/.env`);
+  }
+  if (raw.api_mode !== undefined) o.apiMode = checkApiMode(raw.api_mode, where);
+  const own = PROVIDERS[o.provider].ownBaseUrl;
+  if (raw.base_url === undefined) {
+    if (own) throw new ModelConfigError(`${where}: el proveedor "custom" necesita «base_url» (URL https://, o http:// local)`);
+    if (ack !== undefined) throw new ModelConfigError(`${where}: «${ackField}» solo se admite con un destino remoto`);
+    return o;
+  }
+  if (!own) throw new ModelConfigError(`${where}: «base_url» solo se admite con provider "custom" (para otros proveedores se hereda de tu config de Hermes)`);
+  o.baseUrl = checkBaseUrl(raw.base_url, where);
+  const url = new URL(o.baseUrl);
+  if (url.search) throw new ModelConfigError(`${where}: «base_url» no puede llevar parámetros (?…): no pongas claves en la URL`);
+  if (isLocalHost(url.hostname)) {
+    if (ack !== undefined) throw new ModelConfigError(`${where}: «${ackField}» solo se admite con un destino remoto`);
+    return o;
+  }
+  if (ack !== url.origin) {
+    throw new ModelConfigError(`${where}: ${url.origin} es un destino remoto y recibiría tu clave OPENAI_API_KEY. Confirma exactamente ese origen en «${ackField}» solo si confías en él`);
+  }
+  o.acknowledgedOrigin = ack;
+  return o;
+}
+
+export function parseModelOverride(text: string): ModelOverride {
+  const where = OVERRIDE_WHERE;
+  let json: unknown;
+  try { json = JSON.parse(text); } catch { throw new ModelConfigError(`${where} no es JSON válido: corrígelo o bórralo a mano para usar el asistente`); }
+  if (!json || typeof json !== "object" || Array.isArray(json)) throw new ModelConfigError(`${where} debe ser un objeto JSON`);
+  const top = json as Record<string, unknown>;
+  rejectFields(top, ["managed_by", "model", "acknowledged_origin"], where);
+  if (top.managed_by !== MODEL_OVERRIDE_OWNER) throw new ModelConfigError(`${where} no lo creó la interfaz de Kioku: revísalo o bórralo a mano`);
+  const m = top.model;
+  if (!m || typeof m !== "object" || Array.isArray(m)) throw new ModelConfigError(`${where}: «model» debe ser un objeto { "provider", "default", "base_url", "api_mode" }`);
+  rejectFields(m as Record<string, unknown>, MODEL_FIELDS, `${where} → model`);
+  const f = m as Record<string, unknown>;
+  return checkModelOverride({ provider: f.provider, model: f.default, base_url: f.base_url, api_mode: f.api_mode }, top.acknowledged_origin, `${where} → model`, "acknowledged_origin");
+}
+
+export function serializeModelOverride(o: ModelOverride): string {
+  const model: Record<string, string> = { provider: o.provider };
+  if (o.model !== undefined) model.default = o.model;
+  if (o.baseUrl !== undefined) model.base_url = o.baseUrl;
+  if (o.apiMode !== undefined) model.api_mode = o.apiMode;
+  return JSON.stringify({ managed_by: MODEL_OVERRIDE_OWNER, model, ...(o.acknowledgedOrigin ? { acknowledged_origin: o.acknowledgedOrigin } : {}) }, null, 2) + "\n";
+}
+
+/** Override de la interfaz: `null` si no existe; si existe y no es válido (o no es un fichero normal) falla cerrado. */
+export async function readModelOverride(homeDir: string): Promise<ModelOverride | null> {
+  const file = path.join(homeDir, ".kioku", MODEL_OVERRIDE_FILE);
+  try {
+    const st = await fs.lstat(file);
+    if (!st.isFile()) throw new ModelConfigError(`${OVERRIDE_WHERE} debe ser un fichero normal (no un enlace ni una carpeta)`);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (e instanceof ModelConfigError) throw e;
+    throw new ModelConfigError(`No puedo leer ${MODEL_OVERRIDE_FILE}: revisa sus permisos`);
+  }
+  const text = await readText(file);
+  return text === null ? null : parseModelOverride(text);
+}
+
 async function readText(file: string): Promise<string | null> {
   try {
     const text = await fs.readFile(file, "utf8");
@@ -154,7 +259,16 @@ async function readUserHermes(userHome: string): Promise<Raw> {
 }
 
 export async function resolveModelSettings(o: { homeDir: string; userHome: string }): Promise<ModelSettings> {
-  const vault = await readVault(o.homeDir);
+  return (await resolveModel(o)).settings;
+}
+
+/** Como `resolveModelSettings`, y además dice de qué fuente sale la selección (para mostrarla en la gestión del modelo). */
+export async function resolveModel(o: { homeDir: string; userHome: string }): Promise<{ settings: ModelSettings; source: ModelSource }> {
+  const override = await readModelOverride(o.homeDir);
+  const vault: Raw = override
+    ? { provider: override.provider, default: override.model, base_url: override.baseUrl, api_mode: override.apiMode }
+    : await readVault(o.homeDir);
+  for (const k of Object.keys(vault) as (keyof Raw)[]) if (vault[k] === undefined) delete vault[k];
   const userWhere = "~/.hermes/config.yaml";
   let provider: string;
   let inherit: Raw = {};
@@ -180,7 +294,8 @@ export async function resolveModelSettings(o: { homeDir: string; userHome: strin
   }
   const apiMode = vault.api_mode ?? (provider !== DEFAULT_PROVIDER && inherit.api_mode !== undefined ? checkApiMode(inherit.api_mode, userWhere) : undefined);
   if (apiMode) s.apiMode = apiMode;
-  return s;
+  const source: ModelSource = override ? "ui" : Object.keys(vault).length ? "assistant.json" : Object.keys(inherit).length ? "hermes" : "default";
+  return { settings: s, source };
 }
 
 /** Resumen apto para estado/logs: nunca incluye URL, rutas ni credenciales. */
@@ -211,6 +326,22 @@ function parseDotenv(text: string): Map<string, string> {
   return out;
 }
 
+interface FoundSecret { name: string; value: string; source: "hermes-env" | "environment" }
+
+/** Primera variable del proveedor con valor: de `~/.hermes/.env` o, si no, del entorno del daemon. El valor solo lo ve quien lo inyecta. */
+async function findSecret(spec: ProviderSpec, o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<FoundSecret | null> {
+  const env = o.env ?? process.env;
+  const dotenv = parseDotenv((await readText(path.join(o.userHome, ".hermes", ".env")).catch(() => null)) ?? "");
+  for (const name of spec.keys) {
+    const fromFile = dotenv.get(name);
+    const value = fromFile || env[name];
+    if (value) return { name, value, source: fromFile ? "hermes-env" : "environment" };
+  }
+  return null;
+}
+
+const badSecret = (value: string) => value.length > MAX_SECRET || /[\r\n\0]/.test(value);
+
 /**
  * Credenciales que necesita el proveedor, solo esas: de `~/.hermes/.env` o, si no están, del entorno del daemon.
  * Devuelve `{ NOMBRE: valor }` para inyectar en el proceso aislado; Codex y los endpoints locales no necesitan ninguna.
@@ -218,16 +349,32 @@ function parseDotenv(text: string): Map<string, string> {
 export async function resolveProviderSecrets(s: ModelSettings, o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<Record<string, string>> {
   const spec = PROVIDERS[s.provider];
   if (!spec || spec.keys.length === 0) return {};
-  const env = o.env ?? process.env;
-  const dotenv = parseDotenv((await readText(path.join(o.userHome, ".hermes", ".env")).catch(() => null)) ?? "");
-  for (const name of spec.keys) {
-    const value = dotenv.get(name) || env[name];
-    if (!value) continue;
-    if (value.length > MAX_SECRET || /[\r\n\0]/.test(value)) {
-      throw new ModelConfigError(`La clave ${name} no es válida (vacía, con saltos de línea o demasiado larga): corrígela en ~/.hermes/.env o en el entorno de Kioku`);
+  const found = await findSecret(spec, o);
+  if (found) {
+    if (badSecret(found.value)) {
+      throw new ModelConfigError(`La clave ${found.name} no es válida (vacía, con saltos de línea o demasiado larga): corrígela en ~/.hermes/.env o en el entorno de Kioku`);
     }
-    return { [name]: value };
+    return { [found.name]: found.value };
   }
   if (spec.keylessLocal && s.baseUrl && isLocalHost(new URL(s.baseUrl).hostname)) return {};
   throw new ModelConfigError(`Falta la clave de ${s.provider}: define ${spec.keys[0]} en ~/.hermes/.env (o en el entorno con el que arranca Kioku)`);
+}
+
+export interface CredentialStatus {
+  required: boolean;
+  names: string[];
+  state: "not-needed" | "found" | "missing" | "invalid" | "local-keyless";
+  name?: string;
+  source?: "hermes-env" | "environment";
+}
+
+/** Cómo se proporciona la clave del proveedor, solo con metadatos (nombre de la variable y de dónde sale): jamás el valor. */
+export async function describeCredentials(s: ModelSettings, o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<CredentialStatus> {
+  const spec = PROVIDERS[s.provider];
+  if (!spec || spec.keys.length === 0) return { required: false, names: [], state: "not-needed" };
+  const local = !!(spec.keylessLocal && s.baseUrl && isLocalHost(new URL(s.baseUrl).hostname));
+  const base = { required: !local, names: [...spec.keys] };
+  const found = await findSecret(spec, o);
+  if (found) return badSecret(found.value) ? { ...base, state: "invalid", name: found.name } : { ...base, state: "found", name: found.name, source: found.source };
+  return { ...base, state: local ? "local-keyless" : "missing" };
 }

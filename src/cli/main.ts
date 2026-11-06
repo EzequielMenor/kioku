@@ -16,6 +16,7 @@ import { hiddenCalendarPaths } from "../server/calendar.ts";
 import { installService, serviceStatus, uninstallService } from "./service.ts";
 import { loadOrCreateKey, readKey } from "../server/key.ts";
 import { allowedHostsFrom, pairReport, publicHost } from "./pair.ts";
+import { doctorReport, setupGuide } from "./setup.ts";
 import { daemonAlive, ensureDaemon, hideQuick, kiokuHome, loginUrl, openWorkspace, readRuntime, toggleQuick, webDir } from "./desktop.ts";
 
 const HELP = `kioku — segundo cerebro local-first
@@ -25,6 +26,8 @@ Uso: kioku <comando> [args]
   quick                    Abre/oculta la ventana de captura rápida (asigna esto a un atajo de Hyprland)
   open                     Abre el Workspace
   url                      Imprime la URL de acceso (lleva la clave del daemon: no la compartas)
+  setup                    Guía de instalación y conexión privada (no cambia nada)
+  doctor                   Diagnóstico de conexión privada de solo lectura (0 listo localmente; 1 faltan pasos)
   pair [--revoke]          Empareja el móvil/iPad (Tailscale): da la URL con su clave limitada · --revoke lo desempareja
   add <texto>              Captura rápida sin abrir ventana:  t tarea !mañana @proyecto · d decisión · n nota
   today                    Qué hacer hoy y a qué volver
@@ -104,6 +107,18 @@ async function main(): Promise<void> {
   if (!cmd || cmd === "help" || cmd === "-h" || cmd === "--help") return void console.log(HELP);
 
   switch (cmd) {
+    case "setup": {
+      if (args.length) die("uso: kioku setup");
+      setupGuide().forEach(line => console.log(line));
+      return;
+    }
+    case "doctor": {
+      if (args.length) die("uso: kioku doctor");
+      const report = await doctorReport(home);
+      report.lines.forEach(line => console.log(line));
+      if (!report.ok) process.exitCode = 1;
+      return;
+    }
     case "daemon": {
       guardHome(home);
       const prev = readRuntime(home);
