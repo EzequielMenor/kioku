@@ -1,15 +1,17 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import "./app.css";
-import { UNAUTHORIZED_EVENT, api, lsGet, lsSet } from "./api.ts";
+import { UNAUTHORIZED_EVENT, api, lsGet, lsSet, setDemoTransport } from "./api.ts";
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
 import { AssistantManagement } from "./assistant-management.tsx";
 import { ConnectionsView } from "./connections.tsx";
 import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { CalendarView } from "./calendar.tsx";
+import { enableDemoMode, handleDemoApi, isDemoMode, onDemoChange, resetDemoState } from "./demo/engine.ts";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
+import { DemoBar, LandingView } from "./landing.tsx";
 import { extractKey } from "./pairing.ts";
 import { SEAL_PATH } from "./seal.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
@@ -101,27 +103,52 @@ function listNav(e: KeyboardEvent): boolean {
 
 // ───────────────────────────── App ─────────────────────────────
 
+const bootDemo = isDemoMode();
+if (bootDemo) {
+  enableDemoMode();
+  setDemoTransport(handleDemoApi, onDemoChange);
+}
+
 function App() {
   const [route, setRoute] = useRoute();
+  const [demo, setDemo] = useState(bootDemo);
   const [toast, setToast] = useState<Toast | null>(null);
   const [overlay, setOverlay] = useState<null | "palette" | "capture" | "help" | "context" | "endfocus" | "more" | "assistant-management">(null);
   const [ctxPath, setCtxPath] = useState<string | null>(null);
   const [theme, setTheme] = useState(lsGet("theme") ?? "dark");
+  const isLanding = route === "/inicio";
   const rev = useRevision((e) => { if (e.kind === "navigate" && e.route) setRoute(e.route); });
-  const focus = useApi<FocusState>("/api/focus", rev).data;
-  const counts = useApi<TodayView>("/api/today", rev).data;
+  const focus = useApi<FocusState>(isLanding ? null : "/api/focus", rev).data;
+  const counts = useApi<TodayView>(isLanding ? null : "/api/today", rev).data;
   const toastTimer = useRef(0);
   const [locked, setLocked] = useState(false);
+
+  const activateDemo = (targetRoute = "/hoy") => {
+    enableDemoMode();
+    setDemoTransport(handleDemoApi, onDemoChange);
+    setDemo(true);
+    setLocked(false);
+    setRoute(targetRoute);
+  };
+
   useEffect(() => {
-    const on = () => { setLocked(true); void wipeOffline(); };
+    if (route === "/demo") activateDemo("/hoy");
+  }, [route]);
+
+  useEffect(() => {
+    const on = () => { if (!demo) { setLocked(true); void wipeOffline(); } };
     addEventListener(UNAUTHORIZED_EVENT, on);
     return () => removeEventListener(UNAUTHORIZED_EVENT, on);
-  }, []);
+  }, [demo]);
   const [, setRoleTick] = useState(0);
   useEffect(() => {
+    if (demo) { setRole("full"); return; }
     startOffline(); // sin red el rol sale de lo último visto; startOffline solo actúa en el móvil
-    api<{ role: "full" | "mobile" }>("GET", "/api/session").then((r) => { const changed = r.role !== getRole(); setRole(r.role); startOffline(); if (changed) setRoleTick((n) => n + 1); }, () => {});
-  }, []);
+    api<{ role: "full" | "mobile" }>("GET", "/api/session").then(
+      (r) => { const changed = r.role !== getRole(); setRole(r.role); startOffline(); if (changed) setRoleTick((n) => n + 1); },
+      () => {},
+    );
+  }, [demo]);
   const off = useOffline();
   const mobile = isMobile();
 
@@ -199,6 +226,10 @@ function App() {
     setRoute(`/nota/${r.path}`);
   });
 
+  if (isLanding) {
+    return <LandingView theme={theme} setTheme={setTheme} onStartDemo={(r) => activateDemo(r ?? "/hoy")} />;
+  }
+
   if (locked) {
     return <LockedScreen />;
   }
@@ -217,7 +248,7 @@ function App() {
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
     case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : arg === "memoria" ? <AssistantMemory rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
-    case "conexiones": view = <ConnectionsView mobile={mobile} demo={lsGet("kioku.demo.active") === "1"}>{mobile && <OfflineSection off={off} />}</ConnectionsView>; break;
+    case "conexiones": view = <ConnectionsView mobile={mobile} demo={demo}>{mobile && <OfflineSection off={off} />}</ConnectionsView>; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
     default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} onCapture={() => setOverlay("capture")} />;
   }
@@ -244,6 +275,7 @@ function App() {
         <button class="side-btn subtle" onClick={() => setOverlay("help")}>Atajos <kbd>?</kbd></button>
       </nav>
       <div class="content">
+        {demo && <DemoBar onReset={() => { resetDemoState(); say("Datos de prueba restaurados."); }} onLanding={() => setRoute("/inicio")} />}
         {focus?.active && !mobile && <FocusBar focus={focus} onEnd={() => setOverlay("endfocus")} go={setRoute} />}
         <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{view}</main>
       </div>

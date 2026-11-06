@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build:web": "node scripts/build-web.mjs",
+    "preview:demo": "node scripts/build-web.mjs && node scripts/preview-demo.mjs",
     "dev": "node src/cli/main.ts daemon",
     "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p ."

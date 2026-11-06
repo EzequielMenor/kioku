@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { api, onChange, type ChangeEvent } from "./api.ts";
+import { isStaticDemoHost } from "./demo/engine.ts";
 
 /** Contador que sube con cada cambio del vault (SSE) para refrescar las vistas. */
 export function useRevision(onEvent?: (e: ChangeEvent) => void): number {
@@ -37,9 +38,16 @@ export function useApi<T>(path: string | null, rev: number): { data: T | null; e
   return { data, error, reload: useCallback(() => setTick((t) => t + 1), []) };
 }
 
+/** Portada pública de la demo: solo en un alojamiento estático reconocido, nunca en un host propio con sesión real. */
+export function isPublicWebHost(): boolean {
+  if (typeof window === "undefined") return false;
+  return isStaticDemoHost(location.hostname) && !new URLSearchParams(location.search).has("k");
+}
+
 /** Ruta del cliente basada en el hash: "#/nota/Notas/x.md" → "/nota/Notas/x.md". */
 export function useRoute(): [string, (r: string) => void] {
-  const read = () => decodeURI(location.hash.slice(1)) || "/hoy";
+  const defaultRoute = () => (isPublicWebHost() && new URLSearchParams(location.search).get("demo") !== "1" ? "/inicio" : "/hoy");
+  const read = () => decodeURI(location.hash.slice(1)) || defaultRoute();
   const [route, setRoute] = useState(read);
   useEffect(() => {
     const h = () => setRoute(read());
