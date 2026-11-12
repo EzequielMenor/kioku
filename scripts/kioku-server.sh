@@ -104,9 +104,19 @@ case "${1:-open}" in
   remote) shift; remote "${1:-}" ;;
   backup)
     mkdir -p "$HOME/KiokuBackups"
-    tar czf "$HOME/KiokuBackups/kioku-home-$(date +%Y%m%d-%H%M%S).tar.gz" \
-      --exclude='.kioku/index.db*' -C "$KIOKU_HOME" .
-    ls -lh "$HOME/KiokuBackups" | tail -3
+    dest="$HOME/KiokuBackups/kioku-home-$(date +%Y%m%d-%H%M%S).tar.gz"
+    partial="$dest.partial"
+    list="$(mktemp)"
+    trap 'rm -f "$list" "$partial"' EXIT
+    # Los sockets del gateway y los ficheros que APFS comprimió y ya no puede leer
+    # (estado de Hermes) abortan tar: se omiten y se avisa; el resto se copia entero.
+    (cd "$KIOKU_HOME" && find . \( -type d -o -type f \) ! -path './.kioku/index.db*' ! -flags +compressed -print) > "$list"
+    skipped="$(find "$KIOKU_HOME" -type f -flags +compressed | wc -l | tr -d ' ')"
+    tar czf "$partial" --no-xattrs --no-recursion -C "$KIOKU_HOME" -T "$list"
+    tar -tzf "$partial" >/dev/null
+    mv "$partial" "$dest"
+    [ "$skipped" -eq 0 ] || echo "Aviso: $skipped ficheros comprimidos por APFS (estado de Hermes) no se pueden leer y no van en la copia." >&2
+    ls -lh "$dest"
     ;;
   update)
     if [ -z "$(git status --porcelain)" ]; then git pull --ff-only; else echo "Hay cambios locales sin commitear: no hago git pull." >&2; fi
