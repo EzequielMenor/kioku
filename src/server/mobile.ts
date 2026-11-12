@@ -28,7 +28,7 @@ const PROPOSAL_ACTION = /^\/api\/proposals\/[0-9A-Z]{26}\/(?:apply|reject)$/;
 const under = (p: string, base: string) => p === base || p.startsWith(`${base}/`);
 
 export function mobileAllowed(method: string, p: string): boolean {
-  if (method === "GET") return !(under(p, "/api/devices") || under(p, "/api/ai") || (under(p, "/api/assistant") && !ASSISTANT_READS.has(p)) || (under(p, "/api/proposals") && p !== "/api/proposals"));
+  if (method === "GET") return !(under(p, "/api/devices") || under(p, "/api/connections") || under(p, "/api/ai") || (under(p, "/api/assistant") && !ASSISTANT_READS.has(p)) || (under(p, "/api/proposals") && p !== "/api/proposals"));
   return WRITES.has(`${method} ${p}`) || (method === "POST" && PROPOSAL_ACTION.test(p));
 }
 

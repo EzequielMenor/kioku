@@ -22,6 +22,7 @@ import { OpsLedger, validOp } from "./ops.ts";
 import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
 import { credentialDigest, DeviceError, Devices } from "./devices.ts";
+import { ConnectionError, PrivateConnection, savedRemoteHost, type ConnectionRunner } from "./private-connection.ts";
 import { exclusionScope, hiddenRelation, mobileAction, mobileAllowed, mobileConversation, mobileEvent, mobileProposalVisible, mobileToolText, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
 export const DEFAULT_PORT = 47800;
@@ -142,6 +143,8 @@ export async function startServer(
     key?: string;
     /** Hosts extra aceptados además de 127.0.0.1/localhost (p. ej. el nombre de Tailscale); lista cerrada y exacta. */
     allowedHosts?: string[];
+    /** Adaptador de Tailscale; las pruebas inyectan un ejecutable simulado. */
+    connectionRunner?: ConnectionRunner;
     webDir: string;
     onQuickHide?: () => void | Promise<void>;
     onOpenWorkspace?: (route: string) => void | Promise<void>;
@@ -189,6 +192,9 @@ export async function startServer(
     (await j.proposals.list(status)).filter((pr) => mobileProposalVisible(pr, ex, (t) => j.index.resolve(t)));
 
   const allowedHosts = new Set((opts.allowedHosts ?? []).map((h) => h.trim().toLowerCase()).filter(Boolean));
+  const savedHost = savedRemoteHost(j.vault.root);
+  if (savedHost) allowedHosts.add(savedHost);
+  const privateConnection = new PrivateConnection(j.vault.root, opts.connectionRunner);
   let mobileConfig: string[] = []; // carpetas privadas del móvil (`mobile.json`); se refresca en cada petición del rol `mobile`
   let mobileExclude: string[] = []; // lo anterior + actividades de calendario que apuntan a algo privado o sin resolver
   /** Carpetas privadas más las actividades ocultas según el estado actual del índice (no el de la última petición). */
@@ -281,6 +287,21 @@ export async function startServer(
     }
     const send = role === "mobile" ? (r: http.ServerResponse, status: number, b: unknown) => sendJson(r, status, mobileView(p, b, mobileExclude)) : sendJson;
     const skip = role === "mobile" ? (x: string) => isPrivate(x, mobileExclude) : undefined;
+
+    if (p === "/api/connections/status" && m === "GET") {
+      if (role !== "full") throw new HttpError(403, "Las conexiones se gestionan desde el ordenador");
+      const localAdmin = req.headers.host === `127.0.0.1:${boundPort}` || req.headers.host === `localhost:${boundPort}`;
+      return sendJson(res, 200, { ...await privateConnection.status(boundPort, allowedHosts), localAdmin });
+    }
+    if (p === "/api/connections/configure" && m === "POST") {
+      if (role !== "full" || (req.headers.host !== `127.0.0.1:${boundPort}` && req.headers.host !== `localhost:${boundPort}`)) throw new HttpError(403, "Abre Kioku en el propio ordenador para configurar su conexión");
+      if (body.confirm !== true) throw new HttpError(400, "Confirma que quieres activar el proxy privado de esta instancia");
+      const previous = savedRemoteHost(j.vault.root);
+      const host = await privateConnection.configure(boundPort);
+      if (previous && !(opts.allowedHosts ?? []).includes(previous)) allowedHosts.delete(previous);
+      allowedHosts.add(host);
+      return sendJson(res, 200, await privateConnection.status(boundPort, allowedHosts));
+    }
 
     if (p === "/api/devices" || p.startsWith("/api/devices/")) {
       if (role !== "full") throw new HttpError(403, "Los dispositivos se gestionan desde el ordenador");
@@ -762,7 +783,7 @@ export async function startServer(
       } else throw new HttpError(405, "Método no permitido");
     } catch (e) {
       if (res.headersSent) return res.end();
-      if (e instanceof HttpError || e instanceof DeviceError) return sendJson(res, e.status, { error: e.message });
+      if (e instanceof HttpError || e instanceof DeviceError || e instanceof ConnectionError) return sendJson(res, e.status, { error: e.message });
       if (e instanceof VaultError) {
         const status = e.code === "not-found" ? 404 : e.code === "conflict" || e.code === "exists" ? 409 : 400;
         return sendJson(res, status, { error: e.message, code: e.code });
