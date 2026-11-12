@@ -201,7 +201,12 @@ export async function startServer(
     // Las relaciones de una actividad pueden cambiar con el flujo abierto: la visibilidad se calcula con cada evento.
     let exclude: string[] | null = null;
     for (const [c, role] of sseClients) {
-      if (role === "mobile" && !mobileCredential(sseCredentials.get(c))) { c.end(); sseClients.delete(c); sseCredentials.delete(c); continue; }
+      if (role === "mobile") {
+        let paired = false;
+        try { paired = mobileCredential(sseCredentials.get(c)); }
+        catch { /* Registro inválido: cerrar ese móvil, sin alterar el resultado de una escritura ya realizada. */ }
+        if (!paired) { c.end(); sseClients.delete(c); sseCredentials.delete(c); continue; }
+      }
       if (role === "full" || mobileEvent(ev, (exclude ??= currentExclude()))) c.write(data);
     }
   });

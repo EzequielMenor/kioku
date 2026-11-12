@@ -127,3 +127,54 @@ test("enrollment: unauthenticated/mobile administration and foreign Origin are r
     assert.equal((await f.call("POST", "/api/devices/redeem", { token: enrollment.token, name: "Válido" }, null)).status, 201);
   } finally { await f.done(); }
 });
+
+
+test("enrollment: corrupt registry cannot make a committed desktop capture report failure", async () => {
+  const f = await fixture();
+  const abort = new AbortController();
+  try {
+    const enrollment = await (await f.call("POST", "/api/devices/enrollments", {})).json();
+    const redeemed = await f.call("POST", "/api/devices/redeem", { token: enrollment.token, name: "Phone" }, null);
+    assert.equal(redeemed.status, 201);
+    const cookie = redeemed.headers.get("set-cookie")!.split(";")[0];
+    const stream = await fetch(f.srv.url + "/api/events", { headers: { cookie }, signal: abort.signal });
+    assert.equal(stream.status, 200);
+    const reader = stream.body!.getReader();
+    await reader.read();
+    const registry = path.join(f.root, ".kioku", "device-credentials.json");
+    writeFileSync(registry, "{broken");
+    const before = readFileSync(registry, "utf8");
+    const captured = await f.call("POST", "/api/capture", { text: "n corruption write probe" });
+    assert.equal(captured.status, 200, await captured.text());
+    assert.equal(captured.headers.get("set-cookie"), null);
+    assert.equal(readFileSync(registry, "utf8"), before);
+    const note = await f.call("GET", "/api/note?path=Notas/corruption%20write%20probe.md");
+    assert.equal(note.status, 200);
+    const end = (async () => { for (;;) { if ((await reader.read()).done) return "closed"; } })();
+    const timeout = AbortSignal.timeout(1500);
+    const timedOut = new Promise<string>((resolve) => timeout.addEventListener("abort", () => resolve("timed out"), { once: true }));
+    assert.equal(await Promise.race([end, timedOut]), "closed", "corrupt mobile registry closes only the affected stream");
+  } finally { abort.abort(); await f.done(); }
+});
+
+test("enrollment: semantically corrupt stored names fail closed without changing bytes", async () => {
+  const f = await fixture();
+  try {
+    const enrollment = await (await f.call("POST", "/api/devices/enrollments", {})).json();
+    const redeemed = await f.call("POST", "/api/devices/redeem", { token: enrollment.token, name: "Phone" }, null);
+    assert.equal(redeemed.status, 201);
+    const registry = path.join(f.root, ".kioku", "device-credentials.json");
+    const entries = JSON.parse(readFileSync(registry, "utf8"));
+    for (const name of ["", "   ", "a\u0001b"]) {
+      entries[0].name = name;
+      writeFileSync(registry, JSON.stringify(entries));
+      const before = readFileSync(registry, "utf8");
+      const listed = await f.call("GET", "/api/devices");
+      const text = await listed.text();
+      assert.equal(readFileSync(registry, "utf8"), before);
+      assert.equal(listed.headers.get("set-cookie"), null);
+      assert.equal(listed.status, 503, text);
+      assert.equal(text, JSON.stringify({ error: "El registro de dispositivos no es válido; no se modifica" }));
+    }
+  } finally { await f.done(); }
+});

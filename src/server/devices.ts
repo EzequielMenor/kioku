@@ -9,6 +9,7 @@ export class DeviceError extends Error {
   constructor(status: number, message: string) { super(message); this.status = status; }
 }
 const validKey = (key: unknown): key is string => typeof key === "string" && /^[0-9a-f]{64}$/.test(key);
+const validName = (name: unknown): name is string => typeof name === "string" && name.trim().length > 0 && name.trim().length <= 80 && !/[\x00-\x1f\x7f]/.test(name);
 export const credentialDigest = (key: string) => createHash("sha256").update(key).digest("hex");
 
 export class Devices {
@@ -25,7 +26,7 @@ export class Devices {
     catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw new DeviceError(503, "No se puede leer el registro de dispositivos"); }
     try {
       const value = JSON.parse(text);
-      if (!Array.isArray(value) || value.length > 100 || !value.every((d) => d && /^[0-9a-f]{32}$/.test(d.id) && typeof d.name === "string" && d.name.length <= 80 && typeof d.createdAt === "string" && validKey(d.digest))) throw new Error();
+      if (!Array.isArray(value) || value.length > 100 || !value.every((d) => d && /^[0-9a-f]{32}$/.test(d.id) && validName(d.name) && typeof d.createdAt === "string" && validKey(d.digest))) throw new Error();
       return value;
     } catch { throw new DeviceError(503, "El registro de dispositivos no es válido; no se modifica"); }
   }
@@ -36,7 +37,7 @@ export class Devices {
     chmodSync(temp, 0o600);
     renameSync(temp, this.file);
   }
-  list() { return this.read().map(({ digest: _, ...publicDevice }) => publicDevice); }
+  list() { return this.read().map(({ id, name, createdAt }) => ({ id, name, createdAt })); }
   accepts(key: string | undefined): boolean {
     if (!validKey(key)) return false;
     return this.read().some((d) => d.digest === credentialDigest(key));
@@ -51,7 +52,7 @@ export class Devices {
     return { token, expiresAt: new Date(expires).toISOString() };
   }
   redeem(token: unknown, name: unknown) {
-    if (typeof name !== "string" || !name.trim() || name.trim().length > 80 || /[\x00-\x1f\x7f]/.test(name)) throw new DeviceError(400, "El nombre debe tener entre 1 y 80 caracteres, sin controles");
+    if (!validName(name)) throw new DeviceError(400, "El nombre debe tener entre 1 y 80 caracteres, sin controles");
     const digest = validKey(token) ? credentialDigest(token) : "";
     const expires = this.pending.get(digest);
     if (!expires || expires <= this.now()) throw new DeviceError(401, "El enlace ha caducado o ya se usó; genera otro en el ordenador");
