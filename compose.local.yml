@@ -42,6 +42,7 @@ services:
     environment:
       KIOKU_HOME: /data
       KIOKU_PORT: "47800"
+      KIOKU_ALLOWED_HOSTS: "${KIOKU_ALLOWED_HOSTS:-}"
     volumes:
       - data:/data
     read_only: true

@@ -45,7 +45,15 @@ En el móvil se ve la última copia y las capturas o ediciones pendientes. Puede
 
 Para uso **local**, abre `Kioku.command` o ejecuta `./scripts/kioku-local.sh open`. Necesitas una imagen construida desde esta revisión; el lanzador existente no recompila automáticamente. Sigue [la guía local de Mac](local-macos.md).
 
-El contenedor local no incluye Tailscale. `kioku doctor` dentro de él no podrá comprobar el Tailscale del Mac; no interpretes ese fallo como una prueba completa de acceso remoto. Para acceso privado:
+El contenedor local no incluye Tailscale. `kioku doctor` dentro de él no podrá comprobar el Tailscale del Mac; no interpretes ese fallo como una prueba completa de acceso remoto. Para acceso privado, el camino corto es un solo comando en el Mac, con Tailscale instalado y conectado (misma cuenta que el móvil) y HTTPS activado en tu tailnet:
+
+```sh
+./scripts/kioku-local.sh remote
+```
+
+Obtiene el nombre DNS del Mac, lo guarda como host aceptado en `.kioku-local.env` (solo un nombre, nunca una clave; fuera de Git), recrea el contenedor de Kioku conservando el volumen, publica el proxy HTTPS privado con `tailscale serve` (sin Funnel) y copia al portapapeles el enlace de emparejamiento sin mostrarlo. Pégalo en Safari del iPhone con el portapapeles universal, o usa `remote --show` para verlo. Es idempotente: repetirlo no cambia nada si ya está configurado. En el iPhone, pega la clave o el enlace en la pantalla «Falta la clave de Kioku» cuando aparezca.
+
+Si prefieres hacerlo a mano:
 
 1. Instala y conecta Tailscale en el **Mac y el móvil**. Obtén el nombre DNS del Mac con `tailscale status --json` y habilita HTTPS en tu tailnet.
 2. En `compose.local.yml`, añade `KIOKU_ALLOWED_HOSTS: "nombre-real.tu-tailnet.ts.net"` a `services.kioku.environment`. No cambies el puerto publicado en loopback ni los volúmenes.
