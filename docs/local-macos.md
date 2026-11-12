@@ -1,5 +1,7 @@
 # Kioku en este Mac
 
+> **Este repo ya no es la instalación activa.** Desde la migración nativa, Kioku corre por launchd (`com.ezequiel.kioku-server`) desde `~/Proyectos/kioku-hermes-central`, con el vault en `~/Documents/Kioku`. No ejecutes `kioku-local.sh start` ni `stop` mientras ese daemon siga vivo: ocupa el puerto 47800 y el arranque falla. Lo que sigue describe la instalación Docker anterior.
+
 Antes de valorar una instalación nativa, sigue la [guía de copia previa](macos-native-migration.md). La copia no migra ni retira Docker.
 
 Rama `feature/dokploy-private`, imagen `kioku:local-a68f7da` construida con el
