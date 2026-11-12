@@ -21,6 +21,7 @@ import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobi
 import { OpsLedger, validOp } from "./ops.ts";
 import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
 import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
+import { credentialDigest, DeviceError, Devices } from "./devices.ts";
 import { exclusionScope, hiddenRelation, mobileAction, mobileAllowed, mobileConversation, mobileEvent, mobileProposalVisible, mobileToolText, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
 export const DEFAULT_PORT = 47800;
@@ -149,6 +150,11 @@ export async function startServer(
     push?: PushStore;
   },
 ): Promise<ServerHandle> {
+  const devices = new Devices(j.vault.root);
+  const mobileCredential = (given: string | undefined) => {
+    const legacy = readMobileKey(j.vault.root);
+    return !!(legacy && keyMatches(legacy, given)) || devices.accepts(given);
+  };
   const sessions = new SessionRegistry();
   const undo = new UndoStore(j);
   const ops = new OpsLedger(j.vault);
@@ -177,7 +183,7 @@ export async function startServer(
   };
   /** Clave móvil con la que se abrió cada consulta del móvil: si se revoca o se rota mientras corre, sus herramientas y su respuesta dejan de valer. */
   const askedWith = new WeakMap<AssistantSession, string>();
-  const stillPaired = (s: AssistantSession) => { const mk = readMobileKey(j.vault.root); return !!mk && keyMatches(mk, askedWith.get(s)); };
+  const stillPaired = (s: AssistantSession) => mobileCredential(askedWith.get(s));
   /** Propuestas pendientes (o del estado pedido) que el móvil puede ver ahora mismo. */
   const mobileProposals = async (status: "pending" | "applied" | "rejected" | "failed", ex: string[]) =>
     (await j.proposals.list(status)).filter((pr) => mobileProposalVisible(pr, ex, (t) => j.index.resolve(t)));
@@ -189,11 +195,15 @@ export async function startServer(
   const currentExclude = () => [...mobileConfig, ...hiddenCalendarPaths(j, mobileConfig)];
   // Cada cliente SSE lleva su rol: el móvil solo recibe eventos de notas visibles.
   const sseClients = new Map<http.ServerResponse, Role>();
+  const sseCredentials = new Map<http.ServerResponse, string>();
   j.bus.on("change", (ev) => {
     const data = `data: ${JSON.stringify(ev)}\n\n`;
     // Las relaciones de una actividad pueden cambiar con el flujo abierto: la visibilidad se calcula con cada evento.
     let exclude: string[] | null = null;
-    for (const [c, role] of sseClients) if (role === "full" || mobileEvent(ev, (exclude ??= currentExclude()))) c.write(data);
+    for (const [c, role] of sseClients) {
+      if (role === "mobile" && !mobileCredential(sseCredentials.get(c))) { c.end(); sseClients.delete(c); sseCredentials.delete(c); continue; }
+      if (role === "full" || mobileEvent(ev, (exclude ??= currentExclude()))) c.write(data);
+    }
   });
   const keepAlive = setInterval(() => { for (const c of sseClients.keys()) c.write(": ka\n\n"); }, 25_000);
   keepAlive.unref();
@@ -221,8 +231,7 @@ export async function startServer(
   function roleOf(req: http.IncomingMessage): Role | null {
     const given = presentedKey(req.headers);
     if (keyMatches(key, given)) return "full";
-    const mk = readMobileKey(j.vault.root);
-    return mk && keyMatches(mk, given) ? "mobile" : null;
+    return mobileCredential(given) ? "mobile" : null;
   }
 
   /**
@@ -267,6 +276,22 @@ export async function startServer(
     }
     const send = role === "mobile" ? (r: http.ServerResponse, status: number, b: unknown) => sendJson(r, status, mobileView(p, b, mobileExclude)) : sendJson;
     const skip = role === "mobile" ? (x: string) => isPrivate(x, mobileExclude) : undefined;
+
+    if (p === "/api/devices" || p.startsWith("/api/devices/")) {
+      if (role !== "full") throw new HttpError(403, "Los dispositivos se gestionan desde el ordenador");
+      if (p === "/api/devices" && m === "GET") return sendJson(res, 200, { devices: devices.list(), legacyPaired: !!readMobileKey(j.vault.root) });
+      if (p === "/api/devices/enrollments" && m === "POST") return sendJson(res, 201, devices.enrollment());
+      const match = /^\/api\/devices\/([0-9a-f]{32})$/.exec(p);
+      if (match && m === "DELETE") {
+        const digest = devices.revoke(match[1]);
+        for (const [client, credential] of sseCredentials) if (credentialDigest(credential) === digest) {
+          client.end(); sseCredentials.delete(client); sseClients.delete(client);
+        }
+        await opts.push?.removeOwner(digest);
+        return sendJson(res, 200, { revoked: true });
+      }
+      throw new HttpError(405, "Método no permitido");
+    }
 
     if (p === "/api/assistant/model") return assistantModel(m, role, body, res);
 
@@ -398,7 +423,8 @@ export async function startServer(
           res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
           res.write(": ok\n\n");
           sseClients.set(res, role);
-          req.on("close", () => sseClients.delete(res));
+          if (role === "mobile") sseCredentials.set(res, presentedKey(req.headers)!);
+          req.on("close", () => { sseClients.delete(res); sseCredentials.delete(res); });
           return;
         }
       }
@@ -416,7 +442,8 @@ export async function startServer(
         }
         case "/api/push/subscribe": {
           if (!opts.push) throw new HttpError(404, "Los avisos al móvil no están activados en este daemon");
-          await opts.push.add(body.subscription);
+          const credential = presentedKey(req.headers);
+          await opts.push.add(body.subscription, credential && devices.accepts(credential) ? credentialDigest(credential) : undefined);
           return send(res, 200, { ok: true });
         }
         case "/api/push/unsubscribe": {
@@ -701,6 +728,13 @@ export async function startServer(
         if (!okOrigin) throw new HttpError(403, "Origen no permitido");
       }
       const url = new URL(req.url ?? "/", `http://${host}`);
+      if (url.pathname === "/api/devices/redeem") {
+        if (req.method !== "POST") throw new HttpError(405, "Método no permitido");
+        const body = await readJson(req);
+        const enrolled = devices.redeem(body.token, body.name);
+        res.setHeader("set-cookie", `kioku_key=${enrolled.key}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${local ? "" : "; Secure"}`);
+        return sendJson(res, 201, enrolled.device);
+      }
       if (url.pathname.startsWith("/api/")) {
         const open = url.pathname === "/api/health" || BEARER_ROUTES.has(url.pathname);
         const role = roleOf(req);
@@ -709,8 +743,7 @@ export async function startServer(
       } else if (req.method === "GET") {
         // Intercambio de clave: /…?k=<clave> deja la cookie y redirige a la ruta limpia (el fragmento #… lo conserva el navegador).
         const given = url.searchParams.get("k") ?? undefined;
-        const mk = readMobileKey(j.vault.root);
-        const valid = keyMatches(key, given) ? key : mk && keyMatches(mk, given) ? mk : null;
+        const valid = keyMatches(key, given) ? key : mobileCredential(given) ? given : null;
         if (valid) {
           url.searchParams.delete("k");
           res.writeHead(302, {
@@ -724,7 +757,7 @@ export async function startServer(
       } else throw new HttpError(405, "Método no permitido");
     } catch (e) {
       if (res.headersSent) return res.end();
-      if (e instanceof HttpError) return sendJson(res, e.status, { error: e.message });
+      if (e instanceof HttpError || e instanceof DeviceError) return sendJson(res, e.status, { error: e.message });
       if (e instanceof VaultError) {
         const status = e.code === "not-found" ? 404 : e.code === "conflict" || e.code === "exists" ? 409 : 400;
         return sendJson(res, status, { error: e.message, code: e.code });

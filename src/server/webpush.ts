@@ -7,8 +7,9 @@ import type { Kioku } from "../core/kioku.ts";
 import type { Notification } from "../core/notifications.ts";
 import type { Channel } from "./notifier.ts";
 import { VaultError } from "../core/vault.ts";
+import { Devices } from "./devices.ts";
 
-export interface PushSubscription { endpoint: string; keys: { p256dh: string; auth: string } }
+export interface PushSubscription { endpoint: string; keys: { p256dh: string; auth: string }; owner?: string }
 export interface Vapid { publicKey: string; privateKey: string }
 
 const b64u = (b: Buffer | Uint8Array | string) => Buffer.from(b as Buffer).toString("base64url");
@@ -53,6 +54,7 @@ const SUBS_FILE = "push-subscriptions.json";
 export class PushStore {
   readonly vapid: Vapid;
   private file: string;
+  private active(owner: string): boolean { return new Devices(path.dirname(path.dirname(this.file))).hasDigest(owner); }
   private constructor(file: string, vapid: Vapid) { this.file = file; this.vapid = vapid; }
 
   static async open(root: string): Promise<PushStore> {
@@ -72,13 +74,15 @@ export class PushStore {
 
   /** Se lee del disco cada vez: `kioku pair --revoke` borra el fichero y el daemon deja de avisar al instante. */
   list(): PushSubscription[] {
-    try { const v = JSON.parse(readFileSync(this.file, "utf8")); return Array.isArray(v) ? v.filter(validSub) : []; } catch { return []; }
+    try { const v = JSON.parse(readFileSync(this.file, "utf8")); return Array.isArray(v) ? v.filter(validSub).filter((s) => s.owner === undefined || (/^[0-9a-f]{64}$/.test(s.owner) && this.active(s.owner))) : []; } catch { return []; }
   }
 
-  async add(sub: unknown): Promise<void> {
+  async add(sub: unknown, owner?: string): Promise<void> {
     if (!validSub(sub)) throw new VaultError("invalid", "Suscripción push inválida");
-    this.save([...this.list().filter((s) => s.endpoint !== sub.endpoint), { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }]);
+    this.save([...this.list().filter((s) => s.endpoint !== sub.endpoint), { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, ...(owner ? { owner } : {}) }]);
   }
+
+  async removeOwner(owner: string): Promise<void> { this.save(this.list().filter((s) => s.owner !== owner)); }
 
   async remove(endpoint: string): Promise<void> {
     this.save(this.list().filter((s) => s.endpoint !== endpoint));

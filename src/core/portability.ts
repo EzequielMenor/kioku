@@ -19,6 +19,7 @@ export function exportVault(home: string, dest: string): { bytes: number } {
     [
       "-czf", d,
       "--exclude=.kioku/index.db", "--exclude=.kioku/index.db-wal", "--exclude=.kioku/index.db-shm",
+      "--exclude=.kioku/device-credentials.json", "--exclude=.kioku/device-credentials.json.*.tmp",
       "--exclude=.kioku/runtime.json", "--exclude=.kioku/daemon.log", "--exclude=.kioku/secret", "--exclude=.kioku/secret-mobile",
       // Hermes: la memoria y las sesiones viajan; credenciales, cachés y logs no.
       ...["hermes", "hermes-mobile", "hermes-mobile/*"].flatMap((dir) =>
