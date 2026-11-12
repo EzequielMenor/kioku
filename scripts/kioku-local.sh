@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # launchd arranca con un PATH mínimo: sin esto no encuentra docker ni tailscale.
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="${PATH:-/usr/bin:/bin}:/opt/homebrew/bin:/usr/local/bin:/usr/sbin:/sbin"
 
 project_dir="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 cd "$project_dir"
@@ -73,6 +73,8 @@ case "${1:-open}" in
     fi
     ;;
   pair) start; "${compose[@]}" exec -T kioku node src/cli/main.ts pair ;;
+  # El acceso privado se publica sobre el daemon nativo que corre en el Mac.
+  remote) shift; exec "$project_dir/scripts/kioku-server.sh" remote "${1:-}" ;;
   backup)
     mkdir -p "$HOME/KiokuBackups"
     docker run --rm -v kioku-local_data:/data -v "$HOME/KiokuBackups:/backup" alpine \
@@ -83,5 +85,5 @@ case "${1:-open}" in
   update) update ;;
   stop) "${compose[@]}" stop ;;
   status) "${compose[@]}" ps ;;
-  *) echo "Uso: $0 [open|start|stop|status|url|pair|backup|serve|update]" >&2; exit 1 ;;
+  *) echo "Uso: $0 [open|start|remote [--show]|stop|status|url|pair|backup|serve|update]" >&2; exit 1 ;;
 esac

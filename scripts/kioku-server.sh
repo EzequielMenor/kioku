@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # launchd arranca con un PATH mínimo: node 24+ y docker/tailscale tienen que estar a mano.
-export PATH="/opt/homebrew/opt/node@26/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="${PATH:-/usr/bin:/bin}:/opt/homebrew/opt/node@26/bin:/opt/homebrew/bin:/usr/local/bin:/usr/sbin:/sbin"
 
 project_dir="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 cd "$project_dir"
@@ -10,12 +10,13 @@ cd "$project_dir"
 label="com.ezequiel.kioku-server"
 domain="gui/$(id -u)"
 plist="$HOME/Library/LaunchAgents/$label.plist"
+env_file="${KIOKU_ENV_FILE:-$project_dir/.env}"
 
 export KIOKU_HOME="${KIOKU_HOME:-$HOME/Documents/Kioku}"
 export KIOKU_PORT="${KIOKU_PORT:-47800}"
-if [ -f "$project_dir/.env" ]; then
+if [ -f "$env_file" ]; then
   set -a
-  . "$project_dir/.env"
+  . "$env_file"
   set +a
 fi
 
@@ -35,9 +36,7 @@ serving() {
   tailscale serve --bg "http://127.0.0.1:$KIOKU_PORT"
 }
 
-start() {
-  docker_up
-  serving >/dev/null || echo "Aviso: tailscale serve no está activo (¿Tailscale parado?)." >&2
+restart() {
   if launchctl print "$domain/$label" >/dev/null 2>&1; then
     launchctl kickstart -k "$domain/$label"
   else
@@ -45,6 +44,52 @@ start() {
   fi
   for _ in $(seq 1 30); do health && break; sleep 1; done
   health || { echo "Kioku no responde en http://127.0.0.1:$KIOKU_PORT (ver ~/Library/Logs/kioku-server.log)." >&2; return 1; }
+}
+
+start() {
+  docker_up
+  serving >/dev/null || echo "Aviso: tailscale serve no está activo (¿Tailscale parado?)." >&2
+  restart
+}
+
+allowed_host() { sed -n 's/^KIOKU_ALLOWED_HOSTS=//p' "$env_file" 2>/dev/null | tail -1; }
+
+# Acceso privado desde iPhone u otros equipos mediante Tailscale (sin Funnel ni puertos abiertos al router).
+remote() {
+  local show="${1:-}" status host url tmp
+  command -v tailscale >/dev/null 2>&1 || { echo "Tailscale no está instalado en este equipo. Instálalo, inicia sesión y vuelve a ejecutar este comando." >&2; exit 1; }
+  status="$(tailscale status --json 2>/dev/null)" || { echo "Tailscale no está conectado. Ábrelo, inicia sesión (misma cuenta que el iPhone) y vuelve a ejecutar este comando." >&2; exit 1; }
+  host="$(printf '%s' "$status" | node -e '
+    let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      try { const n = JSON.parse(s).Self?.DNSName; if (n) console.log(n.replace(/\.$/, "")); } catch {}
+    });')"
+  if ! printf '%s' "$host" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$'; then
+    echo "No pude obtener un nombre válido del equipo en Tailscale. Comprueba que MagicDNS está activo y que el equipo aparece conectado." >&2
+    exit 1
+  fi
+  if [ "$(allowed_host)" != "$host" ]; then
+    # Solo cambia el host aceptado: las notas, la clave móvil y el índice se conservan.
+    tmp="$(mktemp)"
+    grep -v '^KIOKU_ALLOWED_HOSTS=' "$env_file" > "$tmp" 2>/dev/null || true
+    printf 'KIOKU_ALLOWED_HOSTS=%s\n' "$host" >> "$tmp"
+    mv "$tmp" "$env_file"
+    restart || exit 1
+  fi
+  serving >/dev/null || echo "Aviso: tailscale serve no está activo (¿Tailscale parado?)." >&2
+  url="$(KIOKU_ALLOWED_HOSTS="$host" KIOKU_PUBLIC_HOST="$host" node src/cli/main.ts pair | sed -n 's/^ *\(https:\/\/[^ ]*\)$/\1/p' | head -n 1)"
+  [ -n "$url" ] || { echo "Kioku no devolvió un enlace de emparejamiento." >&2; exit 1; }
+  echo "Kioku ya acepta el acceso privado como https://$host"
+  if command -v pbcopy >/dev/null 2>&1; then
+    printf '%s' "$url" | pbcopy
+    echo "El enlace de emparejamiento está en el portapapeles (no se muestra: lleva la clave del móvil)."
+    echo "Con el iPhone cerca, pégalo en Safari mediante el portapapeles universal. Si no, ejecuta de nuevo con «remote --show»."
+  else
+    echo "Abre esta dirección en el móvil (lleva la clave del móvil: no la compartas):"
+    echo "  $url"
+  fi
+  [ "$show" = "--show" ] && echo "  $url"
+  echo "Después, en Safari: Compartir → Añadir a pantalla de inicio. El Mac debe seguir encendido y sin suspensión."
+  return 0
 }
 
 case "${1:-open}" in
@@ -56,6 +101,7 @@ case "${1:-open}" in
     ;;
   url) start; node src/cli/main.ts url ;;
   pair) start; node src/cli/main.ts pair ;;
+  remote) shift; remote "${1:-}" ;;
   backup)
     mkdir -p "$HOME/KiokuBackups"
     tar czf "$HOME/KiokuBackups/kioku-home-$(date +%Y%m%d-%H%M%S).tar.gz" \
@@ -77,5 +123,5 @@ case "${1:-open}" in
     tailscale serve status 2>/dev/null | head -2
     ;;
   logs) tail -n 40 "$HOME/Library/Logs/kioku-server.log" ;;
-  *) echo "Uso: $0 [open|start|stop|status|url|pair|backup|serve|update|logs]" >&2; exit 1 ;;
+  *) echo "Uso: $0 [open|start|remote [--show]|stop|status|url|pair|backup|serve|update|logs]" >&2; exit 1 ;;
 esac
