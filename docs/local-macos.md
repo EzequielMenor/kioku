@@ -1,5 +1,7 @@
 # Kioku en este Mac
 
+Antes de valorar una instalación nativa, sigue la [guía de copia previa](macos-native-migration.md). La copia no migra ni retira Docker.
+
 Rama `feature/dokploy-private`, imagen `kioku:local-a68f7da` construida con el
 Dockerfile original. `compose.local.yml` es una configuración independiente;
 `compose.dokploy.yml` conserva el despliegue con Tailscale.
