@@ -5,7 +5,8 @@ import path from "node:path";
 import { handleDemoApi, onDemoChange, resetDemoState } from "../web/src/demo/engine.ts";
 import type { CalendarResponse, CaptureResult, NoteInfo, Proposal, QueryResult, ResumeCard, TodayView } from "../web/src/types.ts";
 
-test("demo engine: carga datos de prueba ricos para Hoy, Proyectos, Bases, Calendario, Grafo y Propuestas", async () => {
+test("demo engine: carga datos de prueba ricos para Hoy, Proyectos, Bases, Calendario, Grafo y Propuestas", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-06T10:00:00") });
   resetDemoState(new Date("2026-11-06T10:00:00"));
 
   const today = await handleDemoApi<TodayView>("GET", "/api/today");
@@ -33,7 +34,8 @@ test("demo engine: carga datos de prueba ricos para Hoy, Proyectos, Bases, Calen
   assert.ok(cal.areas.length >= 3, "áreas de color en el calendario");
 });
 
-test("demo engine: permite capturar, editar notas, aplicar propuestas y restaurar los datos iniciales", async () => {
+test("demo engine: permite capturar, editar notas, aplicar propuestas y restaurar los datos iniciales", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-06T10:00:00") });
   resetDemoState(new Date("2026-11-06T10:00:00"));
   const events: string[] = [];
   const off = onDemoChange((e) => events.push(e.kind));
