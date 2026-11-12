@@ -5,6 +5,8 @@ import { UNAUTHORIZED_EVENT, api, lsGet, lsSet, setDemoTransport } from "./api.t
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
 import { AssistantManagement } from "./assistant-management.tsx";
 import { ConnectionsView } from "./connections.tsx";
+import { DeviceEnrollment } from "./device-access.tsx";
+import { enrollmentToken } from "./device-access-model.ts";
 import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { CalendarView } from "./calendar.tsx";
 import { enableDemoMode, handleDemoApi, isDemoMode, onDemoChange, resetDemoState } from "./demo/engine.ts";
@@ -1023,4 +1025,4 @@ function ContextDialog({ path, onClose }: { path: string; onClose(): void }) {
   );
 }
 
-render(<App />, document.getElementById("root")!);
+render(!bootDemo && enrollmentToken(location.hash) ? <DeviceEnrollment /> : <App />, document.getElementById("root")!);

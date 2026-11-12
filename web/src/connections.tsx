@@ -4,6 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import { DEMO_NOTICE, connectionGuide, describeHealth, probeHealth, safeOrigin, type HealthState } from "./connections-model.ts";
 import { formatAgo, useOffline } from "./offline/runtime.ts";
 import { isMobile } from "./role.ts";
+import { PrivateDevicesPanel } from "./device-access.tsx";
 
 export interface ConnectionsViewProps {
   /** Demostración en el navegador: se muestra como simulación y no se sondea ninguna red. */
@@ -49,6 +50,8 @@ export function ConnectionsView({ demo = false, mobile = isMobile(), children }:
         </section>
       )}
       {mobile && demo && <p class="muted small">La cola de sincronización no se muestra en la simulación: no hay ordenador al que enviar nada.</p>}
+      {!demo && !mobile && <PrivateDevicesPanel />}
+      <details><summary>Ayuda avanzada y acceso antiguo</summary>
       {connectionGuide(mobile).map((s) => (
         <section class="card" key={s.title}>
           <div class="eyebrow">{s.title}</div>
@@ -57,6 +60,7 @@ export function ConnectionsView({ demo = false, mobile = isMobile(), children }:
           </ul>
         </section>
       ))}
+      </details>
     </div>
   );
 }

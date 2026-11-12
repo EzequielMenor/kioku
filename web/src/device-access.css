@@ -1,0 +1,6 @@
+.private-device-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-block: 1rem; }
+.private-enrollment { margin-top: 1.5rem; min-width: 0; }
+.private-qr { width: min(100%, 240px); padding: 8px; background: white; }
+.private-qr svg { display: block; width: 100%; height: auto; }
+.private-welcome { width: min(100%, 600px); margin: 3rem auto; padding: 1rem; box-sizing: border-box; }
+.private-welcome input { display: block; margin-block: .75rem; max-width: 100%; box-sizing: border-box; }
