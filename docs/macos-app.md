@@ -18,7 +18,7 @@ No hace falta Node, Docker, Homebrew ni escribir comandos. El instalador no pide
 | Falla la colocación final | Devuelve la app anterior a su sitio; si no puede, dice dónde quedó guardada. |
 | `~/Applications` o `Kioku.app` es un enlace simbólico | Se rechaza sin modificar lo que haya detrás. |
 
-Qué descarga: un Node.js oficial 24+ (`nodejs.org`, verificado con el checksum publicado allí) que se usa solo en una carpeta temporal y se copia dentro de la app como runtime junto con su `LICENSE` oficial (incluye avisos de terceros), y el código de Kioku del commit validado `8580f9b89b4860d1406a5f79cd03551df85b2972` desde `codeload.github.com`. Es el mismo código que ya pasó la validación nativa en Intel y Apple Silicon. Si el repositorio fuera privado, esa descarga fallará y el instalador lo dirá.
+Qué descarga: un Node.js oficial 24+ (`nodejs.org`, verificado con el checksum publicado allí) que se usa solo en una carpeta temporal y se copia dentro de la app como runtime junto con su `LICENSE` oficial (incluye avisos de terceros), y el código de Kioku del commit validado `8580f9b89b4860d1406a5f79cd03551df85b2972` desde `codeload.github.com`. Todo lo temporal (Node, fuentes, cachés de npm y de compilación de Node) vive en una carpeta nueva `kioku-instalador.*` bajo `$TMPDIR` que se borra al terminar; esas cachés no se comparten con las del usuario ni llegan a la app que se abre. Es el mismo código que ya pasó la validación nativa en Intel y Apple Silicon. Si el repositorio fuera privado, esa descarga fallará y el instalador lo dirá.
 
 `Instalar Kioku.command --help` explica el uso sin usar la red. Opciones por entorno (para pruebas; no cambian los valores por defecto):
 

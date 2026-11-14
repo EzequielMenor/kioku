@@ -19,7 +19,9 @@ const FAKES: Record<string, string> = {
   uname: sh('case "$1" in -s) echo "${FAKE_UNAME_S:-Darwin}";; -m) echo "${FAKE_UNAME_M:-arm64}";; esac\n'),
   // Checksum real: /usr/bin/shasum en macOS; en Linux vive en core_perl en algunas distribuciones.
   shasum: sh('for t in /usr/bin/shasum /usr/bin/core_perl/shasum; do [ -x "$t" ] && exec "$t" "$@"; done\necho "shasum no disponible" >&2; exit 127\n'),
-  open: sh('echo "open $*" >> "$FAKE_LOG"; [ -z "$FAKE_OPEN_FAIL" ]\n'),
+  open: sh('echo "open $*" >> "$FAKE_LOG"\necho "NODE_COMPILE_CACHE=[$NODE_COMPILE_CACHE] npm_config_cache=[$npm_config_cache] PATH=$PATH" > "$FAKE_LOG.openenv"\n[ -z "$FAKE_OPEN_FAIL" ]\n'),
+  // mktemp de macOS (BSD): sin plantilla no usa el TMPDIR del llamador, sino un directorio propio del usuario.
+  mktemp: sh('if [ "$#" -eq 1 ] && [ "$1" = -d ]; then exec /usr/bin/mktemp -d "$FAKE_IMPLICIT_TMP/tmp.XXXXXXXX"; fi\nexec /usr/bin/mktemp "$@"\n'),
   xattr: sh('echo "PROHIBIDO xattr $*" >> "$FAKE_LOG"\n'),
   sudo: sh('echo "PROHIBIDO sudo $*" >> "$FAKE_LOG"\n'),
   mv: sh(`case "$1" in
@@ -47,7 +49,8 @@ exit 0
 };
 // Lo que "descarga" el instalador: un Node falso con licencia y npm, y un código fuente con un builder mínimo.
 const FAKE_NODE = sh('[ "$1" = --version ] && { echo "${FAKE_NODE_VERSION:-v24.1.0}"; exit 0; }\nexec "$FAKE_REAL_NODE" "$@"\n');
-const FAKE_NPM = sh('echo "npm $* cache=$npm_config_cache cwd=$(basename "$(pwd)")" >> "$FAKE_LOG"\n[ "$FAKE_NPM_FAIL" != "$1" ]\n');
+// Como el npm real, activa la caché de compilación de Node (en TMPDIR salvo que NODE_COMPILE_CACHE la redirija).
+const FAKE_NPM = sh('echo "npm $* cache=$npm_config_cache cwd=$(basename "$(pwd)")" >> "$FAKE_LOG"\n[ "$1" = ci ] && "$FAKE_REAL_NODE" -e \'require("node:module").enableCompileCache()\'\n[ "$FAKE_NPM_FAIL" != "$1" ]\n');
 const FAKE_BUILDER = `import { chmodSync, copyFileSync, existsSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
 const [, runtime, , out] = process.argv.slice(2);
 appendFileSync(process.env.FAKE_LOG, "builder out=" + out + "\\n");
@@ -80,7 +83,8 @@ function fixture() {
   const log = path.join(root, "calls.log");
   const spaced = path.join(root, "Carpeta con espacios");
   const apps = path.join(home, "Applications"), dest = path.join(apps, "Kioku.app");
-  for (const d of [home, tmp, serve]) mkdirSync(d, { recursive: true });
+  const implicitTmp = path.join(root, "implicit-tmp");
+  for (const d of [home, tmp, serve, implicitTmp]) mkdirSync(d, { recursive: true });
   for (const [name, body] of Object.entries(FAKES)) write(path.join(bin, name), body, 0o755);
   // Copias de los scripts públicos en una ruta con espacios (así se ejecutan tras extraer el ZIP).
   const installer = path.join(spaced, "Instalar Kioku.command");
@@ -103,7 +107,7 @@ function fixture() {
 
   const run = (o: { args?: string[]; input?: string; env?: Record<string, string>; script?: string } = {}) => spawnSync("/bin/bash", [o.script ?? installer, ...(o.args ?? [])], {
     encoding: "utf8", input: o.input ?? "", timeout: 60_000,
-    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, TMPDIR: tmp, FAKE_LOG: log, FAKE_SERVE: serve, FAKE_REAL_NODE: process.execPath, ...o.env },
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, TMPDIR: tmp, FAKE_LOG: log, FAKE_SERVE: serve, FAKE_IMPLICIT_TMP: implicitTmp, FAKE_REAL_NODE: process.execPath, ...o.env },
   });
   const calls = () => existsSync(log) ? readFileSync(log, "utf8") : "";
   const seedUser = () => {
@@ -112,7 +116,7 @@ function fixture() {
     write(path.join(home, "Documents/Kioku/nota.md"), "# otra\n");
   };
   const seedPrior = () => { write(path.join(dest, "Contents/MacOS/Kioku"), "#!/bin/sh\necho anterior\n", 0o755); write(path.join(dest, "Contents/Resources/version.txt"), "anterior\n"); };
-  return { root, home, tmp, apps, dest, installer, run, calls, seedUser, seedPrior, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, home, tmp, implicitTmp, log, apps, dest, installer, run, calls, seedUser, seedPrior, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 const withFixture = (fn: (f: ReturnType<typeof fixture>) => void) => { const f = fixture(); try { fn(f); } finally { f.cleanup(); } };
 
@@ -165,15 +169,21 @@ test("instalación nueva: versión fijada, Node verificado y con licencia, app c
   assert.ok(calls.includes("curl https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt"));
   assert.ok(calls.includes("curl https://nodejs.org/dist/latest-v24.x/node-v24.1.0-darwin-x64.tar.gz"), "elige la arquitectura del Mac");
   assert.ok(calls.includes(`curl https://codeload.github.com/EzequielMenor/kioku/tar.gz/${PINNED}\n`), "descarga el commit fijado");
-  assert.match(calls, /npm ci --silent cache=\S*\/tmp\/\S+\/npm-cache cwd=src/);
-  assert.match(calls, /npm run build:web --silent cache=/);
+  // El trabajo vive bajo el TMPDIR del llamador (mktemp de BSD no lo usa sin plantilla) y npm ci / build comparten la misma carpeta.
+  const cache = /npm ci --silent cache=(.+)\/npm-cache cwd=src\n/.exec(calls)?.[1];
+  assert.ok(cache?.startsWith(f.tmp + path.sep), `trabajo bajo TMPDIR (${cache})`);
+  assert.ok(calls.includes(`npm run build:web --silent cache=${cache}/npm-cache cwd=src\n`), "mismo trabajo para npm ci y build");
+  assert.deepEqual(readdirSync(f.implicitTmp), [], "nada en el directorio implícito de mktemp");
+  const openEnv = readFileSync(f.log + ".openenv", "utf8");
+  assert.ok(openEnv.startsWith("NODE_COMPILE_CACHE=[] npm_config_cache=[] PATH="), "la app se abre sin las cachés privadas del instalador");
+  assert.doesNotMatch(openEnv, /kioku-instalador/, "ni el PATH con el Node temporal");
   assert.ok(calls.includes(`builder out=${f.apps}/.Kioku-instalacion.`), "se construye en la carpeta de preparación, no en el destino final");
   assert.ok(calls.endsWith(`open ${f.dest}\n`), "por defecto se abre la app instalada");
   assert.doesNotMatch(calls, /PROHIBIDO/);
   assert.equal(readFileSync(path.join(f.dest, "Contents/Resources/runtime/LICENSE"), "utf8"), NODE_LICENSE, "licencia de Node dentro de la app");
   assert.equal(readFileSync(path.join(f.dest, "Contents/Resources/version.txt"), "utf8"), "nueva\n");
   assert.deepEqual(readdirSync(f.apps), ["Kioku.app"], "sin restos de preparación");
-  assert.deepEqual(readdirSync(f.tmp), [], "Node, fuentes y caché temporales se borran");
+  assert.deepEqual(readdirSync(f.tmp), [], "Node, fuentes y cachés (npm y compilación de Node) se borran");
   const after = snapshot(f.home);
   for (const [file, text] of Object.entries(before)) assert.equal(after[file], text, file);
   assert.equal(existsSync(path.join(f.home, ".npm")), false, "la caché de npm no va al usuario");
@@ -189,6 +199,26 @@ test("KIOKU_INSTALL_NO_OPEN=1 no abre la app y un fallo al abrir se cuenta sin d
   assert.equal(broken.status, 0);
   assert.match(broken.stderr, /Kioku está instalado, pero no pude abrirlo automáticamente/);
   assert.ok(existsSync(path.join(f.dest, "Contents/MacOS/Kioku")));
+}));
+
+test("el trabajo temporal usa el TMPDIR del llamador (con espacios y barra final), respeta su caché de Node y falla claro si no existe", () => withFixture((f) => {
+  const spacedTmp = path.join(f.root, "tmp con espacios"), callerCache = path.join(f.root, "cache-del-llamador");
+  mkdirSync(spacedTmp);
+  const r = f.run({ env: { TMPDIR: spacedTmp + "/", NODE_COMPILE_CACHE: callerCache } });
+  assert.equal(r.status, 0, r.stderr);
+  const cache = /npm ci --silent cache=(.+)\/npm-cache cwd=src\n/.exec(f.calls())?.[1];
+  assert.ok(cache?.startsWith(spacedTmp + path.sep), String(cache));
+  assert.deepEqual(readdirSync(spacedTmp), [], "se limpia solo lo creado por el instalador");
+  assert.deepEqual(readdirSync(f.implicitTmp), []);
+  assert.equal(existsSync(callerCache), false, "la caché del llamador no se usa ni se escribe");
+  assert.ok(readFileSync(f.log + ".openenv", "utf8").startsWith(`NODE_COMPILE_CACHE=[${callerCache}] `), "su variable llega intacta a la app");
+
+  rmSync(f.apps, { recursive: true });
+  const before = snapshot(f.home);
+  const missing = f.run({ env: { TMPDIR: path.join(f.root, "no-existe") } });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /No se pudo instalar: no pude crear una carpeta temporal en .*no-existe\./);
+  assert.deepEqual(snapshot(f.home), before);
 }));
 
 test("las versiones alternativas son explícitas: avisan y usan el repositorio y la referencia indicados", () => withFixture((f) => {

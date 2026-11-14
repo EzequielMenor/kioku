@@ -117,7 +117,9 @@ fi
 
 echo "Instalando Kioku. Tarda unos minutos y necesita Internet."
 [ "$REF" = "$PINNED_REF" ] || echo "Aviso: usando una versión distinta de la validada (KIOKU_REF=$REF)."
-work="$(mktemp -d)"
+# Plantilla explícita: mktemp de macOS, sin ella, ignora el TMPDIR del llamador.
+tmpbase="${TMPDIR:-/tmp}"; tmpbase="${tmpbase%/}"
+work="$(mktemp -d "$tmpbase/kioku-instalador.XXXXXX")" || fail "no pude crear una carpeta temporal en ${tmpbase}."
 if [ ! -d "$APPS" ]; then mkdir "$APPS" || fail "no pude crear $APPS."; apps_created=1; fi
 stage="$(mktemp -d "$APPS/.Kioku-instalacion.XXXXXX")" || fail "no pude preparar una carpeta temporal en $APPS."
 
@@ -131,10 +133,13 @@ echo "Descargando $file…"
 curl -fsSL --proto '=https' --tlsv1.2 "$index/$file" -o "$work/node.tar.gz" || fail "falló la descarga de Node."
 [ "$(shasum -a 256 "$work/node.tar.gz" | awk '{print $1}')" = "$expected" ] || fail "el checksum de Node no coincide; no se usa."
 mkdir "$work/node" && tar -xzf "$work/node.tar.gz" -C "$work/node" --strip-components=1 || fail "no pude extraer Node."
-export PATH="$work/node/bin:$PATH"
-# Las cachés de npm se quedan en la carpeta temporal, no en tu usuario.
-export npm_config_cache="$work/npm-cache" npm_config_update_notifier=false npm_config_fund=false npm_config_audit=false
-node_version="$(node --version)" || fail "el Node descargado no se ejecuta en este Mac."
+# Entorno solo para los subprocesos de construcción (nada de esto llega a la app que se abre al final).
+# Las cachés de npm y de compilación de Node se quedan en la carpeta temporal, no en tu usuario ni en TMPDIR.
+private_env() {
+  env PATH="$work/node/bin:$PATH" npm_config_cache="$work/npm-cache" npm_config_update_notifier=false \
+    npm_config_fund=false npm_config_audit=false NODE_COMPILE_CACHE="$work/node-compile-cache" "$@"
+}
+node_version="$(private_env node --version)" || fail "el Node descargado no se ejecuta en este Mac."
 case "$node_version" in v2[4-9].*|v[3-9][0-9].*) ;; *) fail "se necesita Node 24 o superior (descargado: $node_version)." ;; esac
 [ -f "$work/node/LICENSE" ] || fail "el paquete de Node no incluye su licencia."
 
@@ -148,9 +153,9 @@ tar -xzf "$work/src.tar.gz" -C "$work/src" --strip-components=1 || fail "el cód
 # 3) Dependencias, interfaz y .app, todo en la carpeta de preparación.
 cd "$work/src"
 echo "Preparando la aplicación…"
-npm ci --silent || fail "falló npm ci."
-npm run build:web --silent || fail "falló la compilación de la interfaz."
-node scripts/build-macos-app.mjs --node "$work/node/bin/node" --output "$stage/Kioku.app" || fail "falló al crear la aplicación."
+private_env npm ci --silent || fail "falló npm ci."
+private_env npm run build:web --silent || fail "falló la compilación de la interfaz."
+private_env node scripts/build-macos-app.mjs --node "$work/node/bin/node" --output "$stage/Kioku.app" || fail "falló al crear la aplicación."
 # El Node oficial exige distribuir su licencia y los avisos de terceros (el fichero LICENSE oficial los incluye).
 cp "$work/node/LICENSE" "$stage/Kioku.app/Contents/Resources/runtime/LICENSE" || fail "no pude copiar la licencia de Node."
 for part in Contents/MacOS/Kioku Contents/Resources/runtime/node; do
