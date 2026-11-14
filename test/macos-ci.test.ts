@@ -19,11 +19,11 @@ const load = () => {
 };
 const stepRunning = (steps: Step[], cmd: string) => steps.find((s) => s.run?.trim() === cmd);
 
-test("macOS CI se dispara solo por push a la rama de trabajo y solo por ficheros del propio CI y del arranque del daemon", () => {
+test("macOS CI se dispara solo por push a la rama de trabajo y solo por ficheros del propio CI, del arranque del daemon y del instalador", () => {
   const { doc } = load();
   assert.deepEqual(Object.keys(doc.on).sort(), ["push", "workflow_dispatch"]);
   assert.deepEqual(doc.on.push.branches, [BRANCH]);
-  assert.deepEqual(doc.on.push.paths, [".github/workflows/macos-validation.yml", "test/macos-ci.test.ts", "src/cli/desktop.ts", "test/desktop-startup.test.ts"]);
+  assert.deepEqual(doc.on.push.paths, [".github/workflows/macos-validation.yml", "test/macos-ci.test.ts", "src/cli/desktop.ts", "test/desktop-startup.test.ts", "Instalar Kioku.command", "scripts/install-macos.command", "test/macos-installer.test.ts"]);
 });
 
 test("macOS CI corre en Apple Silicon e Intel, sin secretos, publicación ni artefactos", () => {
@@ -66,6 +66,7 @@ test("macOS CI aísla HOME y KIOKU_HOME bajo runner.temp y activa la prueba nati
   assert.equal(env.HOME, "${{ runner.temp }}/kioku-ci/home");
   assert.equal(env.KIOKU_HOME, "${{ runner.temp }}/kioku-ci/data");
   assert.equal(env.KIOKU_MAC_SMOKE, "1");
+  assert.equal(env.KIOKU_INSTALLER_SMOKE, "1");
   assert.equal(env.KIOKU_EXPECT_ARCH, "${{ matrix.arch }}");
   const prep = steps.find((s) => s.run?.includes("kioku-ci"))!;
   assert.match(prep.run!, /mkdir -p "\$RUNNER_TEMP\/kioku-ci\/home" "\$RUNNER_TEMP\/kioku-ci\/data"/);

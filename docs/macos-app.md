@@ -1,10 +1,41 @@
 # Aplicación Mac de Kioku (prueba local)
 
-La aplicación reúne el servidor y un runtime de Node: el uso base no exige instalar Node ni gestionar Docker. **Todavía no es una descarga firmada ni una instalación validada en Mac.** El asistente queda para una etapa posterior.
+La aplicación reúne el servidor y un runtime de Node: el uso base no exige instalar Node ni gestionar Docker. **Todavía no es una descarga firmada ni una instalación validada con Finder.** El asistente queda para una etapa posterior.
 
-## Preparar la aplicación
+## Instalar (doble clic)
 
-Pasos para quien construye el paquete, no para el usuario final:
+1. Descarga el ZIP del código desde GitHub y extráelo.
+2. Haz doble clic en **`Instalar Kioku.command`**. Si macOS dice que no puede verificarlo (el ZIP no está firmado ni notarizado), haz clic derecho > **Abrir** > **Abrir**.
+3. Espera unos minutos (necesita Internet). Al terminar se abre `~/Applications/Kioku.app`; la primera vez macOS puede pedir la misma confirmación (clic derecho > Abrir, o Ajustes del Sistema > Privacidad y seguridad > Abrir igualmente).
+
+No hace falta Node, Docker, Homebrew ni escribir comandos. El instalador no pide permisos de administrador, no instala nada global, no cambia ajustes de red ni servicios, no quita la protección de cuarentena de macOS y no toca tus datos (`~/Library/Application Support/Kioku/Workspace`, claves, bóveda).
+
+| Situación | Qué hace |
+|-----------|----------|
+| Primera instalación | Construye la app entera en una carpeta de preparación y solo entonces la coloca en `~/Applications/Kioku.app`. |
+| Ya existe `Kioku.app` | Pregunta `¿Reemplazarla? [s/N]` (solo `s`/`sí` aceptan; cualquier otra respuesta no instala nada). Con la nueva ya construida, aparta la anterior como `Kioku.app.anterior-FECHA-N`; nunca la borra ni borra copias previas. |
+| Falla la descarga, el checksum o la construcción | No se toca la app anterior. |
+| Falla la colocación final | Devuelve la app anterior a su sitio; si no puede, dice dónde quedó guardada. |
+| `~/Applications` o `Kioku.app` es un enlace simbólico | Se rechaza sin modificar lo que haya detrás. |
+
+Qué descarga: un Node.js oficial 24+ (`nodejs.org`, verificado con el checksum publicado allí) que se usa solo en una carpeta temporal y se copia dentro de la app como runtime junto con su `LICENSE` oficial (incluye avisos de terceros), y el código de Kioku del commit validado `8580f9b89b4860d1406a5f79cd03551df85b2972` desde `codeload.github.com`. Es el mismo código que ya pasó la validación nativa en Intel y Apple Silicon. Si el repositorio fuera privado, esa descarga fallará y el instalador lo dirá.
+
+`Instalar Kioku.command --help` explica el uso sin usar la red. Opciones por entorno (para pruebas; no cambian los valores por defecto):
+
+| Variable | Efecto |
+|----------|--------|
+| `KIOKU_REF` | Commit, rama o etiqueta de Kioku distinto del validado. Se avisa al ejecutar. |
+| `KIOKU_REPO` | Repositorio `usuario/nombre` de GitHub. |
+| `KIOKU_NODE_LINE` | Línea de Node (`v24.x` por defecto; mínimo 24). |
+| `KIOKU_INSTALL_NO_OPEN=1` | No abre la app al terminar (lo usa el CI para no tocar el HOME real del runner). |
+
+Si `open` falla tras instalar, el instalador lo cuenta y la instalación sigue siendo válida. `Kioku.command` (Docker) no cambia.
+
+**Limitaciones:** no se ha probado el doble clic de Finder ni la ventana de confirmación de macOS en un Mac real; el CI ejecuta el script público, no Finder. La app y el instalador no están firmados ni notarizados. El checksum prueba que la descarga coincide con lo publicado en `nodejs.org`, no la firma GPG de Node.
+
+## Preparar la aplicación a mano
+
+Pasos para quien construye el paquete manualmente (el instalador de arriba ya los hace):
 
 1. Instala las dependencias del proyecto y ejecuta `npm run build:web`.
 2. Consigue un ejecutable oficial de Node.js 24 o superior para macOS y la arquitectura del Mac (arm64 o x64), verifica su procedencia y checksum. El script no lo descarga ni lo ejecuta en Linux.
@@ -21,7 +52,7 @@ El servidor sigue activo tras cerrar la pestaña. No se añade un servicio de in
 
 ## Validación automática en macOS (GitHub Actions)
 
-El workflow `.github/workflows/macos-validation.yml` comprueba la app en un runner de Apple Silicon (`macos-15`, arm64) y otro Intel (`macos-15-intel`, x64). Se dispara con un `push` a `feat/JARV-38-private-setup-ui` que cambie el propio workflow, `test/macos-ci.test.ts`, `src/cli/desktop.ts` (arranque del daemon) o `test/desktop-startup.test.ts`; no corre con cambios de seguimiento ni en otras ramas. Solo lee el repositorio: sin secretos, publicación, firma ni artefactos.
+El workflow `.github/workflows/macos-validation.yml` comprueba la app en un runner de Apple Silicon (`macos-15`, arm64) y otro Intel (`macos-15-intel`, x64). Se dispara con un `push` a `feat/JARV-38-private-setup-ui` que cambie el propio workflow, `test/macos-ci.test.ts`, `src/cli/desktop.ts` (arranque del daemon), `test/desktop-startup.test.ts` o el instalador (`Instalar Kioku.command`, `scripts/install-macos.command`, `test/macos-installer.test.ts`); no corre con cambios de seguimiento ni en otras ramas. Solo lee el repositorio: sin secretos, publicación, firma ni artefactos.
 
 | Qué comprueba | Cómo |
 |---------------|------|
@@ -29,11 +60,12 @@ El workflow `.github/workflows/macos-validation.yml` comprueba la app en un runn
 | Arranque nativo | La prueba construye una `.app` en una ruta con espacios con el Node Mach-O del runner, ejecuta su `Contents/MacOS/Kioku` real y descubre el daemon con `kioku status`. |
 | Servidor | La API devuelve 401 sin clave y 200 con la clave de `kioku url`; se sirven `index.html` y `app.js` del paquete; el daemon usa el runtime del paquete. |
 | Segundo arranque | Reutiliza el mismo daemon (mismo pid), incluso si la primera sonda de salud del lanzador falla por lentitud puntual (`test/desktop-startup.test.ts`, reproducido en Linux; el fallo observado en Intel no se ha podido verificar en un Mac). |
+| Instalador | `test/macos-installer.test.ts` ejecuta `Instalar Kioku.command` real (Node oficial y commit fijado por red) en un `HOME` desechable con `KIOKU_INSTALL_NO_OPEN=1`; comprueba `Kioku.app`, la licencia de Node, el Mach-O de la arquitectura del runner, marcadores intactos y que la app instalada arranca, autentica y se reutiliza. En Linux se prueban las mismas reglas con herramientas externas simuladas (descarga, rollback, confirmación, enlaces). |
 | Aislamiento | `HOME` y `KIOKU_HOME` apuntan a directorios temporales del runner, y la prueba usa un `HOME` propio con marcadores sintéticos de una instalación previa que deben quedar intactos. La clave nunca se imprime. |
 
-La prueba nativa solo corre en macOS con `KIOKU_MAC_SMOKE=1` (lo define el workflow); en Linux se omite y solo se verifica la estructura del workflow. Al terminar solo detiene el daemon que `status` identificó en su `HOME` temporal.
+La prueba nativa solo corre en macOS con `KIOKU_MAC_SMOKE=1`, y la del instalador con `KIOKU_INSTALLER_SMOKE=1` (ambas las define el workflow); en Linux se omite y solo se verifica la estructura del workflow. Al terminar solo detiene el daemon que `status` identificó en su `HOME` temporal.
 
-**Límites:** el lanzador llama a `/usr/bin/open`, así que el runner abre su navegador por defecto con la URL local; esa ventana no se cierra porque no es un proceso propio de la prueba (el runner es efímero). Esto **no** prueba la apertura por Finder, firma ni notarización, el instalador, Tailscale ni el acceso desde otro dispositivo real, ni sustituye la revisión independiente pendiente de las conexiones (T2).
+**Límites:** el lanzador llama a `/usr/bin/open`, así que el runner abre su navegador por defecto con la URL local; esa ventana no se cierra porque no es un proceso propio de la prueba (el runner es efímero). Esto **no** prueba la apertura por Finder, firma ni notarización, el doble clic del instalador en Finder, Tailscale ni el acceso desde otro dispositivo real, ni sustituye la revisión independiente pendiente de las conexiones (T2).
 
 ## Antes de distribuir
 

@@ -5,12 +5,15 @@ name: macos-validation
 on:
   push:
     branches: [feat/JARV-38-private-setup-ui]
-    # Solo ficheros del propio CI y del arranque del daemon que valida: evita ejecuciones por cambios de seguimiento.
+    # Solo ficheros del propio CI, del arranque del daemon y del instalador que valida: evita ejecuciones por cambios de seguimiento.
     paths:
       - .github/workflows/macos-validation.yml
       - test/macos-ci.test.ts
       - src/cli/desktop.ts
       - test/desktop-startup.test.ts
+      - Instalar Kioku.command
+      - scripts/install-macos.command
+      - test/macos-installer.test.ts
   workflow_dispatch:
 
 permissions:
@@ -44,5 +47,7 @@ jobs:
           HOME: ${{ runner.temp }}/kioku-ci/home
           KIOKU_HOME: ${{ runner.temp }}/kioku-ci/data
           KIOKU_MAC_SMOKE: "1"
+          # Ejecuta el instalador público de verdad (descarga Node oficial y el commit fijado) en un HOME desechable.
+          KIOKU_INSTALLER_SMOKE: "1"
           KIOKU_EXPECT_ARCH: ${{ matrix.arch }}
       - run: npm run typecheck
