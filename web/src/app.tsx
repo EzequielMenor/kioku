@@ -1025,4 +1025,15 @@ function ContextDialog({ path, onClose }: { path: string; onClose(): void }) {
   );
 }
 
-render(!bootDemo && enrollmentToken(location.hash) ? <DeviceEnrollment /> : <App />, document.getElementById("root")!);
+/** Un enlace de vinculación abierto en una pestaña de Kioku ya cargada solo cambia el hash: la pantalla debe seguirlo sin recargar. */
+function Root() {
+  const [token, setToken] = useState(() => enrollmentToken(location.hash));
+  useEffect(() => {
+    const h = () => setToken(enrollmentToken(location.hash));
+    addEventListener("hashchange", h);
+    return () => removeEventListener("hashchange", h);
+  }, []);
+  return !bootDemo && token ? <DeviceEnrollment key={token} /> : <App />;
+}
+
+render(<Root />, document.getElementById("root")!);

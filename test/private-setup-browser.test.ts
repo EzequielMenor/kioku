@@ -56,5 +56,11 @@ test("private setup UI: confirm Tailscale, create local QR, enroll by name and r
     await page.ev(`document.querySelector('[data-device-enrollment] button[type=submit]').click()`);
     await until(() => page!.ev<boolean>(`!!document.querySelector('[data-device-enrollment] [role=alert]')`), "error de un uso");
     assert.match(await page.ev<string>(`document.querySelector('[data-device-enrollment] [role=alert]').textContent`), /caducado|usó/);
+    // Carga en frío del mismo enlace (sin app previa) sigue mostrando la pantalla de vinculación, y salir del enlace devuelve a la app.
+    await page.send("Page.navigate", { url: "about:blank" });
+    await page.send("Page.navigate", { url: srv.url + "/" + new URL(link).hash });
+    await until(() => page!.ev<boolean>(`!!document.querySelector('[data-device-enrollment]')`), "enlace en carga fría");
+    await page.ev(`location.hash = '#/conexiones'`);
+    await until(() => page!.ev<boolean>(`!document.querySelector('[data-device-enrollment]') && !!document.querySelector('[data-private-setup]')`), "salida del enlace");
   } finally { await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true }); }
 });
