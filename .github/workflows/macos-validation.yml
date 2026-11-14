@@ -1,0 +1,46 @@
+# Validación de la app Mac en runners de macOS (Apple Silicon e Intel).
+# Solo comprueba; no publica, no firma y no sube artefactos.
+name: macos-validation
+
+on:
+  push:
+    branches: [feat/JARV-38-private-setup-ui]
+    # Solo ficheros del propio CI: evita ejecuciones por cambios de seguimiento.
+    paths:
+      - .github/workflows/macos-validation.yml
+      - test/macos-ci.test.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, arch: arm64 }
+          - { os: macos-15-intel, arch: x64 }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm run build:web
+      # HOME y KIOKU_HOME desechables: ninguna prueba toca los directorios personales del runner.
+      - name: Preparar directorios aislados
+        run: mkdir -p "$RUNNER_TEMP/kioku-ci/home" "$RUNNER_TEMP/kioku-ci/data"
+      - run: npm test
+        env:
+          HOME: ${{ runner.temp }}/kioku-ci/home
+          KIOKU_HOME: ${{ runner.temp }}/kioku-ci/data
+          KIOKU_MAC_SMOKE: "1"
+          KIOKU_EXPECT_ARCH: ${{ matrix.arch }}
+      - run: npm run typecheck
