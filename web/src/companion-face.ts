@@ -215,12 +215,31 @@ export function createFace(canvas: HTMLCanvasElement, o: { palette(): Palette; r
     if (sp.badge) badge(sp.badge, S, o.reducedMotion ? 0.3 : t, pal[sp.tone as keyof Palette], pal.ink);
   }
 
-  const loop = () => { draw(); raf = requestAnimationFrame(loop); };
+  // Cadencia: los estados activos van fluidos (cada fotograma); el reposo respira a ~12 fps y la concentración no se anima.
+  // Un bucle continuo a 60 fps en una pestaña siempre abierta gastaría batería sin aportar nada.
+  let running = false;
+  let wait = 0;
+  const idleGap = () => (state === "idle" ? 80 : state === "quiet" ? 400 : 0);
+  const schedule = () => {
+    if (!running) return;
+    const gap = idleGap();
+    if (gap) wait = window.setTimeout(() => { raf = requestAnimationFrame(loop); }, gap);
+    else raf = requestAnimationFrame(loop);
+  };
+  const loop = () => { if (!running) return; draw(); schedule(); };
+  const cancel = () => { cancelAnimationFrame(raf); clearTimeout(wait); raf = 0; wait = 0; };
   return {
-    set(next) { if (next !== state && STATES[next]) { state = next; since = now(); if (o.reducedMotion || !raf) draw(); } },
+    set(next) {
+      if (next === state || !STATES[next]) return;
+      state = next;
+      since = now();
+      if (o.reducedMotion || !running) { draw(); return; }
+      cancel(); // el cambio de estado se ve al momento, sin esperar al siguiente latido del reposo
+      raf = requestAnimationFrame(loop);
+    },
     draw,
-    start() { if (o.reducedMotion) { draw(); return; } if (!raf) raf = requestAnimationFrame(loop); },
-    stop() { cancelAnimationFrame(raf); raf = 0; },
+    start() { if (o.reducedMotion) { draw(); return; } if (!running) { running = true; raf = requestAnimationFrame(loop); } },
+    stop() { running = false; cancel(); },
   };
 }
 

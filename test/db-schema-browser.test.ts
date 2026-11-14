@@ -388,7 +388,8 @@ test("opciones: renombrar con filas pide confirmación, actualiza las notas y De
 test("opciones: borrar una opción en uso ofrece Cancelar, conservar el valor o vaciarlo; sin uso se borra directo", { skip, timeout: 90_000 }, async () => {
   await withBase({}, async (p, root) => {
     const files = () => [read(root, "Bases/Libros.md"), read(root, "Libros/Dune.md"), read(root, "Libros/Hyperion.md")];
-    const choiceDialog = () => until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}`), "pregunta de borrado");
+    // El diálogo recibe el foco un fotograma después de pintarse: hasta entonces una tecla (Esc) no le llega.
+    const choiceDialog = () => until(() => p.ev<boolean>(`!!${q("[role=alertdialog]")}?.contains(document.activeElement)`), "pregunta de borrado");
     const listed = (name: string) => p.ev<boolean>(`!!${q(`[role=dialog] button[aria-label="Borrar ${name}"]`)}`);
     await openMenu(p, "Estado");
     const before = files();
@@ -430,6 +431,9 @@ test("opciones: borrar una opción en uso ofrece Cancelar, conservar el valor o 
     assert.equal(await p.ev(`!!${q("[role=alertdialog]")}`), false, "una sola pregunta, no dos");
 
     // Sin notas que la usen: se borra directo, sin diálogo.
+    // El menú descarta una operación mientras la anterior sigue en curso: se espera a que la lista refleje el borrado
+    // (el fichero cambia en disco antes de que el cliente reciba la respuesta).
+    await until(async () => !(await listed("Leyendo")), "la lista refleja el borrado anterior");
     await typeInto(p, `[role=dialog] input[aria-label="Nueva opción"]`, "Nunca", true);
     await until(() => listed("Nunca"), "opción nueva listada");
     await clickSel(p, `[role=dialog] button[aria-label="Borrar Nunca"]`);
