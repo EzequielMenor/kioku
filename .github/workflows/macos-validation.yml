@@ -5,10 +5,12 @@ name: macos-validation
 on:
   push:
     branches: [feat/JARV-38-private-setup-ui]
-    # Solo ficheros del propio CI: evita ejecuciones por cambios de seguimiento.
+    # Solo ficheros del propio CI y del arranque del daemon que valida: evita ejecuciones por cambios de seguimiento.
     paths:
       - .github/workflows/macos-validation.yml
       - test/macos-ci.test.ts
+      - src/cli/desktop.ts
+      - test/desktop-startup.test.ts
   workflow_dispatch:
 
 permissions:

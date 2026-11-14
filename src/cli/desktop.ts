@@ -61,7 +61,9 @@ export async function ensureDaemon(home: string): Promise<string> {
   while (Date.now() - t0 < 6000) {
     await new Promise((r) => setTimeout(r, 60));
     const r2 = readRuntime(home);
-    if (r2 && r2.pid === child.pid && (await healthy(r2.port))) return `http://127.0.0.1:${r2.port}`;
+    // El hijo se niega a duplicar un daemon que sí está sano (la sonda inicial pudo fallar por lentitud puntual):
+    // en ese caso el válido es el daemon que ya registraba el runtime, no el hijo.
+    if (r2 && (r2.pid === child.pid || r2.pid === rt?.pid) && (await healthy(r2.port))) return `http://127.0.0.1:${r2.port}`;
   }
   throw new Error(`El daemon no arrancó. Revisa ${path.join(home, ".kioku", "daemon.log")}`);
 }

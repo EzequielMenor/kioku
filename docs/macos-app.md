@@ -21,14 +21,14 @@ El servidor sigue activo tras cerrar la pestaña. No se añade un servicio de in
 
 ## Validación automática en macOS (GitHub Actions)
 
-El workflow `.github/workflows/macos-validation.yml` comprueba la app en un runner de Apple Silicon (`macos-15`, arm64) y otro Intel (`macos-15-intel`, x64). Se dispara con un `push` a `feat/JARV-38-private-setup-ui` que cambie el propio workflow o `test/macos-ci.test.ts`; no corre con cambios de seguimiento ni en otras ramas. Solo lee el repositorio: sin secretos, publicación, firma ni artefactos.
+El workflow `.github/workflows/macos-validation.yml` comprueba la app en un runner de Apple Silicon (`macos-15`, arm64) y otro Intel (`macos-15-intel`, x64). Se dispara con un `push` a `feat/JARV-38-private-setup-ui` que cambie el propio workflow, `test/macos-ci.test.ts`, `src/cli/desktop.ts` (arranque del daemon) o `test/desktop-startup.test.ts`; no corre con cambios de seguimiento ni en otras ramas. Solo lee el repositorio: sin secretos, publicación, firma ni artefactos.
 
 | Qué comprueba | Cómo |
 |---------------|------|
 | Build y calidad | `npm ci`, `npm run build:web`, `npm test`, `npm run typecheck`; cada fallo hace fallar el job. |
 | Arranque nativo | La prueba construye una `.app` en una ruta con espacios con el Node Mach-O del runner, ejecuta su `Contents/MacOS/Kioku` real y descubre el daemon con `kioku status`. |
 | Servidor | La API devuelve 401 sin clave y 200 con la clave de `kioku url`; se sirven `index.html` y `app.js` del paquete; el daemon usa el runtime del paquete. |
-| Segundo arranque | Reutiliza el mismo daemon (mismo pid). |
+| Segundo arranque | Reutiliza el mismo daemon (mismo pid), incluso si la primera sonda de salud del lanzador falla por lentitud puntual (`test/desktop-startup.test.ts`, reproducido en Linux; el fallo observado en Intel no se ha podido verificar en un Mac). |
 | Aislamiento | `HOME` y `KIOKU_HOME` apuntan a directorios temporales del runner, y la prueba usa un `HOME` propio con marcadores sintéticos de una instalación previa que deben quedar intactos. La clave nunca se imprime. |
 
 La prueba nativa solo corre en macOS con `KIOKU_MAC_SMOKE=1` (lo define el workflow); en Linux se omite y solo se verifica la estructura del workflow. Al terminar solo detiene el daemon que `status` identificó en su `HOME` temporal.
