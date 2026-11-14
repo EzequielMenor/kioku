@@ -1,0 +1,53 @@
+/* Kioku Companion: el personaje flotante y su panel compacto. Usa las variables de «tinta y papel». */
+.kio { position: fixed; right: 22px; bottom: 22px; z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
+.kio > * { pointer-events: auto; }
+.kio-button { width: auto; height: auto; padding: 0; border: 0; background: transparent; border-radius: 16px; cursor: pointer; line-height: 0; filter: drop-shadow(0 6px 14px rgba(0,0,0,.35)); transition: transform .15s ease, opacity .2s ease; }
+.kio-button:hover { background: transparent; transform: translateY(-2px); }
+.kio-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.kio-face { display: block; }
+.kio.quiet:not(.open) .kio-button { opacity: .55; filter: none; }
+.kio.quiet:not(.open) .kio-button:hover { opacity: 1; }
+
+.kio-peek { max-width: 260px; padding: 7px 12px; border-radius: 10px 10px 2px 10px; border: 1px solid var(--line2); background: var(--raised); color: var(--fg2); font-size: 12.5px; text-align: left; box-shadow: var(--shadow); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: kio-in .18s ease-out; }
+.kio[data-state="awaiting_confirmation"] .kio-peek { border-color: var(--warn-line); color: var(--fg); }
+.kio[data-state="error"] .kio-peek { border-color: color-mix(in srgb, var(--bad) 55%, transparent); color: var(--bad); white-space: normal; }
+
+.kio-panel { width: min(380px, calc(100vw - 32px)); height: min(540px, calc(100vh - 130px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; animation: kio-in .16s ease-out; }
+@keyframes kio-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.kio-head { display: flex; align-items: center; gap: 6px; padding: 9px 8px 9px 14px; border-bottom: 1px solid var(--line); background: var(--raised); }
+.kio-title { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.kio-title strong { font: 600 15px/1.2 var(--serif); letter-spacing: .02em; }
+.kio-status { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.kio-head .chip { font-size: 10.5px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kio-head .grow { flex: 1; }
+.kio-icon { min-width: 28px; height: 28px; padding: 0 6px; border: 0; background: transparent; color: var(--fg2); border-radius: 6px; font-size: 15px; line-height: 1; }
+.kio-icon:hover { background: var(--hover); color: var(--fg); }
+.kio-icon.on { color: var(--accent); background: var(--accent-soft); }
+
+.kio-body { flex: 1; overflow-y: auto; padding: 12px 12px 6px; display: flex; flex-direction: column; gap: 9px; }
+.kio-body .bubble { max-width: 94%; padding: 8px 11px; font-size: 13.5px; line-height: 1.5; }
+.kio-body .action { margin-top: 7px; font-size: 12px; padding: 5px 8px; }
+.kio-empty { margin: 6px 2px; font-size: 13px; }
+.kio-ack { font-size: 13px; color: var(--fg2); border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: 8px; padding: 10px 12px; }
+.kio-ack p { margin: 0 0 9px; }
+.kio-reads { margin-top: 6px; }
+.kio-caret { display: inline-block; width: 6px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+.kio-proposal { margin-top: 8px; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--warn-line); background: var(--warn-bg); font-size: 13px; overflow-wrap: anywhere; }
+.kio-proposal.done { border-color: var(--line); background: transparent; opacity: .75; }
+.kio-proposal p { margin: 3px 0 6px; }
+.kio-proposal details { margin-bottom: 8px; font-size: 12px; }
+.kio-proposal summary { cursor: pointer; color: var(--fg2); }
+.kio-proposal .op { max-width: 100%; overflow-x: auto; }
+.kio-proposal .row { gap: 8px; }
+
+.kio-composer { border-top: 1px solid var(--line); padding: 7px 10px 10px; background: var(--surface); }
+.kio-context { padding: 0 2px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kio-composer .row { display: flex; gap: 8px; align-items: flex-end; }
+.kio-composer textarea { flex: 1; resize: none; font-size: 13.5px; min-height: 34px; }
+
+/* La página Asistente lleva al personaje en la cabecera. */
+.assistant-kio { display: flex; align-items: center; justify-content: center; gap: 10px; flex: 1; }
+.assistant-kio h1 { flex: none !important; }
+
+@media (max-width: 720px) { .kio { right: 12px; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); } }
+@media (prefers-reduced-motion: reduce) { .kio-panel, .kio-peek, .kio-caret { animation: none; } .kio-button { transition: none; } }

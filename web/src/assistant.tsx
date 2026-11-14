@@ -8,6 +8,8 @@ import { activityOrigin, askErrorText, createChat, type Msg } from "./assistant-
 import { isMobile } from "./role.ts";
 import { useOffline } from "./offline/runtime.ts";
 import { AssistantProposals } from "./assistant-proposals.tsx";
+import { KioFace, companion, useCompanion } from "./companion.tsx";
+import { faceState } from "./companion-store.ts";
 import "./assistant-layered.css";
 
 type Say = (text: string, error?: boolean) => void;
@@ -46,13 +48,20 @@ export function liveLabel(tool: string, path?: string | null): string {
 }
 
 export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: string): void }) {
-  const [{ msgs, busy, live }, setChat] = useState(chat.getState());
+  const [legacy, setChat] = useState(chat.getState());
   useEffect(() => { setChat(chat.getState()); return chat.subscribe(setChat); }, []);
   const [text, setText] = useState("");
   const [menu, setMenu] = useState(false);
   const [connection, setConnection] = useState(false);
   const [ack, setAck] = useState(lsGet("assistant.privacy.v2") === "1");
   const mobile = isMobile();
+  // Escritorio: la conversación vive en el daemon y es la misma que la del compañero (aquí y en el escritorio).
+  // Móvil: sigue en memoria del cliente, con su privacidad propia.
+  const shared = useCompanion(!mobile);
+  const msgs: Msg[] = mobile ? legacy.msgs : shared.msgs;
+  const busy = mobile ? legacy.busy : shared.agent.busy || shared.sending;
+  const live = mobile ? legacy.live : shared.agent.label ?? "Pensando…";
+  const streaming = mobile ? "" : shared.streaming;
   const online = useOffline().online;
   const offline = mobile && !online; // el asistente es solo en línea: sin conexión no se pregunta ni se encola nada
   const statusRequest = useApi<{ ok: boolean; reason?: string }>("/api/assistant/status", rev);
@@ -61,21 +70,25 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
   const input = useRef<HTMLTextAreaElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [msgs, live]);
+  useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [msgs, live, streaming]);
   useEffect(() => { input.current?.focus(); }, [ack]);
 
   const send = (message: string) => {
-    if (!message.trim() || chat.getState().busy || offline) return Promise.resolve();
+    if (!message.trim() || busy || offline) return Promise.resolve();
     setText("");
-    return chat.send(message);
+    return mobile ? chat.send(message) : companion.send(message, { route: "/asistente" });
   };
-  const reset = () => { if (!chat.getState().busy) { chat.reset(); setText(""); setMenu(false); } };
+  const reset = () => {
+    if (busy) return;
+    if (mobile) chat.reset(); else void companion.newConversation();
+    setText(""); setMenu(false);
+  };
 
   return (
     <div class="page narrow assistant-page">
       <header class="layered-head">
         <button ref={menuButton} aria-label="Conversaciones" aria-expanded={menu} onClick={() => { setMenu(!menu); setConnection(false); }}>☰</button>
-        <h1>Kioku</h1>
+        {mobile ? <h1>Kioku</h1> : <div class="assistant-kio"><KioFace state={faceState(shared.agent, false)} size={40} /><h1>Kioku</h1></div>}
         <button aria-label="Estado de conexión" aria-expanded={connection} onClick={() => { setConnection(!connection); setMenu(false); }}>◉</button>
       </header>
       {menu && <nav class="assistant-menu" aria-label="Conversación" onKeyDown={(e) => { if (e.key === "Escape") { setMenu(false); menuButton.current?.focus(); e.stopPropagation(); } }}>
@@ -106,7 +119,10 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
           </div>
         )}
         {msgs.map((m, i) => <Bubble key={i} m={m} say={say} />)}
-        {busy && <div class="bubble assistant live"><span class="dots" aria-hidden="true" /> {live}</div>}
+        {busy && (streaming
+          ? <div class="bubble assistant"><div class="btext">{streaming}</div></div>
+          : <div class="bubble assistant live"><span class="dots" aria-hidden="true" /> {live}</div>)}
+        {!mobile && shared.problem && <div class="notice bad" role="alert">{shared.problem}</div>}
         <div ref={bottom} />
       </div>
 

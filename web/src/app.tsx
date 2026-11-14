@@ -4,6 +4,7 @@ import "./app.css";
 import { UNAUTHORIZED_EVENT, api, lsGet, lsSet, setDemoTransport } from "./api.ts";
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
 import { AssistantManagement } from "./assistant-management.tsx";
+import { Companion, CompanionModeButton } from "./companion.tsx";
 import { ConnectionsView } from "./connections.tsx";
 import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { CalendarView } from "./calendar.tsx";
@@ -272,6 +273,7 @@ function App() {
         <button class="side-btn subtle" onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>
           Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}
         </button>
+        {!mobile && !demo && <CompanionModeButton />}
         <button class="side-btn subtle" onClick={() => setOverlay("help")}>Atajos <kbd>?</kbd></button>
       </nav>
       <div class="content">
@@ -290,6 +292,7 @@ function App() {
       {overlay === "help" && <Help onClose={() => setOverlay(null)} />}
       {overlay === "endfocus" && focus?.active && <EndFocus focus={focus} onClose={() => setOverlay(null)} say={say} guard={guard} />}
       {overlay === "context" && ctxPath && <ContextDialog path={ctxPath} onClose={() => setOverlay(null)} />}
+      {!mobile && !demo && <Companion route={route} go={setRoute} say={say} />}
       {toast && <div class={`toast ${toast.error ? "err" : ""}`} role="status"><span>{toast.text}</span>{toast.action && <button onClick={() => { const a = toast.action!; setToast(null); a.run(); }}>{toast.action.label}</button>}</div>}
     </div>
   );

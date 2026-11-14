@@ -11,7 +11,8 @@ export function useRevision(onEvent?: (e: ChangeEvent) => void): number {
     let t: number | undefined;
     const off = onChange((e) => {
       cb.current?.(e);
-      if (e.kind === "navigate") return;
+      // El estado y el texto en vivo del asistente no cambian datos del vault: no hay nada que volver a cargar.
+      if (e.kind === "navigate" || e.kind === "assistant.state" || e.kind === "assistant.delta" || e.kind === "assistant.message" || e.kind === "assistant.companion") return;
       clearTimeout(t);
       t = window.setTimeout(() => setRev((r) => r + 1), 120);
     });
