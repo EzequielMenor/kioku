@@ -8,6 +8,12 @@ import { exportVault, importObsidian, restoreVault } from "../core/portability.t
 import { startServer } from "../server/server.ts";
 import { HermesEngine } from "../assistant/engine.ts";
 import { FakeEngine } from "../assistant/fake-engine.ts";
+import { NativeEngine } from "../assistant/native-engine.ts";
+import { RouterEngine } from "../assistant/router-engine.ts";
+import os from "node:os";
+
+/** El asistente del daemon: Hermes y el motor nativo detrás de un enrutador que elige según la configuración vigente. */
+const assistantEngine = (home: string) => new RouterEngine({ homeDir: home, userHome: os.homedir(), hermes: new HermesEngine({ homeDir: home }), native: new NativeEngine({ homeDir: home }) });
 import type { UndoRecord } from "../assistant/undo.ts";
 import { Notifier, desktopChannel } from "../server/notifier.ts";
 import { PushStore, pushChannel } from "../server/webpush.ts";
@@ -132,7 +138,7 @@ async function main(): Promise<void> {
       const allowedHosts = allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS);
       const pub = publicHost();
       if (pub && !allowedHosts.includes(pub)) allowedHosts.push(pub);
-      const srv = await startServer(j, { push, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const srv = await startServer(j, { push, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : assistantEngine(home) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
       const rtFile = path.join(home, ".kioku", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`Kioku escuchando en ${srv.url}  (datos: ${home})`);

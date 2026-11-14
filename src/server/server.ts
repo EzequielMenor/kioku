@@ -20,7 +20,10 @@ import type { PushStore } from "./webpush.ts";
 import { assertMobileItem, calendarDto, calendarRange, hiddenCalendarPaths, mobileAreaCreateDenied, mobileCreateDenied } from "./calendar.ts";
 import { OpsLedger, validOp } from "./ops.ts";
 import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
-import { keyMatches, newKey, presentedKey, readMobileKey } from "./key.ts";
+import { keyMatches, newKey, presentedKey, readCompanionKey, readMobileKey } from "./key.ts";
+import { CompanionHub, companionAllowed } from "./companion.ts";
+import { AssistantError } from "../assistant/policy.ts";
+import type { AgentStateOptions } from "../assistant/agent-state.ts";
 import { exclusionScope, hiddenRelation, mobileAction, mobileAllowed, mobileConversation, mobileEvent, mobileProposalVisible, mobileToolText, mobileView, parseMobileConfig, touchesPrivate, isPrivate, type Role } from "./mobile.ts";
 
 export const DEFAULT_PORT = 47800;
@@ -128,6 +131,8 @@ export interface ServerHandle {
   url: string;
   sessions: SessionRegistry;
   assistantTools: AssistantTools;
+  /** Conversación, estado y ajustes compartidos por el personaje integrado y el de escritorio. */
+  companion: CompanionHub;
   /** Clave que exige toda ruta /api salvo las del asistente (token de sesión) y /api/health. */
   key: string;
   close(): Promise<void>;
@@ -147,10 +152,13 @@ export async function startServer(
     assistant?: { engine: AssistantEngine };
     /** Avisos push al móvil: claves VAPID y suscripciones. Sin esto las rutas /api/push responden 404. */
     push?: PushStore;
+    /** Duraciones de los estados transitorios del agente (las pruebas las acortan). */
+    agentState?: AgentStateOptions;
   },
 ): Promise<ServerHandle> {
   const sessions = new SessionRegistry();
   const undo = new UndoStore(j);
+  const hub = new CompanionHub(j, undo, opts.agentState);
   const ops = new OpsLedger(j.vault);
   const mobileOps = new MobileOperations(j);
   const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .kioku/assistant.json
@@ -218,11 +226,14 @@ export async function startServer(
   }
 
   /** Quién es el que llama: la clave completa, la del móvil (releída del disco: revocar es inmediato) o nadie. */
-  function roleOf(req: http.IncomingMessage): Role | null {
+  function roleOf(req: http.IncomingMessage): Role | "companion" | null {
     const given = presentedKey(req.headers);
     if (keyMatches(key, given)) return "full";
     const mk = readMobileKey(j.vault.root);
-    return mk && keyMatches(mk, given) ? "mobile" : null;
+    if (mk && keyMatches(mk, given)) return "mobile";
+    // Compañero de escritorio: credencial propia, acotada por lista blanca a conversar, ver el estado y confirmar.
+    const ck = readCompanionKey(j.vault.root);
+    return ck && keyMatches(ck, given) ? "companion" : null;
   }
 
   /**
@@ -248,10 +259,11 @@ export async function startServer(
     }
   }
 
-  async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL, role: Role): Promise<void> {
+  async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL, role: Role, companion = false): Promise<void> {
     const m = req.method ?? "GET";
     const p = url.pathname;
     const q = url.searchParams;
+    if (companion && !companionAllowed(m, p)) throw new HttpError(403, "Eso no se puede hacer desde el compañero de escritorio: hazlo en Kioku");
     if (role === "mobile" && !mobileAllowed(m, p)) throw new HttpError(403, "Eso no se puede hacer desde el móvil: hazlo en el portátil");
     if (role === "mobile") {
       try { mobileConfig = parseMobileConfig(await j.vault.readInternal("mobile.json")); }
@@ -273,7 +285,19 @@ export async function startServer(
     if (m === "GET") {
       switch (p) {
         case "/api/health": return send(res, 200, { ok: true });
-        case "/api/session": return send(res, 200, { role });
+        case "/api/session": return send(res, 200, { role: companion ? "companion" : role });
+        case "/api/assistant/state": {
+          const engine = opts.assistant ? await opts.assistant.engine.describe?.().catch(() => null) ?? null : null;
+          return send(res, 200, { ...(await hub.state()), engine });
+        }
+        case "/api/assistant/conversation": return send(res, 200, await hub.conversation(q.get("id") ?? undefined));
+        case "/api/assistant/conversations": return send(res, 200, await hub.conversations.list());
+        case "/api/assistant/companion": return send(res, 200, await hub.view());
+        case "/api/assistant/models": {
+          const engine = opts.assistant?.engine as { models?: () => Promise<string[]> } | undefined;
+          try { return send(res, 200, { models: (await engine?.models?.()) ?? [] }); }
+          catch (e) { return send(res, 200, { models: [], error: e instanceof Error ? e.message : String(e) }); }
+        }
         case "/api/push/key":
           if (!opts.push) throw new HttpError(404, "Los avisos al móvil no están activados en este daemon");
           return send(res, 200, { publicKey: opts.push.vapid.publicKey });
@@ -611,11 +635,50 @@ export async function startServer(
           if (!seen) throw new HttpError(404, "No existe");
           return send(res, 200, mobileAction(await undo.undo(id), []));
         }
+        case "/api/assistant/listening": { hub.agent.listening(body.active !== false); return send(res, 200, { ok: true }); }
+        case "/api/assistant/cancel": return send(res, 200, { cancelled: hub.cancel() });
+        case "/api/assistant/conversation/new": return send(res, 200, { id: await hub.newConversation() });
+        case "/api/assistant/conversation/select": {
+          try { return send(res, 200, await hub.update({ conversation: body.id })); }
+          catch (e) { if (e instanceof AssistantError) throw new HttpError(400, e.message); throw e; }
+        }
+        case "/api/assistant/companion": {
+          try { return send(res, 200, await hub.update({ mode: body.mode, overlay: body.overlay })); }
+          catch (e) { if (e instanceof AssistantError) throw new HttpError(400, e.message); throw e; }
+        }
+        case "/api/assistant/companion/presence": {
+          hub.setPresence(companion ? "desktop" : `web:${typeof body.id === "string" ? body.id.slice(0, 20) : ""}`, body.focused === true);
+          return send(res, 200, { ok: true });
+        }
         case "/api/assistant/ask": {
           if (!opts.assistant) throw new HttpError(503, "El asistente no está configurado");
           const message = str(body.message, "message").trim();
           if (!message) throw new HttpError(400, "Escribe un mensaje");
           const mobile = role === "mobile";
+          if (!mobile) {
+            // Escritorio (Kioku o el compañero): la conversación y el estado viven en el daemon y los comparten todas las interfaces.
+            const avail = await opts.assistant.engine.available();
+            if (!avail.ok) throw new HttpError(503, avail.reason ?? "El asistente no está disponible");
+            await loadExclude();
+            const sess = sessions.open("full");
+            const turn = await hub.begin({ conversation: typeof body.conversation === "string" && body.conversation ? body.conversation.slice(0, 120) : undefined, message, surface: companion ? "desktop" : typeof body.surface === "string" ? body.surface : "web", session: sess });
+            try {
+              await j.log.record("ai.request", null, { sessionId: sess.id, chars: message.length });
+              const { answer } = await opts.assistant.engine.ask({
+                message, conversation: turn.conversation, session: sess, daemonUrl: `http://127.0.0.1:${boundPort}`,
+                context: hub.contextLine(body.context, exclude), onEvent: turn.onEvent, signal: turn.signal,
+              });
+              const { message: stored } = await turn.done(answer);
+              return send(res, 200, { answer, reads: stored.reads ?? [], actions: stored.actions, conversation: turn.conversation, message: stored });
+            } catch (e) {
+              const text = e instanceof Error ? e.message : String(e);
+              await turn.fail(text);
+              if (e instanceof HttpError || e instanceof VaultError) throw e;
+              throw new HttpError(502, text);
+            } finally {
+              sessions.close(sess.id);
+            }
+          }
           // Fail-closed: el móvil solo pregunta si el motor mantiene separados la memoria y el estado de ese rol.
           if (mobile && !opts.assistant.engine.isolatesMobile) throw new HttpError(503, MOBILE_ISOLATION_REASON);
           const avail = await opts.assistant.engine.available();
@@ -705,7 +768,7 @@ export async function startServer(
         const open = url.pathname === "/api/health" || BEARER_ROUTES.has(url.pathname);
         const role = roleOf(req);
         if (!open && !role) throw new HttpError(401, "Falta la clave de Kioku: abre la interfaz con `kioku open` (o `kioku url`)");
-        await api(req, res, url, role ?? "full");
+        await api(req, res, url, role === "companion" ? "full" : role ?? "full", role === "companion");
       } else if (req.method === "GET") {
         // Intercambio de clave: /…?k=<clave> deja la cookie y redirige a la ruta limpia (el fragmento #… lo conserva el navegador).
         const given = url.searchParams.get("k") ?? undefined;
@@ -751,9 +814,10 @@ export async function startServer(
   boundPort = (server.address() as AddressInfo).port;
   port = boundPort;
   return {
-    port, url: `http://127.0.0.1:${port}`, sessions, assistantTools, key,
+    port, url: `http://127.0.0.1:${port}`, sessions, assistantTools, key, companion: hub,
     close: () => new Promise((resolve) => {
       clearInterval(keepAlive);
+      hub.close();
       for (const c of sseClients.keys()) c.end();
       server.close(() => resolve());
       server.closeAllConnections();

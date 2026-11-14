@@ -44,6 +44,19 @@ export function revokeMobileKey(home: string): void {
   rmSync(mobileKeyFile(home), { force: true });
 }
 
+const companionKeyFile = (home: string) => path.join(home, ".kioku", "secret-companion");
+
+/** Clave del compañero de escritorio (rol `companion`: conversar, ver el estado y confirmar), o null si no se ha creado. */
+export const readCompanionKey = (home: string): string | null => readKeyFile(companionKeyFile(home));
+
+/** Crea la clave del compañero si no existe (idempotente). */
+export const loadOrCreateCompanionKey = (home: string): string => loadOrCreate(companionKeyFile(home));
+
+/** Retira la credencial del compañero de escritorio. Idempotente. */
+export function revokeCompanionKey(home: string): void {
+  rmSync(companionKeyFile(home), { force: true });
+}
+
 export function newKey(): string {
   return randomBytes(32).toString("hex");
 }
