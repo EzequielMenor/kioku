@@ -1,10 +1,12 @@
 # Aplicación Mac de Kioku (prueba local)
 
-La aplicación reúne el servidor y un runtime de Node: el uso base no exige instalar Node ni gestionar Docker. **Todavía no es una descarga firmada ni una instalación validada con Finder.** El asistente queda para una etapa posterior.
+La aplicación reúne el servidor y un runtime de Node: el uso base no exige instalar Node ni gestionar Docker. **El instalador pasó la prueba automática real en Mac Intel y Apple Silicon; esta entrega sigue siendo una prueba local sin firma ni notarización y sin validación manual de Finder.** El asistente queda para una etapa posterior.
+
+La [ejecución de instalación validada](https://github.com/EzequielMenor/kioku/actions/runs/43605436011) descarga Node oficial, construye e instala la app en un `HOME` temporal y comprueba limpieza, licencia, arquitectura, autenticación y segundo arranque. No equivale a validar Tailscale, otro dispositivo real ni la revisión pendiente del backend de accesos. **Por ahora, no configures acceso desde otros dispositivos con esta entrega de prueba.**
 
 ## Instalar (doble clic)
 
-1. Descarga el ZIP del código desde GitHub y extráelo.
+1. Descarga el [ZIP de prueba validado](https://codeload.github.com/EzequielMenor/kioku/zip/12dccb3b11c80734b296686f8895b410fbfd4ec7) y extráelo.
 2. Haz doble clic en **`Instalar Kioku.command`**. Si macOS dice que no puede verificarlo (el ZIP no está firmado ni notarizado), haz clic derecho > **Abrir** > **Abrir**.
 3. Espera unos minutos (necesita Internet). Al terminar se abre `~/Applications/Kioku.app`; la primera vez macOS puede pedir la misma confirmación (clic derecho > Abrir, o Ajustes del Sistema > Privacidad y seguridad > Abrir igualmente).
 
@@ -59,7 +61,7 @@ El workflow `.github/workflows/macos-validation.yml` comprueba la app en un runn
 | Build y calidad | `npm ci`, `npm run build:web`, `npm test`, `npm run typecheck`; cada fallo hace fallar el job. |
 | Arranque nativo | La prueba construye una `.app` en una ruta con espacios con el Node Mach-O del runner, ejecuta su `Contents/MacOS/Kioku` real y descubre el daemon con `kioku status`. |
 | Servidor | La API devuelve 401 sin clave y 200 con la clave de `kioku url`; se sirven `index.html` y `app.js` del paquete; el daemon usa el runtime del paquete. |
-| Segundo arranque | Reutiliza el mismo daemon (mismo pid), incluso si la primera sonda de salud del lanzador falla por lentitud puntual (`test/desktop-startup.test.ts`, reproducido en Linux; el fallo observado en Intel no se ha podido verificar en un Mac). |
+| Segundo arranque | Reutiliza el mismo daemon (mismo pid): se comprobó en Intel y Apple Silicon. La recuperación de una sonda de salud inicialmente fallida se reproduce además en Linux con `test/desktop-startup.test.ts`; no se atribuye retrospectivamente una causa no observada al primer fallo de Intel. |
 | Instalador | `test/macos-installer.test.ts` ejecuta `Instalar Kioku.command` real (Node oficial y commit fijado por red) en un `HOME` desechable con `KIOKU_INSTALL_NO_OPEN=1`; comprueba `Kioku.app`, la licencia de Node, el Mach-O de la arquitectura del runner, marcadores intactos y que la app instalada arranca, autentica y se reutiliza. En Linux se prueban las mismas reglas con herramientas externas simuladas (descarga, rollback, confirmación, enlaces). |
 | Aislamiento | `HOME` y `KIOKU_HOME` apuntan a directorios temporales del runner, y la prueba usa un `HOME` propio con marcadores sintéticos de una instalación previa que deben quedar intactos. La clave nunca se imprime. |
 
