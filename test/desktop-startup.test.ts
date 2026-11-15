@@ -147,6 +147,11 @@ test("CLI: ask, assistant undo, quick y open siguen igual con un daemon ya activ
     assert.ok(new RegExp(`^--app=${base.replaceAll(".", "\\.")}/\\?k=[0-9a-f]{64}#/hoy$`).test(openArgs[0]), "open abre el Workspace con la clave local");
     assert.ok(openArgs.includes("--window-size=1280,820") && openArgs.includes("--window-name=Kioku"));
 
+    const openConnections = cli("open", "/conexiones");
+    assert.deepEqual([openConnections.status, openConnections.stdout, openConnections.stderr], [0, "", ""]);
+    const connArgs = await browserArgs();
+    assert.ok(new RegExp(`^--app=${base.replaceAll(".", "\\.")}/\\?k=[0-9a-f]{64}#/conexiones$`).test(connArgs[0]), "open /conexiones abre la ruta pedida");
+
     assert.deepEqual(readRuntime(home), rt, "ningún comando sustituyó al daemon");
     assert.ok(alive(rt.pid));
   }));

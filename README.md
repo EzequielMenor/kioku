@@ -49,21 +49,30 @@ Además trae **bases de datos** (tabla, tablero y lista sobre tus propias notas)
 
 ## Instalación
 
-### Requisitos
+### Instalación rápida (un comando, macOS y Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash
+```
+
+- **macOS:** descarga un Node 24+ oficial verificado, compila la app en `~/Applications/Kioku.app` y la abre directamente en **Conexiones y sincronización** (sin necesidad de Node ni Docker previos; la primera vez macOS puede pedir clic derecho > Abrir porque la app no está firmada). También puedes descargar el repositorio y hacer doble clic en **`Instalar Kioku.command`**.
+- **Linux:** instala en `~/.local/share/kioku`, añade el comando `kioku` en `~/.local/bin` (incluyendo un Node 24 privado si no lo tienes instalado), ofrece activar el servicio de usuario `systemd` y abre **Conexiones y sincronización**.
+
+### Requisitos (si instalas desde código)
 
 | | Necesario | Para qué |
 |---|---|---|
-| **Node.js ≥ 24** | Sí | Ejecuta el servidor y la CLI (usa `node:sqlite`, sin dependencias nativas). |
+| **Node.js ≥ 24** | Sí | Ejecuta el servidor y la CLI (usa `node:sqlite`, sin dependencias nativas). En la instalación rápida se descarga automáticamente si falta. |
 | **Chromium, Chrome o Brave** | Recomendado | Abre la interfaz como ventana de aplicación. Sin él puedes abrir la URL del daemon en cualquier navegador. |
 | **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** con `bwrap` (Linux) o Docker Desktop (Mac) | Opcional | Solo para el asistente conversacional; [modelos](docs/assistant-models.md) y [Mac](docs/assistant-macos.md). |
 
-Desarrollado y probado en **Arch Linux / Omarchy con Hyprland**. En Linux, el Workspace funciona con Node y un navegador Chromium; la ventana flotante de captura (Quick) está pensada para Hyprland. En macOS puedes probar Kioku con **Docker Desktop**, sin instalar Node en el Mac; consulta la [guía de instalación](docs/local-macos.md). Para el despliegue privado con Dokploy, consulta la [guía de Dokploy](docs/dokploy.md). Windows no está probado.
+Desarrollado y probado en **Arch Linux / Omarchy con Hyprland** y validado en **macOS (Apple Silicon e Intel)**. Para la app Mac, consulta la [guía de Mac](docs/macos-app.md). Para el despliegue privado con Dokploy, consulta la [guía de Dokploy](docs/dokploy.md). Windows no está probado.
 
-### Paso a paso
+### Desde el código fuente
 
 ```bash
-# 1. Descarga el proyecto (la rama `mvp` es la más reciente: avisos, asistente, calendario y móvil)
-git clone -b mvp https://github.com/EzequielMenor/kioku.git
+# 1. Descarga el proyecto
+git clone https://github.com/EzequielMenor/kioku.git
 cd kioku
 
 # 2. Instala las dependencias y compila la interfaz web
@@ -85,7 +94,13 @@ Si no haces el paso 3, usa `bin/kioku` desde la carpeta del proyecto.
 
 ### Conectar tus dispositivos
 
-Ejecuta `kioku setup` para seguir la guía y `kioku doctor` para comprobar el daemon, el nombre permitido y el proxy privado de Tailscale sin cambiar tu configuración ni mostrar claves. Abre **Conexiones y sincronización** en la barra lateral o en **Más** para comprobar el acceso y revisar la cola móvil. El ordenador debe permanecer encendido; no hay sincronización garantizada en segundo plano. Sigue la [guía de conexiones](docs/connections.md), con los pasos específicos para Mac/Docker.
+Desde la propia aplicación, abre **Conexiones y sincronización** en la barra lateral (o `kioku open /conexiones`):
+
+1. **Activar acceso privado** con **Tailscale** (con un clic configura `tailscale serve` en HTTPS dentro de tu tailnet, sin abrir puertos del router ni usar Funnel).
+2. **Añadir dispositivo** genera un código QR y un enlace de un solo uso para vincular cada móvil o tablet con su propio nombre.
+3. **Desconectar** permite revocar el acceso de un dispositivo concreto en cualquier momento.
+
+El ordenador debe permanecer encendido; no hay sincronización garantizada en segundo plano. Más detalles en la [guía de conexiones](docs/connections.md) y en la [API de acceso por dispositivo](docs/device-access-api.md).
 
 ### Dónde se guardan tus datos
 

@@ -67,3 +67,29 @@ test("private setup: local admin explicitly configures Serve, persists accepted 
     assert.equal(calls.filter((args) => args.includes("--bg")).length, 1);
   } finally { await srv.close(); j.close(); cleanup(); rmSync(web, { recursive: true, force: true }); }
 });
+
+test("private setup: operator access denial surfaces actionable Tailscale operator hint", async () => {
+  const { root, cleanup } = tmpVault();
+  const web = mkdtempSync(path.join(os.tmpdir(), "kioku-private-op-"));
+  const j = await Kioku.open({ root });
+  const srv = await startServer(j, {
+    port: 0, webDir: web, key: "a".repeat(64),
+    connectionRunner: async (args) => {
+      if (args[0] === "status") return JSON.stringify({ BackendState: "Running", Self: { DNSName: host + "." } });
+      if (args[1] === "status") return JSON.stringify({});
+      const err = new Error("Command failed") as Error & { stderr?: string };
+      err.stderr = "Access denied: serve config denied; must be root or operator";
+      throw err;
+    },
+  });
+  try {
+    const r = await fetch(srv.url + "/api/connections/configure", {
+      method: "POST",
+      headers: { "x-kioku-key": srv.key, "content-type": "application/json" },
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(r.status, 503);
+    const body = await r.json() as { error: string };
+    assert.match(body.error, /tailscale set --operator/);
+  } finally { await srv.close(); j.close(); cleanup(); rmSync(web, { recursive: true, force: true }); }
+});

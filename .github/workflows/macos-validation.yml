@@ -4,7 +4,7 @@ name: macos-validation
 
 on:
   push:
-    branches: [feat/JARV-38-private-setup-ui]
+    branches: [main, feat/JARV-38-private-setup-ui]
     # Solo ficheros del propio CI, del arranque del daemon y del instalador que valida: evita ejecuciones por cambios de seguimiento.
     paths:
       - .github/workflows/macos-validation.yml
@@ -13,7 +13,9 @@ on:
       - test/desktop-startup.test.ts
       - Instalar Kioku.command
       - scripts/install-macos.command
+      - scripts/install.sh
       - test/macos-installer.test.ts
+      - test/install-script.test.ts
   workflow_dispatch:
 
 permissions:

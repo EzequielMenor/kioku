@@ -4,8 +4,8 @@
 # La app se construye entera en una carpeta de preparación; la versión anterior no se toca hasta que la nueva está lista.
 set -euo pipefail
 
-# Versión de la aplicación ya validada en Mac (Intel y Apple Silicon). Se puede cambiar solo a propósito, con KIOKU_REF.
-PINNED_REF="8580f9b89b4860d1406a5f79cd03551df85b2972"
+# Versión de la aplicación publicada en main. Se puede cambiar solo a propósito, con KIOKU_REF.
+PINNED_REF="main"
 REPO="${KIOKU_REPO:-EzequielMenor/kioku}"
 REF="${KIOKU_REF:-$PINNED_REF}"
 NODE_LINE="${KIOKU_NODE_LINE:-v24.x}"
@@ -33,6 +33,7 @@ Variables de entorno opcionales (para pruebas):
   KIOKU_REF=<commit|rama|etiqueta>   versión de Kioku (por defecto, el commit validado $PINNED_REF)
   KIOKU_REPO=<usuario/repositorio>   repositorio de GitHub (por defecto EzequielMenor/kioku)
   KIOKU_NODE_LINE=<vNN.x>            línea de Node.js, mínimo 24 (por defecto v24.x)
+  KIOKU_INSTALL_YES=1                acepta reemplazar una Kioku.app existente sin preguntar
   KIOKU_INSTALL_NO_OPEN=1            no abrir la app al terminar
 EOF
 }
@@ -108,7 +109,11 @@ if [ -e "$APP_DEST" ]; then
   had_prior=1
   echo "Ya hay una Kioku en $APP_DEST."
   echo "Se guardará la anterior como copia junto a la nueva. Tus datos (Workspace, claves) no se tocan."
-  answer=""; read -r -p "¿Reemplazarla? [s/N] " answer || true
+  if [ "${KIOKU_INSTALL_YES:-}" = 1 ]; then
+    answer="s"
+  else
+    answer=""; read -r -p "¿Reemplazarla? [s/N] " answer || true
+  fi
   case "$answer" in
     s|S|si|SI|Si|sí|SÍ|Sí) ;;
     *) echo "No se ha instalado nada. Tu Kioku sigue como estaba."; exit 0 ;;

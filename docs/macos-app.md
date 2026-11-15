@@ -1,39 +1,46 @@
-# Aplicación Mac de Kioku (prueba local)
+# Aplicación Mac de Kioku
 
-La aplicación reúne el servidor y un runtime de Node: el uso base no exige instalar Node ni gestionar Docker. **El instalador pasó la prueba automática real en Mac Intel y Apple Silicon; esta entrega sigue siendo una prueba local sin firma ni notarización y sin validación manual de Finder.** El asistente queda para una etapa posterior.
+La aplicación reúne el servidor y un runtime de Node: el uso base no exige instalar Node ni gestionar Docker. **El instalador y el arranque nativo pasaron las pruebas automáticas en Mac Intel y Apple Silicon.** Al ser una instalación local sin firma ni notarización de Apple, macOS puede pedir confirmación la primera vez al abrirla. El asistente queda para una etapa posterior.
 
-La [ejecución de instalación validada](https://github.com/EzequielMenor/kioku/actions/runs/43605436011) descarga Node oficial, construye e instala la app en un `HOME` temporal y comprueba limpieza, licencia, arquitectura, autenticación y segundo arranque. No equivale a validar Tailscale, otro dispositivo real ni la revisión pendiente del backend de accesos. **Por ahora, no configures acceso desde otros dispositivos con esta entrega de prueba.**
+## Instalar con un comando (recomendado)
 
-## Instalar (doble clic)
+```bash
+curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash
+```
 
-1. Descarga el [ZIP de prueba validado](https://codeload.github.com/EzequielMenor/kioku/zip/12dccb3b11c80734b296686f8895b410fbfd4ec7) y extráelo.
-2. Haz doble clic en **`Instalar Kioku.command`**. Si macOS dice que no puede verificarlo (el ZIP no está firmado ni notarizado), haz clic derecho > **Abrir** > **Abrir**.
-3. Espera unos minutos (necesita Internet). Al terminar se abre `~/Applications/Kioku.app`; la primera vez macOS puede pedir la misma confirmación (clic derecho > Abrir, o Ajustes del Sistema > Privacidad y seguridad > Abrir igualmente).
+Opciones útiles: `--yes` (reemplaza una `Kioku.app` previa guardando copia de respaldo sin preguntar) y `--no-open`.
+
+## Instalar con doble clic
+
+1. Descarga el [ZIP de `main`](https://codeload.github.com/EzequielMenor/kioku/zip/main) y extráelo.
+2. Haz doble clic en **`Instalar Kioku.command`**. Si macOS dice que no puede verificarlo (no está firmado ni notarizado), haz clic derecho > **Abrir** > **Abrir**.
+3. Espera unos minutos (necesita Internet). Al terminar se abre `~/Applications/Kioku.app` directamente en **Conexiones y sincronización**; la primera vez macOS puede pedir la misma confirmación (clic derecho > Abrir, o Ajustes del Sistema > Privacidad y seguridad > Abrir igualmente).
 
 No hace falta Node, Docker, Homebrew ni escribir comandos. El instalador no pide permisos de administrador, no instala nada global, no cambia ajustes de red ni servicios, no quita la protección de cuarentena de macOS y no toca tus datos (`~/Library/Application Support/Kioku/Workspace`, claves, bóveda).
 
 | Situación | Qué hace |
 |-----------|----------|
 | Primera instalación | Construye la app entera en una carpeta de preparación y solo entonces la coloca en `~/Applications/Kioku.app`. |
-| Ya existe `Kioku.app` | Pregunta `¿Reemplazarla? [s/N]` (solo `s`/`sí` aceptan; cualquier otra respuesta no instala nada). Con la nueva ya construida, aparta la anterior como `Kioku.app.anterior-FECHA-N`; nunca la borra ni borra copias previas. |
+| Ya existe `Kioku.app` | Pregunta `¿Reemplazarla? [s/N]` (o acepta con `KIOKU_INSTALL_YES=1` / `--yes`). Con la nueva ya construida, aparta la anterior como `Kioku.app.anterior-FECHA-N`; nunca la borra ni borra copias previas. |
 | Falla la descarga, el checksum o la construcción | No se toca la app anterior. |
 | Falla la colocación final | Devuelve la app anterior a su sitio; si no puede, dice dónde quedó guardada. |
 | `~/Applications` o `Kioku.app` es un enlace simbólico | Se rechaza sin modificar lo que haya detrás. |
 
-Qué descarga: un Node.js oficial 24+ (`nodejs.org`, verificado con el checksum publicado allí) que se usa solo en una carpeta temporal y se copia dentro de la app como runtime junto con su `LICENSE` oficial (incluye avisos de terceros), y el código de Kioku del commit validado `8580f9b89b4860d1406a5f79cd03551df85b2972` desde `codeload.github.com`. Todo lo temporal (Node, fuentes, cachés de npm y de compilación de Node) vive en una carpeta nueva `kioku-instalador.*` bajo `$TMPDIR` que se borra al terminar; esas cachés no se comparten con las del usuario ni llegan a la app que se abre. Es el mismo código que ya pasó la validación nativa en Intel y Apple Silicon. Si el repositorio fuera privado, esa descarga fallará y el instalador lo dirá.
+Qué descarga: un Node.js oficial 24+ (`nodejs.org`, verificado con el checksum publicado allí) que se usa solo en una carpeta temporal y se copia dentro de la app como runtime junto con su `LICENSE` oficial (incluye avisos de terceros), y el código de Kioku (`main` por defecto) desde `codeload.github.com`. Todo lo temporal (Node, fuentes, cachés de npm y de compilación de Node) vive en una carpeta nueva `kioku-instalador.*` bajo `$TMPDIR` que se borra al terminar; esas cachés no se comparten con las del usuario ni llegan a la app que se abre. Si el repositorio fuera privado, esa descarga fallará y el instalador lo dirá.
 
 `Instalar Kioku.command --help` explica el uso sin usar la red. Opciones por entorno (para pruebas; no cambian los valores por defecto):
 
 | Variable | Efecto |
 |----------|--------|
-| `KIOKU_REF` | Commit, rama o etiqueta de Kioku distinto del validado. Se avisa al ejecutar. |
+| `KIOKU_REF` | Commit, rama o etiqueta de Kioku distinto de `main`. Se avisa al ejecutar. |
 | `KIOKU_REPO` | Repositorio `usuario/nombre` de GitHub. |
 | `KIOKU_NODE_LINE` | Línea de Node (`v24.x` por defecto; mínimo 24). |
+| `KIOKU_INSTALL_YES=1` | Acepta reemplazar `Kioku.app` existente sin preguntar. |
 | `KIOKU_INSTALL_NO_OPEN=1` | No abre la app al terminar (lo usa el CI para no tocar el HOME real del runner). |
 
 Si `open` falla tras instalar, el instalador lo cuenta y la instalación sigue siendo válida. `Kioku.command` (Docker) no cambia.
 
-**Limitaciones:** no se ha probado el doble clic de Finder ni la ventana de confirmación de macOS en un Mac real; el CI ejecuta el script público, no Finder. La app y el instalador no están firmados ni notarizados. El checksum prueba que la descarga coincide con lo publicado en `nodejs.org`, no la firma GPG de Node.
+**Limitaciones:** la app y el instalador no están firmados ni notarizados con certificado de Apple Developer. El checksum prueba que la descarga coincide con lo publicado en `nodejs.org`, no la firma GPG de Node.
 
 ## Preparar la aplicación a mano
 

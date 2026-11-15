@@ -145,7 +145,12 @@ async function main(): Promise<void> {
       return;
     }
     case "quick": { guardHome(home); const base = await ensureDaemon(home); console.log(await toggleQuick(base)); return; }
-    case "open": { guardHome(home); openWorkspace(await ensureDaemon(home), "/hoy"); return; }
+    case "open": {
+      guardHome(home);
+      const route = args[0] && args[0].startsWith("/") ? args[0] : "/hoy";
+      openWorkspace(await ensureDaemon(home), route);
+      return;
+    }
     case "url": { guardHome(home); console.log(loginUrl(await ensureDaemon(home), readKey(home), "/#/hoy")); return; }
     case "pair": {
       guardHome(home);

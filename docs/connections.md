@@ -2,20 +2,22 @@
 
 Instala Kioku en un ordenador y conecta tus dispositivos a **esa misma instancia** mediante Tailscale. No se combinan bóvedas de instalaciones independientes. El ordenador debe permanecer encendido, sin suspensión y con Kioku y Tailscale activos.
 
-## Empezar
+## Empezar (recomendado desde la interfaz)
 
-Desde el repositorio, con Node.js 24 o superior:
+Instala Kioku en macOS o Linux con el instalador único:
 
 ```sh
-npm install
-npm run build:web
-bin/kioku setup
-bin/kioku open
+curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash
 ```
 
-`setup` muestra los pasos sin instalar software, modificar tu red ni generar claves. Si usas `bin/kioku`, sustituye `kioku` por `bin/kioku` en los comandos siguientes. Para Mac con Docker Desktop, consulta la sección específica de abajo.
+Al terminar se abre **Conexiones y sincronización** (`/#/conexiones`). Desde ahí:
 
-## Conectar otro dispositivo
+1. Instala e inicia sesión en **Tailscale** en el ordenador y en tus otros dispositivos (misma cuenta, con MagicDNS y HTTPS activados en tu tailnet). En Linux, si Tailscale pide permiso para configurar `serve` sin `root`, ejecuta una vez `sudo tailscale set --operator=$USER`.
+2. Pulsa **Comprobar Tailscale** y luego **Activar acceso privado**. Kioku configura `tailscale serve` en HTTPS hacia su puerto local sin Funnel ni puertos del router.
+3. Pulsa **Añadir dispositivo** para generar un código QR y un enlace de un solo uso (válido 5 minutos). Ábrelo en el móvil/tablet, ponle nombre y pulsa **Conectar este dispositivo**.
+4. Cada dispositivo aparece en **Tus dispositivos** con su botón **Desconectar** individual.
+
+## Conectar otro dispositivo (manual por terminal)
 
 1. Instala Tailscale en el ordenador y el dispositivo; inicia sesión con la misma cuenta y habilita MagicDNS y HTTPS en tu tailnet. No uses Funnel ni abras puertos en el router.
 2. Ejecuta `kioku doctor` en el ordenador. Muestra qué falta, el nombre DNS y el puerto real del daemon, sin imprimir claves. Salida **0** significa comprobaciones locales correctas; **1** significa que falta algún paso. No garantiza que otro dispositivo tenga acceso.

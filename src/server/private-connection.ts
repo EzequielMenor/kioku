@@ -18,11 +18,21 @@ export function savedRemoteHost(home: string): string | null {
   catch { return null; }
 }
 
+function tailscaleError(e: unknown): ConnectionError {
+  if (e instanceof ConnectionError) return e;
+  const err = e as { stderr?: unknown; message?: unknown };
+  const detail = `${typeof err?.stderr === "string" ? err.stderr : ""} ${typeof err?.message === "string" ? err.message : ""}`;
+  if (/access denied|operator/i.test(detail)) {
+    return new ConnectionError(503, "Tailscale necesita permiso para este usuario. En Linux ejecuta una vez: sudo tailscale set --operator=$USER");
+  }
+  return new ConnectionError(503, "Tailscale no responde o necesita autorización. Abre Tailscale, inicia sesión y habilita HTTPS en tu red privada.");
+}
+
 const runTailscale: ConnectionRunner = async (args) => {
   const candidates = process.platform === "darwin" ? ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/opt/homebrew/bin/tailscale", "/usr/local/bin/tailscale"] : ["tailscale"];
   for (const bin of candidates) {
     try { return (await execute(bin, args, { timeout: 8000, maxBuffer: 1_048_576 })).stdout; }
-    catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw new ConnectionError(503, "Tailscale no responde o necesita autorización. Abre Tailscale, inicia sesión y habilita HTTPS en tu red privada."); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw tailscaleError(e); }
   }
   throw new ConnectionError(503, "Instala Tailscale y abre la aplicación para iniciar sesión; Kioku no lo instala por su cuenta.");
 };
@@ -70,7 +80,8 @@ export class PrivateConnection {
       const found = await this.inspect(port);
       if (found.proxy === "conflict") throw new ConnectionError(409, "Tailscale ya publica otro servicio o Funnel; no se modifica ni reinicia esa configuración.");
       if (found.proxy === "empty") {
-        await this.run(["serve", "--bg", "--https=443", `http://127.0.0.1:${port}`]);
+        try { await this.run(["serve", "--bg", "--https=443", `http://127.0.0.1:${port}`]); }
+        catch (e) { throw tailscaleError(e); }
         const checked = await this.inspect(port);
         if (checked.host !== found.host || checked.proxy !== "ours") throw new ConnectionError(503, "No se pudo verificar el proxy privado; no se guarda el nombre como permitido.");
       }

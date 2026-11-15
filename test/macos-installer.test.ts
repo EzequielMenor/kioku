@@ -9,7 +9,7 @@ import path from "node:path";
 // Estas pruebas ejecutan los scripts públicos tal cual. Solo se simulan las herramientas externas (uname, curl, open,
 // el Node y npm descargados, el builder del código descargado) con scripts mínimos en un PATH desechable.
 
-const PINNED = "8580f9b89b4860d1406a5f79cd03551df85b2972";
+const PINNED = "main";
 const rootInstaller = path.resolve("Instalar Kioku.command");
 const scriptInstaller = path.resolve("scripts/install-macos.command");
 const NODE_LICENSE = "Node.js is licensed for use as follows: LICENCIA SINTETICA\n";
@@ -263,7 +263,7 @@ const FAILURES: [string, Record<string, string>, RegExp][] = [
   ["descarga de Node", { FAKE_CURL_FAIL: "node" }, /falló la descarga de Node/],
   ["checksum de Node", { FAKE_CORRUPT: "1" }, /el checksum de Node no coincide; no se usa/],
   ["Node menor que 24", { FAKE_NODE_VERSION: "v22.1.0" }, /se necesita Node 24 o superior \(descargado: v22\.1\.0\)/],
-  ["descarga del código", { FAKE_CURL_FAIL: "source" }, /no pude descargar EzequielMenor\/kioku@8580f9b/],
+  ["descarga del código", { FAKE_CURL_FAIL: "source" }, new RegExp(`no pude descargar EzequielMenor\\/kioku@${PINNED}`)],
   ["npm ci", { FAKE_NPM_FAIL: "ci" }, /falló npm ci/],
   ["compilación web", { FAKE_NPM_FAIL: "run" }, /falló la compilación de la interfaz/],
   ["construcción de la app", { FAKE_BUILD_FAIL: "1" }, /falló al crear la aplicación/],

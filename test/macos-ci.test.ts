@@ -9,7 +9,7 @@ import { parse } from "yaml";
 // --- Estructura del workflow (corre en Linux): fija lo que el CI promete y lo que nunca debe hacer.
 
 const workflowFile = path.resolve(".github/workflows/macos-validation.yml");
-const BRANCH = "feat/JARV-38-private-setup-ui";
+const BRANCHES = ["main", "feat/JARV-38-private-setup-ui"];
 const SHA = /^[0-9a-f]{40}$/;
 interface Step { name?: string; uses?: string; run?: string; env?: Record<string, string>; with?: Record<string, unknown>; [k: string]: unknown }
 const load = () => {
@@ -19,11 +19,11 @@ const load = () => {
 };
 const stepRunning = (steps: Step[], cmd: string) => steps.find((s) => s.run?.trim() === cmd);
 
-test("macOS CI se dispara solo por push a la rama de trabajo y solo por ficheros del propio CI, del arranque del daemon y del instalador", () => {
+test("macOS CI se dispara solo por push a main o a la rama de trabajo y solo por ficheros del propio CI, del arranque del daemon y del instalador", () => {
   const { doc } = load();
   assert.deepEqual(Object.keys(doc.on).sort(), ["push", "workflow_dispatch"]);
-  assert.deepEqual(doc.on.push.branches, [BRANCH]);
-  assert.deepEqual(doc.on.push.paths, [".github/workflows/macos-validation.yml", "test/macos-ci.test.ts", "src/cli/desktop.ts", "test/desktop-startup.test.ts", "Instalar Kioku.command", "scripts/install-macos.command", "test/macos-installer.test.ts"]);
+  assert.deepEqual(doc.on.push.branches, BRANCHES);
+  assert.deepEqual(doc.on.push.paths, [".github/workflows/macos-validation.yml", "test/macos-ci.test.ts", "src/cli/desktop.ts", "test/desktop-startup.test.ts", "Instalar Kioku.command", "scripts/install-macos.command", "scripts/install.sh", "test/macos-installer.test.ts", "test/install-script.test.ts"]);
 });
 
 test("macOS CI corre en Apple Silicon e Intel, sin secretos, publicación ni artefactos", () => {
