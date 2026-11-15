@@ -35,6 +35,7 @@ Variables de entorno opcionales (para pruebas):
   KIOKU_NODE_LINE=<vNN.x>            línea de Node.js, mínimo 24 (por defecto v24.x)
   KIOKU_INSTALL_YES=1                acepta reemplazar una Kioku.app existente sin preguntar
   KIOKU_INSTALL_NO_OPEN=1            no abrir la app al terminar
+  KIOKU_NATIVE=0                     no compilar Kio (app que abre Kioku en el navegador)
 EOF
 }
 
@@ -160,9 +161,20 @@ cd "$work/src"
 echo "Preparando la aplicación…"
 private_env npm ci --silent || fail "falló npm ci."
 private_env npm run build:web --silent || fail "falló la compilación de la interfaz."
-private_env node scripts/build-macos-app.mjs --node "$work/node/bin/node" --output "$stage/Kioku.app" || fail "falló al crear la aplicación."
-# El Node oficial exige distribuir su licencia y los avisos de terceros (el fichero LICENSE oficial los incluye).
-cp "$work/node/LICENSE" "$stage/Kioku.app/Contents/Resources/runtime/LICENSE" || fail "no pude copiar la licencia de Node."
+# Con las herramientas de Xcode, la app nativa: Kio flotando en el escritorio, su conversación, la ventana de Kioku y
+# el menú de la barra superior (macos/, Swift). Sin ellas, la versión que abre Kioku en el navegador.
+native=0
+if [ "${KIOKU_NATIVE:-1}" != 0 ] && [ -f macos/Package.swift ] && xcode-select -p >/dev/null 2>&1 && xcrun --find swift >/dev/null 2>&1; then
+  echo "Compilando Kio, el compañero de escritorio (Swift)… la primera vez tarda unos minutos."
+  private_env bash scripts/build-macos-native.sh --node "$work/node/bin/node" --output "$stage/Kioku.app" --scratch "$work/swift-build" --license "$work/node/LICENSE" \
+    || fail "falló la compilación de Kio (Swift)."
+  native=1
+else
+  [ "${KIOKU_NATIVE:-1}" = 0 ] || echo "Aviso: sin las herramientas de Xcode («xcode-select --install») se instala la versión que abre Kioku en el navegador, sin Kio en el escritorio."
+  private_env node scripts/build-macos-app.mjs --node "$work/node/bin/node" --output "$stage/Kioku.app" || fail "falló al crear la aplicación."
+  # El Node oficial exige distribuir su licencia y los avisos de terceros (el fichero LICENSE oficial los incluye).
+  cp "$work/node/LICENSE" "$stage/Kioku.app/Contents/Resources/runtime/LICENSE" || fail "no pude copiar la licencia de Node."
+fi
 for part in Contents/MacOS/Kioku Contents/Resources/runtime/node; do
   [ -f "$stage/Kioku.app/$part" ] && [ -x "$stage/Kioku.app/$part" ] || fail "la aplicación construida está incompleta ($part)."
 done
@@ -184,7 +196,11 @@ placed=1; apps_created=0
 echo
 echo "Listo: $APP_DEST"
 [ -z "$backup" ] || echo "La versión anterior se guardó en: $backup (bórrala cuando quieras)."
-echo "Los datos de esta app viven en: $WORKSPACE (no se ha tocado nada de ahí)."
+if [ "$native" = 1 ]; then
+  echo "Kioku usa tu bóveda ~/Documents/Kioku (puedes elegir otra al abrirla). Al abrirse te guía para arrancar con macOS, Ollama y el modelo."
+else
+  echo "Los datos de esta app viven en: $WORKSPACE (no se ha tocado nada de ahí)."
+fi
 echo "Si macOS pide confirmación al abrirla la primera vez: clic derecho > Abrir."
 if [ "${KIOKU_INSTALL_NO_OPEN:-}" = 1 ]; then
   echo "No se abre la app (KIOKU_INSTALL_NO_OPEN=1)."

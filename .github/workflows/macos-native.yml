@@ -1,0 +1,70 @@
+# Kioku.app nativa (Kio en SwiftUI/AppKit) en un macOS real de Apple Silicon: compila, pasa las pruebas de Swift y de
+# Node, construye la app y la ejecuta contra un daemon aislado arrancado por launchd, con un Ollama simulado que
+# anuncia qwen3.5:9b. Sube los resultados y las capturas como artefacto. No firma con certificado ni publica nada.
+name: macos-native
+
+on:
+  push:
+    branches: [feat/kioku-macos]
+    paths:
+      - .github/workflows/macos-native.yml
+      - macos/**
+      - companion/character.json
+      - scripts/build-macos-app.mjs
+      - scripts/build-macos-native.sh
+      - scripts/macos-smoke.mjs
+      - scripts/mock-ollama.mjs
+      - scripts/install-macos.command
+      - src/**
+      - web/**
+      - test/launchd.test.ts
+      - test/companion-cli.test.ts
+      - test/macos-app.test.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Kioku.app nativa (macOS 15, arm64)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Entorno
+        run: sw_vers && uname -m && xcodebuild -version && swift --version && node --version
+      - run: npm ci
+      - run: npm run build:web
+      - name: Pruebas de KiokuKit (Swift)
+        run: swift test --package-path macos
+      - name: Pruebas de Node de la parte macOS
+        run: node --test test/launchd.test.ts test/companion-cli.test.ts test/macos-app.test.ts test/notifier.test.ts test/assistant-model-cli.test.ts test/kioku-home.test.ts
+      - name: Construir Kioku.app nativa
+        run: scripts/build-macos-native.sh --node "$(command -v node)" --output "$RUNNER_TEMP/app/Kioku.app"
+      - name: Inspeccionar el paquete
+        run: |
+          app="$RUNNER_TEMP/app/Kioku.app"
+          plutil -lint "$app/Contents/Info.plist"
+          file "$app/Contents/MacOS/Kioku"
+          codesign -dv "$app" 2>&1 | head -5
+          ls "$app/Contents/Resources"
+      - name: Prueba de humo (launchd + Kio + conversación + ventana de Kioku)
+        run: node scripts/macos-smoke.mjs "$RUNNER_TEMP/app/Kioku.app" "$RUNNER_TEMP/smoke"
+      - name: Resultados y capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kioku-macos-smoke
+          path: ${{ runner.temp }}/smoke
+          if-no-files-found: warn
+          retention-days: 14
