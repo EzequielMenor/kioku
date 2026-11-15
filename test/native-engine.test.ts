@@ -248,8 +248,8 @@ test("enrutador: Ollama y custom van por el motor nativo, Codex por Hermes; «en
 });
 
 test("tailnet: http solo hacia localhost o hacia equipos de Tailscale (100.64/10 y *.ts.net)", () => {
-  assert.ok(isTailnetHost("100.108.208.128"));
-  assert.ok(isTailnetHost("mac-mini.tail9a2b64.ts.net"));
+  assert.ok(isTailnetHost("100.101.102.103"));
+  assert.ok(isTailnetHost("mac-mini.tu-tailnet.ts.net"));
   assert.ok(!isTailnetHost("100.63.0.1"));
   assert.ok(!isTailnetHost("100.128.0.1"));
   assert.ok(!isTailnetHost("192.168.1.10"));
