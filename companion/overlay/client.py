@@ -7,11 +7,14 @@ import http.client
 import json
 import os
 import threading
-import time
 
 
 class KiokuError(Exception):
-    pass
+    """Fallo al hablar con el daemon. `status` es el código HTTP, o None si ni siquiera hubo conexión."""
+
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 def kioku_home():
@@ -30,11 +33,21 @@ class Client:
             return None
 
     def port(self):
-        """Puerto del daemon en marcha (se relee siempre: puede cambiar al reiniciarse)."""
+        """Puerto del daemon en marcha (se relee siempre: puede cambiar al reiniciarse).
+
+        Solo vale si el proceso que lo anotó sigue vivo: si el daemon murió sin limpiar, otro programa podría
+        estar escuchando en ese puerto y no se le entrega la credencial.
+        """
         try:
-            return int(json.loads(self._read("runtime.json") or "{}")["port"])
-        except (KeyError, ValueError, TypeError):
+            rt = json.loads(self._read("runtime.json") or "{}")
+            port, pid = int(rt["port"]), int(rt.get("pid") or 0)
+        except (KeyError, ValueError, TypeError, AttributeError):
             return None
+        if not 0 < port < 65536:
+            return None
+        if pid > 0 and os.path.isdir("/proc") and not os.path.isdir(f"/proc/{pid}"):
+            return None
+        return port
 
     def key(self):
         k = self._read("secret-companion")
@@ -63,8 +76,10 @@ class Client:
                 data = json.loads(raw) if raw else {}
             except ValueError:
                 data = {}
+            if res.status == 401:
+                raise KiokuError("Kioku no reconoce la credencial del compañero: reinicia el daemon o vuelve a lanzar «kioku companion»", 401)
             if res.status >= 400:
-                raise KiokuError(data.get("error") or f"Kioku respondió {res.status}")
+                raise KiokuError((data.get("error") if isinstance(data, dict) else None) or f"Kioku respondió {res.status}", res.status)
             return data
         except (OSError, http.client.HTTPException) as e:
             raise KiokuError(f"Sin conexión con Kioku ({e.__class__.__name__})") from e
@@ -118,6 +133,7 @@ def in_thread(fn, *args):
 
 
 if __name__ == "__main__":
-    c = Client()
-    print(json.dumps(c.get("/api/assistant/state"), ensure_ascii=False, indent=1))
-    time.sleep(0)
+    try:
+        print(json.dumps(Client().get("/api/assistant/state"), ensure_ascii=False, indent=1))
+    except KiokuError as e:
+        raise SystemExit(f"kioku companion: {e}")

@@ -4,3 +4,5 @@ node_modules
 dist
 *.log
 .superpowers
+__pycache__/
+*.pyc
