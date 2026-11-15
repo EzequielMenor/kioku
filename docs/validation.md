@@ -176,3 +176,44 @@ La bóveda de Obsidian (`~/Documents/Mi espacio`) no se ha leído ni modificado.
 - Este host es Linux; Docker responde `permission denied` al socket. No se reintentó ni se elevó el permiso. No se ha ejecutado la imagen, el puente de red de host ni la renovación de credenciales en un Mac.
 - No se probó un iPhone físico. Chromium y la API no demuestran por sí solos el comportamiento de Safari/iOS ni la conectividad de tu Mac real.
 - Checklist manual y preparación: [assistant-macos.md](assistant-macos.md). No se modificaron datos reales ni `~/.hermes`.
+
+
+## Kioku Companion y motor local (feat/kioku-companion, 2026-11-15)
+
+Entorno: Omarchy, Hyprland 0.56.2 (configuración Lua), GTK 4.24.1, gtk4-layer-shell 1.3.0, Python 3.14, una pantalla 2880×1800 a escala 2. Todo contra un **daemon aislado** (`KIOKU_HOME` temporal, puerto 47990, motor de pruebas `KIOKU_ASSISTANT_FAKE=1`); el daemon real del usuario (`:47800`) y su espacio no se tocaron.
+
+**Verificado**
+- `npm run typecheck` limpio, `npm run build:web` (app.js 949 KB) y `npm test`: **742 de 743**. El único fallo es `test/demo.test.ts` (fecha fija caducada, ajeno a esta rama; ver pendientes).
+- Pruebas nuevas: `test/companion-cli.test.ts` (13: lanzar sin duplicar, credencial 0600 distinta de la clave completa, toggle/focus contra el daemon real, stop y `--revoke`, pid ajeno sin señales, daemon anterior, falta de GTK), `test/assistant-status.test.ts` (4: Ollama por el enrutador real sin depender de Hermes; CLI con Ollama caído), `test/companion-overlay.test.ts` (3) y `companion/overlay/test_overlay.py` (22: geometría, espejo de estado, cliente, dibujo de los 8 estados en ambos temas).
+- **Integración overlay ↔ daemon sin pantalla** (el cliente y el espejo de estado reales de Python contra `startServer`): rol `companion`, conversación con `surface: desktop`, acción automática y Deshacer, propuesta de borrado y descarte, modo concentración y posición guardados en el daemon, conversación nueva, 403 en buscar/escribir notas/memoria/modelo, y la cara recorriendo `thinking → responding → awaiting_confirmation`.
+- **En el escritorio real, con ratón de verdad** (dispositivo virtual `uinput`, capturas con `grim`, estado con `hyprctl layers`):
+  - Kio aparece abajo a la derecha, transparente, en la capa `top` (82×82 px lógicos).
+  - **Clic a través:** un clic en la esquina y en el borde de la superficie de Kio llega a la ventana de debajo; un clic en el cuerpo abre el panel y la ventana de debajo no lo recibe.
+  - **Arrastre:** durante el arrastre aparece el lienzo a pantalla completa en la capa `overlay`, la superficie pequeña no se mueve y Kio se pinta bajo el cursor (y ya no en el origen); al soltar queda donde se soltó (±3 px), el lienzo se retira y la posición se guarda en el daemon.
+  - El panel se abre junto a Kio, dentro del monitor y sin taparlo, también tras moverlo al centro.
+  - **Teclado:** al abrir, el foco va al aviso de privacidad (`Enter` lo acepta) y después al cuadro de texto; lo escrito llega al panel sin clic previo y la ventana de debajo no recibe teclas. `Esc` cierra y retira la capa.
+  - **Estados:** `thinking → responding → success` al enviar; aviso corto («Revisando tu Bandeja…») con el panel cerrado, creciendo hacia la izquierda sin mover a Kio y retirándose al terminar.
+  - **Concentración** (clic derecho, botón `◐` y `kioku companion focus`): 52×52, cara en reposo, sin aviso mientras piensa y sin celebrar al terminar; vuelve a 82×82 conservando la esquina.
+  - **Ocultar** (modo `hidden` desde Kioku y `kioku companion toggle`): sin superficies; vuelve al reactivarlo. Con Kioku en primer plano (presencia) se retira y vuelve.
+  - **Escritorios virtuales:** visible en los escritorios 1, 2 y 9 sin relanzarlo.
+  - **Pantalla completa:** con una ventana a pantalla completa en el escritorio activo, el píxel del cuerpo de Kio es el de esa ventana (la capa sigue existiendo, debajo); al salir, Kio vuelve a verse.
+  - **Reconexión:** al detener el daemon, Kio pasa a reposo en 0,4 s; al volver, reconecta en 1,5–4,3 s y recupera la conversación. Con el daemon matado de golpe (`runtime.json` con pid muerto) y un servidor impostor en el mismo puerto, el overlay hizo **0 peticiones** en 10 s. Una consulta en curso al caer el daemon no lo deja «pensando».
+  - `SIGUSR1` abre y cierra el panel; una señal enviada antes de terminar de arrancar ya no mata el proceso.
+  - **`kioku companion` real de punta a punta:** `status`, `start` (pid y capa), segundo `start` sin duplicar, `toggle` ×2, `focus` ×2, `stop` (capa y pid retirados).
+- **Flujos del panel** sobre el overlay real, accionando sus botones por la señal `clicked` de GTK (no con el ratón): propuesta de borrado con confirmación en dos pasos (la primera pulsación no aplica nada), descartar, Deshacer una tarea creada, **Detener** una consulta, conversación nueva compartida y ocultar.
+- Defectos encontrados y corregidos durante la validación: la superficie no se encogía al salir del aviso o al entrar en concentración (Kio se desplazaba y dejaba de recibir clics); la superficie pequeña seguía pintando a Kio durante el arrastre; la última burbuja se cortaba por la medición de GTK; al abrir el panel se seleccionaba el primer mensaje y no bajaba al final.
+
+**No verificado**
+- **Ollama real.** En este equipo no hay Ollama y el del Mac mini no escucha en el tailnet (`:11434` rechaza la conexión): falta publicarlo con `OLLAMA_HOST` ([assistant-local.md](assistant-local.md)). El motor nativo solo se ha probado contra un servidor «chat completions» simulado.
+- **El daemon real del usuario.** No se reinició ni se le conectó el overlay; hasta que corra esta versión, `kioku companion` responde que el daemon es de una versión anterior.
+- Kio de escritorio y Kioku abiertos a la vez en un navegador real: la conversación compartida y la retirada por presencia se comprobaron por la API (`surface: web`), no con las dos ventanas.
+- Botones del panel con ratón real: solo `◐`; el resto, por la señal de GTK. `⤢` (abrir Kioku) no se accionó en vivo.
+- Varias pantallas, cambio de resolución en caliente, ventana maximizada (no a pantalla completa), tema claro del overlay, «reducir movimiento», otros compositores (Sway) y los atajos de teclado (los añade el usuario).
+- Consumo: ~140 MB de memoria residente y ~1,5 % de una CPU en reposo con el renderizador por defecto de GTK; no se optimizó.
+
+**Pendiente**
+- `test/demo.test.ts` falla por una fecha fija ya pasada; está corregido en `feat/JARV-38-private-setup-ui`, que no se ha fusionado aquí a propósito.
+- `test/db-schema-browser.test.ts` (borrar opción) es intermitente bajo carga; en esta ejecución pasó.
+- ProjectOS (MCP `projectos`) rechazó el token: el trabajo no se registró en el proyecto JARV.
+
+**Incidencias de la validación en vivo.** Las pruebas se hicieron en la sesión de trabajo del usuario mientras la usaba: una inyección de teclado (`wtype`) escribió «borra la primera captura» + Enter en su ventana activa en lugar de en el panel, y una llamada de prueba puso su terminal a pantalla completa unos 20 s (se revirtió). A partir de ahí no se inyectó más teclado. Para repetir esta validación conviene una sesión sin uso.

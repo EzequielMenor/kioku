@@ -108,6 +108,8 @@ o.bind("SUPER + ALT + N", "Kioku Workspace", "/ruta/a/kioku/bin/kioku open")
 
 Comprueba antes que esas teclas estén libres con `omarchy menu keybindings --print`.
 
+Para Kio en el escritorio (`kioku companion`, `kioku companion panel`, `kioku companion toggle`) hay atajos de ejemplo en la [guía del compañero](docs/companion.md).
+
 ### Arranque automático (opcional)
 
 ```bash
@@ -194,7 +196,8 @@ kioku restore ~/respaldo.tar.gz ~/carpeta-nueva
 
 Es opcional y la forma más cómoda de organizar el espacio: pídele que clasifique la Bandeja, que revise enlaces rotos o que te diga qué hacer hoy. Se abre en la pestaña **Asistente** (`g a`), con `kioku ask "…"` o con `a:` en Quick.
 
-- **Motor:** [Hermes Agent](https://github.com/NousResearch/hermes-agent), con [proveedor y modelo configurables](docs/assistant-models.md): Codex por defecto, otras APIs o un modelo local compatible. Linux usa `bwrap`; [Mac usa Docker](docs/assistant-macos.md), pendiente de validación real en macOS. Comprueba los requisitos con `kioku assistant status`.
+- **Motor:** dos, detrás de un mismo asistente. Con un modelo local ([Ollama](docs/assistant-local.md) o cualquier endpoint compatible con OpenAI) Kioku habla con él directamente y tus notas no salen de tus equipos; con Codex (por defecto) u otras APIs lo atiende [Hermes Agent](https://github.com/NousResearch/hermes-agent) en una jaula (`bwrap` en Linux; [Docker en Mac](docs/assistant-macos.md), pendiente de validación real en macOS). [Proveedor y modelo son configurables](docs/assistant-models.md). `kioku assistant status` te dice qué motor, proveedor y modelo están activos y si están listos.
+- **Kio, tu compañero:** el asistente tiene cara. Flota dentro de Kioku (tecla `.`) y, en Hyprland/Omarchy, también sobre tu escritorio con `kioku companion`. Es el mismo agente en los dos sitios: misma conversación, mismo estado, mismos modos (visible, concentración, oculto). [Guía del compañero](docs/companion.md).
 - **Centro de Kioku:** organiza y ayuda a pensar; responde preguntas generales sin leer notas innecesariamente y no reescribe tus notas sin petición explícita. Los cambios críticos requieren propuestas que tú apruebas.
 - **Desde el móvil:** [Más → Asistente](docs/assistant-mobile.md), con el ordenador encendido, sin suspensión y accesible por la conexión emparejada. Puede proponer cambios y pedir aprobación allí mismo; no hay chat sin conexión ni cola de preguntas. Su memoria y conversaciones no comparten datos privados del escritorio.
 - **Qué hace solo:** lo pequeño y reversible (clasificar capturas, consultar tus bases, añadirles filas). Cada acción queda con un botón **Deshacer** (`kioku assistant actions` · `kioku assistant undo <id>`).
