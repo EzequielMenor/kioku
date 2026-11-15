@@ -217,3 +217,20 @@ Entorno: Omarchy, Hyprland 0.56.2 (configuración Lua), GTK 4.24.1, gtk4-layer-s
 - ProjectOS (MCP `projectos`) rechazó el token: el trabajo no se registró en el proyecto JARV.
 
 **Incidencias de la validación en vivo.** Las pruebas se hicieron en la sesión de trabajo del usuario mientras la usaba: una inyección de teclado (`wtype`) escribió «borra la primera captura» + Enter en su ventana activa en lugar de en el panel, y una llamada de prueba puso su terminal a pantalla completa unos 20 s (se revirtió). A partir de ahí no se inyectó más teclado. Para repetir esta validación conviene una sesión sin uso.
+
+## Integración con `main` (rama `integration/kioku-1.0`)
+
+Rama preparada a partir de `main` (9076809: JARV-35/36/37/38 y el servidor nativo) fusionando `feat/kioku-companion` (5 commits). Procedimiento de instalación: [upgrade-and-recovery.md](upgrade-and-recovery.md).
+
+**Verificado**
+- Línea base de `main` antes de fusionar: typecheck limpio, 755 tests (753 OK, 2 omitidos, 0 fallos).
+- Árbol fusionado: typecheck limpio, `npm run build:web` correcto, **798 tests (796 OK, 2 omitidos, 0 fallos)**: los 755 de `main` más los 43 del compañero.
+- Dos conflictos, ambos aditivos (`src/server/server.ts`, `src/core/portability.ts`): se conservan las credenciales de dispositivo de `main` y la credencial del compañero. Cruce vigilado: el compañero se trata como `full` tras su lista blanca y `main` añadió rutas `/api/devices` que solo exigen `full`; la lista blanca va primero y es de coincidencia exacta, y queda fijado con una prueba (`GET/POST/DELETE /api/devices*` → 403 para el compañero).
+- **Extremo a extremo con daemon real** (vault y `HOME` temporales, puerto 47990, modelo simulado «chat completions» en `127.0.0.1`), usando el cliente Python real del overlay: 15/15 comprobaciones. La web pregunta → el compañero ve la conversación; el compañero pregunta en la misma conversación → la web la ve y el modelo recibe el historial de las dos superficies; los mensajes llevan su superficie (`web`/`desktop`); el compañero recibe eventos SSE en vivo; el compañero recibe 403 en `/api/devices`, `/api/notes` y `/api/assistant/model`.
+- **Ensayo con tus datos reales sin tocarlos:** `kioku export` del vault real → `kioku restore` en una carpeta temporal (386 archivos) → daemon integrado sobre esa copia: 17/17 notas indexadas, `/api/health` ok y la web se sirve. El servicio real (`:47800`) no se paró ni se reconfiguró.
+- Comandos de respaldo y edición de la unidad del procedimiento probados sobre copias.
+
+**No verificado**
+- **Proveedor de IA real.** Sigue sin haber conversación real: Ollama no está instalado en este equipo y el del Mac mini (`mac-mini-de-ezequiel`) está en el tailnet pero rechaza `:11434` (falta `OLLAMA_HOST`). El motor nativo solo se ha probado contra el servidor simulado. Hasta validarlo con el proveedor elegido, **no se da Kioku 1.0 por terminado**.
+- La instalación real (cambio de `ExecStart` del servicio) no se ha hecho.
+- La ventana de Kio no se lanzó en esta pasada (tocaría tu escritorio): los pasos manuales están en el apartado 5 de [upgrade-and-recovery.md](upgrade-and-recovery.md).
