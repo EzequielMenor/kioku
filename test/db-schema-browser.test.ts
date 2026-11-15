@@ -523,3 +523,96 @@ test("una propiedad llamada «Type» (mayúscula, de Obsidian) tiene el mismo me
     assert.match(read(root, "Libros/Dune.md"), /^Type: Novela$/m);
   });
 });
+
+/* ───────────── UX tipo Notion: atajos, inline rows, MultiCell, Tablero y Personalizar ───────────── */
+
+test("Bases tipo Notion: preset Prioridad, MultiCell, alta inline en Tabla y Tablero y + Nuevo grupo", { skip, timeout: 90_000 }, async () => {
+  await withBase({}, async (p, root) => {
+    // 1. Atajo "+ Prioridad" desde el botón "+ Columna" de la barra superior.
+    await clickSel(p, `button[aria-label="+ Columna"]`);
+    await until(() => p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Nueva propiedad"]`)}`), "popover + Columna");
+    await clickText(p, `[role=dialog] button`, "+ Prioridad");
+    await until(async () => (await headers(p)).includes("Prioridad"), "columna Prioridad creada");
+    assert.match(read(root, "Bases/Libros.md"), /Prioridad:/);
+    assert.match(read(root, "Bases/Libros.md"), /color:\s*red/);
+
+    // 2. Preset "+ Etiquetas" (multi) y edición multi-chip con MultiCell.
+    await clickSel(p, `button[aria-label="+ Columna"]`);
+    await until(() => p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Nueva propiedad"]`)}`), "popover + Columna para multi");
+    await clickText(p, `[role=dialog] button`, "+ Etiquetas");
+    await until(async () => (await headers(p)).includes("Etiquetas"), "columna Etiquetas creada");
+
+    await clickSel(p, `button[aria-label^="Etiquetas de «Dune»"]`);
+    await until(() => p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Opciones de Etiquetas"]`)}`), "popover MultiCell");
+    await clickText(p, `[role=dialog] button.opt-chip`, "Importante");
+    await until(() => /Importante/.test(read(root, "Libros/Dune.md")), "primera etiqueta guardada");
+    await clickText(p, `[role=dialog] button.opt-chip`, "Idea");
+    await until(() => /Idea/.test(read(root, "Libros/Dune.md")), "segunda etiqueta guardada");
+    await key(p, "Escape", 27);
+    await until(() => p.ev<boolean>(`!${q("[role=dialog]")}`), "MultiCell cerrado");
+
+    // 3. Alta inline "+ Nueva fila" en el pie de la tabla.
+    await clickSel(p, `.dbtable tfoot .inline-row-btn`);
+    await until(() => p.ev<boolean>(`!!${q(`input[aria-label="Añadir fila en la tabla"]`)}`), "input inline en Tabla");
+    await typeInto(p, `input[aria-label="Añadir fila en la tabla"]`, "Neuromante", true);
+    await until(() => existsSync(path.join(root, "Libros/Neuromante.md")), "Neuromante creado desde pie de tabla");
+
+    // 4. Cambia a Tablero, agrupa por Estado, edita Prioridad en tarjeta, añade fila en columna y crea grupo nuevo.
+    await clickText(p, `.dbbar [role=tab]`, "Tablero");
+    await until(() => p.ev<boolean>(`!!${q(`select[aria-label="Agrupar por"]`)}`), "selector de agrupación en Tablero");
+    await p.ev(`(() => { const s = ${q(`select[aria-label="Agrupar por"]`)}; s.value = "Estado"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+    await until(() => p.ev<boolean>(`!!${q(`.kcard button[aria-label^="Prioridad de «Dune»"]`)}`), "tarjetas agrupadas por Estado");
+
+    await clickSel(p, `.kcard button[aria-label^="Prioridad de «Dune»"]`);
+    await until(() => p.ev<boolean>(`!!${q(`[role=dialog][aria-label="Valor de Prioridad"]`)}`), "popover de Prioridad en tarjeta");
+    await clickText(p, `[role=dialog] button.opt-chip`, "Alta");
+    await until(() => /^Prioridad:\s*Alta$/m.test(read(root, "Libros/Dune.md")), "Prioridad guardada desde tarjeta");
+
+    await clickSel(p, `section.col[aria-label="Leyendo"] .inline-row-btn`);
+    await until(() => p.ev<boolean>(`!!${q(`input[aria-label="Añadir fila en Leyendo"]`)}`), "input inline en columna del tablero");
+    await typeInto(p, `input[aria-label="Añadir fila en Leyendo"]`, "Fundación", true);
+    await until(() => existsSync(path.join(root, "Libros/Fundación.md")), "Fundación creada desde columna Leyendo");
+    assert.match(read(root, "Libros/Fundación.md"), /^Estado:\s*Leyendo$/m);
+
+    await clickSel(p, `.board .col-new .inline-row-btn`);
+    await until(() => p.ev<boolean>(`!!${q(`input[aria-label="Nombre del nuevo grupo"]`)}`), "input + Nuevo grupo");
+    await typeInto(p, `input[aria-label="Nombre del nuevo grupo"]`, "Pausado", false);
+    await clickText(p, `.board .col-new button[type="submit"]`, "Crear");
+    await until(() => p.ev<boolean>(`!!${q(`section.col[aria-label="Pausado"]`)}`), "columna Pausado visible en Tablero");
+    assert.match(read(root, "Bases/Libros.md"), /Pausado/);
+
+    // 5. Vista Lista también permite editar chips y añadir fila inline.
+    await clickText(p, `.dbbar [role=tab]`, "Lista");
+    await until(() => p.ev<boolean>(`!!${q(`.dblist button[aria-label^="Prioridad de «Dune»"]`)}`), "celda editable en Lista");
+    await clickSel(p, `.dblist .inline-row-btn`);
+    await until(() => p.ev<boolean>(`!!${q(`input[aria-label="Añadir fila en la lista"]`)}`), "input inline en Lista");
+    await typeInto(p, `input[aria-label="Añadir fila en la lista"]`, "Snow Crash", true);
+    await until(() => existsSync(path.join(root, "Libros/Snow Crash.md")), "Snow Crash creado desde Lista");
+  });
+});
+
+test("Personalizar base: editar icono, título y origen sin abrir el YAML de Definición", { skip, timeout: 60_000 }, async () => {
+  const make = () => tmpVault({
+    "Bases/Libros.md": DB,
+    "Libros/Dune.md": FM("Autor: Herbert\nEstado: Leído\n") + "Dune\n",
+    "Notas/Apunte.md": FM("Autor: Yo\n") + "Apunte\n",
+  });
+  await withBase({ make }, async (p, root) => {
+    await clickText(p, `.page-head button`, "Personalizar");
+    await until(() => p.ev<boolean>(`!!${q(`section[aria-label="Personalizar base"]`)}`), "panel Personalizar visible");
+    assert.ok(await p.ev<boolean>(`!!${q(`section[aria-label="Personalizar base"] a[href="#/nota/Bases/Libros.md"]`)}`), "enlace a Definición accesible dentro de Personalizar");
+
+    // Cambia icono con un clic.
+    await clickText(p, `section[aria-label="Personalizar base"] .icon-opt`, "📚");
+    await until(() => /^icon:\s*📚$/m.test(read(root, "Bases/Libros.md")), "icono guardado en el fichero de base");
+    await until(() => p.ev<boolean>(`${q(".page-head h1")}.textContent.includes("📚")`), "icono reflejado en cabecera");
+
+    // Cambia título y carpeta de origen.
+    await typeInto(p, `input[aria-label="Título de la base"]`, "Mis Apuntes", false);
+    await typeInto(p, `input[aria-label="Carpeta de origen"]`, "Notas", false);
+    await clickText(p, `section[aria-label="Personalizar base"] button[type="submit"]`, "Guardar ajustes");
+    await until(() => /^title:\s*Mis Apuntes$/m.test(read(root, "Bases/Libros.md")), "título actualizado");
+    await until(() => p.ev<boolean>(`[...document.querySelectorAll(".dbtable td a")].some((a) => a.textContent.trim() === "Apunte")`), "filas reconsultadas tras cambiar origen");
+    assert.equal(await p.ev<boolean>(`[...document.querySelectorAll(".dbtable td a")].some((a) => a.textContent.trim() === "Dune")`), false, "Dune sale al filtrar a Notas/");
+  });
+});

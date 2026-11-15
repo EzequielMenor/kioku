@@ -15,7 +15,7 @@ export type CalendarTask = TaskRow & { estimate: number | null; hash: string };
 export interface CalendarProject { path: string; title: string }
 export interface CalendarResponse { items: CalendarEntry[]; tasks: CalendarTask[]; invalid: { path: string }[]; areas: AreaRow[]; now: string }
 
-export interface NoteListItem { path: string; title: string; type: string; mtime: number; tags?: string[] }
+export interface NoteListItem { path: string; title: string; type: string; mtime: number; tags?: string[]; icon?: string }
 export interface NoteInfo {
   path: string;
   text: string;

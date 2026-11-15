@@ -6,7 +6,8 @@ import path from "node:path";
 import { Kioku, type TaskInput } from "../core/kioku.ts";
 import { isLocalUrl } from "../core/llm.ts";
 import { VaultError } from "../core/vault.ts";
-import type { NoteType, TaskStatus } from "../core/index.ts";
+import { KNOWLEDGE_TYPES, type NoteType, type TaskStatus } from "../core/index.ts";
+import { planNoteRename, RenamePlanError } from "../core/markdown.ts";
 import type { CalendarInput } from "../core/calendar-store.ts";
 import type { AssistantEngine } from "../assistant/engine.ts";
 import { ModelConfigError } from "../assistant/model-config.ts";
@@ -382,7 +383,20 @@ export async function startServer(
         }
         case "/api/graph": {
           const focus = q.get("focus");
-          return send(res, 200, j.index.graph({ focus: focus ? userPath(focus) : undefined, depth: Math.min(3, Number(q.get("depth") ?? 1)), max: Number(q.get("max") ?? 400), skip }));
+          const rawTypes = q.get("types")?.trim();
+          const types = rawTypes === "all"
+            ? undefined
+            : rawTypes
+              ? (rawTypes.split(",").map((x) => x.trim()).filter(Boolean) as NoteType[])
+              : KNOWLEDGE_TYPES;
+          return send(res, 200, j.index.graph({
+            focus: focus ? userPath(focus) : undefined,
+            depth: Math.min(3, Number(q.get("depth") ?? 1)),
+            max: Number(q.get("max") ?? 400),
+            types,
+            includeIsolated: q.get("isolated") === "1",
+            skip,
+          }));
         }
         case "/api/resolve": return send(res, 200, { path: j.index.resolve(q.get("q") ?? "") });
         case "/api/suggest-links": return send(res, 200, j.index.suggestLinks(q.get("q") ?? "", 8));
@@ -510,7 +524,13 @@ export async function startServer(
           return send(res, 200, await ops.run(id, () => j.capture(text)));
         }
         case "/api/note/create": {
-          const n = await j.createNote({ title: str(body.title, "title"), type: (body.type as NoteType) ?? "note", body: (body.body as string) ?? "" });
+          let folder: string | undefined;
+          if (body.folder !== undefined) {
+            const raw = str(body.folder, "folder");
+            try { folder = planNoteRename("Notas/tmp.md", "tmp", { folder: raw }).targetDir; }
+            catch (e) { if (e instanceof RenamePlanError) throw new HttpError(400, e.message); throw e; }
+          }
+          const n = await j.createNote({ title: str(body.title, "title"), type: (body.type as NoteType) ?? "note", body: (body.body as string) ?? "", folder });
           return send(res, 200, { path: n.path, title: n.title });
         }
         case "/api/note/open": { await j.openedNote(userPath(body.path)); return send(res, 200, { ok: true }); }
@@ -524,6 +544,21 @@ export async function startServer(
         case "/api/note": {
           const r = await j.saveNote(userPath(body.path), str(body.text, "text"), str(body.hash, "hash"));
           return send(res, 200, { hash: r.hash });
+        }
+        case "/api/note/rename": {
+          const rel = userPath(body.path);
+          const opt = (v: unknown, name: string) => (v === undefined ? undefined : str(v, name));
+          const title = opt(body.title, "title");
+          const fileName = opt(body.fileName, "fileName");
+          const folder = opt(body.folder, "folder");
+          const hash = str(body.hash, "hash");
+          if (role === "mobile" && folder !== undefined) {
+            const cleanFolder = folder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+            if (cleanFolder && isPrivate(`${cleanFolder}/nota.md`, mobileExclude)) {
+              throw new HttpError(403, "Esa carpeta es privada y no se toca desde el móvil");
+            }
+          }
+          return send(res, 200, await j.renameNote(rel, { title, fileName, folder }, hash));
         }
         case "/api/task/status": {
           const st = str(body.status, "status") as TaskStatus;
@@ -632,6 +667,13 @@ export async function startServer(
           // La instantánea es lo que `editDatabase` sobrescribió de verdad (no una foto previa, que otra escritura podría adelantar).
           const rec = await undo.commit({ before: done.before }, { sessionId: "ui", tool: `database.${op.op}`, summary: done.summary });
           return send(res, 200, { undoId: rec.id, summary: done.summary, affected: done.affected });
+        }
+        case "/api/database/meta": {
+          const title = body.title !== undefined ? str(body.title, "title") : undefined;
+          const icon = body.icon === undefined ? undefined : body.icon === null ? null : typeof body.icon === "string" ? body.icon : (() => { throw new HttpError(400, "«icon» debe ser texto o null"); })();
+          const source = body.source === undefined ? undefined : (body.source && typeof body.source === "object" && !Array.isArray(body.source) ? body.source as Record<string, unknown> : (() => { throw new HttpError(400, "«source» debe ser un objeto"); })());
+          const n = await j.updateDatabaseMeta(userPath(body.path), { title, icon, source });
+          return send(res, 200, { path: n.path, title: n.title });
         }
         case "/api/project/create": { const n = await j.createProject(str(body.title, "title")); return send(res, 200, { path: n.path }); }
         case "/api/project/checkpoint": { await j.addCheckpoint(userPath(body.path), str(body.text, "text")); return send(res, 200, { ok: true }); }

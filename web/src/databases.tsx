@@ -6,15 +6,17 @@ import { isMobile } from "./role.ts";
 import { api, lsGet, lsSet } from "./api.ts";
 import { askConfirm, askText } from "./dialogs.tsx";
 import { useApi } from "./hooks.ts";
+import { AddPropertyButton } from "./db-add-property.tsx";
 import { enc, READONLY } from "./db-common.ts";
 import type { Result } from "./db-common.ts";
+import { CustomizePanel } from "./db-customize.tsx";
 import { ViewPanel } from "./db-panel.tsx";
 import { Board, List, Table } from "./db-views.tsx";
 import type { Guard, Say } from "./db-schema.ts";
 import type { ResultRow, SchemaOp, View } from "./types.ts";
 
 type Go = (route: string) => void;
-interface DbListItem { path: string; title: string; rows: number; views: View[]; warnings: string[] }
+interface DbListItem { path: string; title: string; icon?: string; rows: number; views: View[]; warnings: string[] }
 
 const TEMPLATES: { id: string; label: string }[] = [
   { id: "vacía", label: "Vacía" }, { id: "tareas", label: "Tareas" }, { id: "proyectos", label: "Proyectos" }, { id: "libros", label: "Libros" },
@@ -50,7 +52,7 @@ export function DatabasesList({ rev, go, guard }: { rev: number; go: Go; guard: 
       <div class="cards">
         {(data ?? []).map((d) => (
           <a key={d.path} class="card dbcard" href={`#/bases/${enc(d.path)}`}>
-            <b>{d.title}</b>
+            <b>{d.icon && <span class="db-head-icon" aria-hidden="true">{d.icon}</span>}{d.title}</b>
             <span class="muted small">{d.rows === 1 ? "1 fila" : `${d.rows} filas`} · {d.views.length === 1 ? "1 vista" : `${d.views.length} vistas`}</span>
             {d.warnings.length > 0 && <span class="chip bad">{d.warnings.length} aviso{d.warnings.length > 1 ? "s" : ""}</span>}
           </a>
@@ -66,6 +68,7 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
   const [viewName, setViewName] = useState<string | null>(lsGet(`db.view.${path}`));
   const [draft, setDraft] = useState<View | null>(null);
   const [panel, setPanel] = useState(false);
+  const [custom, setCustom] = useState(false);
   const [res, setRes] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -96,16 +99,20 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
   const setCell = (row: ResultRow, key: string, value: unknown) =>
     guard(() => api("POST", "/api/note/props", { path: row.path, props: { [key]: value === "" || (Array.isArray(value) && !value.length) ? null : value } }));
 
-  const addRow = async () => {
-    const t = title.trim();
-    if (!t) return;
+  const addRow = async (customTitle?: string, extraProps?: Record<string, unknown>): Promise<boolean> => {
+    const t = (customTitle ?? title).trim();
+    if (!t) return false;
     // Lo que el filtro exige se rellena solo: así la fila nueva no desaparece al crearla.
     const props: Record<string, unknown> = {};
     for (const f of view.filter) if (f.op === "is" && f.value !== undefined && !READONLY.has(f.prop)) props[f.prop] = f.value;
-    const firstLane = db.available.find((c) => c.key === view.group)?.options?.[0]?.name;
-    if (kind === "board" && view.group && !READONLY.has(view.group) && props[view.group] === undefined && firstLane) props[view.group] = firstLane;
+    if (extraProps) Object.assign(props, extraProps);
+    else {
+      const firstLane = db.available.find((c) => c.key === view.group)?.options?.[0]?.name;
+      if (kind === "board" && view.group && !READONLY.has(view.group) && props[view.group] === undefined && firstLane) props[view.group] = firstLane;
+    }
     const r = await guard(() => api<{ path: string }>("POST", "/api/database/row", { path, title: t, props }));
-    if (r) setTitle("");
+    if (r && customTitle === undefined) setTitle("");
+    return !!r;
   };
 
   const saveView = async () => {
@@ -147,10 +154,10 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
   return (
     <div class="page wide">
       <header class="page-head">
-        <h1>{db.title}</h1>
+        <h1>{db.icon && <span class="db-head-icon" aria-hidden="true">{db.icon}</span>}{db.title}</h1>
         <div class="row">
-          <a class="chip link" href={`#/nota/${enc(path)}`} title="Ver y editar el fichero de la base">Definición</a>
-          <button onClick={() => setPanel(!panel)} aria-expanded={panel}>Filtros y orden{view.filter.length + view.sort.length ? ` · ${view.filter.length + view.sort.length}` : ""}</button>
+          {!isMobile() && <button type="button" onClick={() => setCustom(!custom)} aria-expanded={custom}>Personalizar</button>}
+          <button type="button" onClick={() => setPanel(!panel)} aria-expanded={panel}>Filtros y orden{view.filter.length + view.sort.length ? ` · ${view.filter.length + view.sort.length}` : ""}</button>
         </div>
       </header>
 
@@ -162,6 +169,7 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
         <div class="seg" role="tablist" aria-label="Tipo de vista">
           {(["table", "board", "list"] as const).map((k) => <button key={k} role="tab" aria-selected={kind === k} class={kind === k ? "on" : ""} onClick={() => edit({ kind: k })}>{{ table: "Tabla", board: "Tablero", list: "Lista" }[k]}</button>)}
         </div>
+        {menu && <AddPropertyButton ctx={menu} variant="btn" labelText="+ Columna" />}
         {draft ? (
           <>
             <span class="chip accent">Cambios sin guardar</span>
@@ -172,6 +180,7 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
       </div>
 
       {db.warnings.length > 0 && <div class="notice warn" role="status">{db.warnings.map((w) => <div key={w}>{w}</div>)}</div>}
+      {custom && menu && <CustomizePanel db={db} view={view} edit={edit} menu={menu} path={path} onClose={() => setCustom(false)} />}
       {panel && <ViewPanel view={view} available={db.available} edit={edit} />}
 
       {isMobile()
@@ -182,9 +191,9 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
           <span class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</span>
         </form>}
 
-      {kind === "table" && <Table res={res} view={view} sortBy={sortBy} setCell={setCell} menu={menu} />}
-      {kind === "list" && <List res={res} />}
-      {kind === "board" && <Board res={res} view={view} available={db.available} edit={edit} setCell={setCell} />}
+      {kind === "table" && <Table res={res} view={view} sortBy={sortBy} setCell={setCell} menu={menu} addRow={addRow} />}
+      {kind === "list" && <List res={res} setCell={setCell} menu={menu} addRow={addRow} />}
+      {kind === "board" && <Board res={res} view={view} available={db.available} edit={edit} setCell={setCell} menu={menu} addRow={addRow} />}
     </div>
   );
 }

@@ -1,7 +1,15 @@
 // Utilidades y tipos compartidos por las piezas de las bases: databases.tsx, db-cells.tsx, db-views.tsx y db-panel.tsx. Sin JSX.
 import type { Column, PropType, QueryResult, View } from "./types.ts";
 
-interface Meta { path: string; title: string; views: View[]; warnings: string[]; available: Column[] }
+export interface Meta {
+  path: string;
+  title: string;
+  icon?: string;
+  source?: { folder: string | null; type: string | null; tags: string[] };
+  views: View[];
+  warnings: string[];
+  available: Column[];
+}
 export type Result = QueryResult & { database: Meta };
 
 export const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");

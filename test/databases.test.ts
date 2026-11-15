@@ -422,3 +422,25 @@ test("planDatabaseEdit no escribe y devuelve los mismos paths/affected que luego
     j.close();
   } finally { cleanup(); }
 });
+
+test("bases: updateDatabaseMeta actualiza título, icono y source sin abrir el Markdown y valida entradas", async () => {
+  const { j, cleanup, read, db } = await setupLibros();
+  try {
+    await j.updateDatabaseMeta(db, {
+      title: "Biblioteca",
+      icon: "📚",
+      source: { folder: "Lecturas/", type: null, tags: ["libro", "favorito"] },
+    });
+    const q = j.queryDatabase(db);
+    assert.equal(q.database.title, "Biblioteca");
+    assert.equal(q.database.icon, "📚");
+    assert.deepEqual(q.database.source, { folder: "Lecturas/", type: null, tags: ["libro", "favorito"] });
+    const raw = read(db);
+    assert.match(raw, /^# Biblioteca/m);
+    assert.match(raw, /icon: 📚/);
+
+    await assert.rejects(() => j.updateDatabaseMeta(db, { title: "   " }), /título|vacío/i);
+    await assert.rejects(() => j.updateDatabaseMeta(db, { source: { folder: "../fuera", type: null, tags: [] } }), /carpeta|inválid/i);
+    j.close();
+  } finally { cleanup(); }
+});

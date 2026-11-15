@@ -244,3 +244,68 @@ test("API bases: esquema — petición inválida 400, base inexistente 404", asy
     }
   } finally { await s.done(); }
 });
+
+test("API notas: POST /api/note/rename renombra título/archivo, detecta 409 y actualiza referencias", async () => {
+  const s = await setup();
+  try {
+    const n1 = (await s.call("POST", "/api/note/create", { title: "Apunte uno", body: "# Apunte uno\n\nHola\n" })).json;
+    const n2 = (await s.call("POST", "/api/note/create", { title: "Indice", body: "Ver [[Apunte uno]]\n" })).json;
+    const cur = (await s.call("GET", "/api/note?path=" + encodeURIComponent(n1.path))).json;
+
+    const r = await s.call("POST", "/api/note/rename", {
+      path: n1.path,
+      title: "Apunte definitivo",
+      fileName: "apunte-definitivo",
+      folder: "Notas/Temas",
+      hash: cur.hash,
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.path, "Notas/Temas/apunte-definitivo.md");
+    assert.equal(r.json.title, "Apunte definitivo");
+
+    // Hash antiguo o ruta anterior ya no valen
+    assert.equal((await s.call("POST", "/api/note/rename", { path: r.json.path, title: "Otro", hash: cur.hash })).status, 409);
+    assert.equal((await s.call("GET", "/api/note?path=" + encodeURIComponent(n1.path))).status, 404);
+
+    // Colisión con otra nota → 409
+    assert.equal((await s.call("POST", "/api/note/rename", { path: r.json.path, title: "Indice", fileName: "Indice", folder: "Notas", hash: r.json.hash })).status, 409);
+
+    const n2After = (await s.call("GET", "/api/note?path=" + encodeURIComponent(n2.path))).json;
+    assert.match(n2After.text, /\[\[apunte-definitivo\]\]|\[\[Notas\/Temas\/apunte-definitivo\]\]/);
+  } finally { await s.done(); }
+});
+
+test("API grafo: devuelve solo notas de conocimiento (note/resource) por defecto", async () => {
+  const s = await setup();
+  try {
+    await s.call("POST", "/api/note/create", { title: "Idea A", type: "note", body: "Ver [[Idea B]] y [[Tarea X]]\n" });
+    await s.call("POST", "/api/note/create", { title: "Idea B", type: "resource", body: "Ref\n" });
+    await s.call("POST", "/api/task/create", { title: "Tarea X" });
+    await s.call("POST", "/api/project/create", { title: "Proyecto Y" });
+    await s.call("POST", "/api/capture", { text: "Captura suelta" });
+
+    const g = (await s.call("GET", "/api/graph")).json as { nodes: { path: string; type: string }[]; edges: [number, number][]; total: number; isolated: number };
+    assert.deepEqual(g.nodes.map((n) => n.path).sort(), ["Notas/Idea A.md", "Recursos/Idea B.md"]);
+    assert.equal(g.edges.length, 1);
+    assert.equal(g.total, 2);
+    assert.equal(g.isolated, 0);
+
+    // Con ?isolated=1 incluye notas sueltas sin enlaces, pero sigue excluyendo tareas/proyectos/capturas
+    const isolated = (await s.call("GET", "/api/graph?isolated=1")).json as { nodes: { path: string; type: string }[] };
+    assert.deepEqual(isolated.nodes.map((n) => n.path).sort(), ["Notas/Idea A.md", "Recursos/Idea B.md"]);
+
+    // Con ?types=all&isolated=1 conserva la opción explícita de ver todos los nodos
+    const all = (await s.call("GET", "/api/graph?types=all&isolated=1")).json as { nodes: { path: string; type: string }[] };
+    assert.ok(all.nodes.some((n) => n.type === "task"));
+    assert.ok(all.nodes.some((n) => n.type === "project"));
+
+    // Bases: POST /api/database/meta actualiza icono, título y source
+    const db = (await s.call("POST", "/api/database/create", { name: "Lecturas", template: "libros" })).json as { path: string };
+    const metaRes = await s.call("POST", "/api/database/meta", { path: db.path, title: "Biblioteca", icon: "📚", source: { folder: "Libros", type: null, tags: ["lectura"] } });
+    assert.equal(metaRes.status, 200);
+    const q = (await s.call("POST", "/api/database/query", { path: db.path })).json as { database: { title: string; icon?: string; source?: { folder: string | null; type: string | null; tags: string[] } } };
+    assert.equal(q.database.title, "Biblioteca");
+    assert.equal(q.database.icon, "📚");
+    assert.deepEqual(q.database.source, { folder: "Libros/", type: null, tags: ["lectura"] });
+  } finally { await s.done(); }
+});

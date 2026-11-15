@@ -17,6 +17,7 @@ async function openMobile(route: string) {
   const j = await Kioku.open({ root });
   const today = new Date().toISOString().slice(0, 10);
   const proj = await j.createProject("Reforma del piso");
+  await j.createNote({ title: "Guía de pintura", type: "note", body: "Colores y rodillos\n" });
   await j.createTask({ title: "Llamar al fontanero", due: today, projectPath: proj.path });
   await j.calendar.create({ id: "evento-ux-0001", title: "Tutoría con Marta", kind: "event", start: `${today}T10:00`, end: `${today}T11:00` });
   const srv = await startServer(j, { port: 0, webDir: WEB, key: KEY });
@@ -49,11 +50,12 @@ test("móvil · formulario de tarea: Guardar queda a la vista sin desplazarse y 
   } finally { await t.done(); }
 });
 
-test("móvil · Notas no lista las actividades del calendario como si fueran notas", { skip: browserSkip, timeout: 60_000 }, async () => {
+test("móvil · Notas lista solo notas de conocimiento (excluye tareas, proyectos y calendario)", { skip: browserSkip, timeout: 60_000 }, async () => {
   const t = await openMobile("/notas");
   try {
-    await until(() => t.p.ev<boolean>(`!![...document.querySelectorAll(".rows a")].find((a) => /fontanero/.test(a.textContent))`), "lista de notas");
-    assert.equal(await t.p.ev<boolean>(`[...document.querySelectorAll(".rows a")].some((a) => /Tutoría/.test(a.textContent))`), false);
+    await until(() => t.p.ev<boolean>(`!![...document.querySelectorAll(".rows a")].find((a) => /Guía de pintura/.test(a.textContent))`), "lista de notas");
+    const titles = await t.p.ev<string[]>(`[...document.querySelectorAll(".rows a")].map((a) => a.textContent ?? "")`);
+    assert.ok(!titles.some((s) => /fontanero|Reforma|Tutoría/.test(s)), `no debe mezclar tareas/proyectos/calendario: ${titles.join(", ")}`);
   } finally { await t.done(); }
 });
 

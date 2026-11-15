@@ -3,9 +3,10 @@
 import { parseBlock, taskEstimate, type CalendarState } from "../../../src/core/calendar.ts";
 import { parseCapture } from "../../../src/core/capture.ts";
 import { availableColumns, matchesSource, parseDatabase, queryRows, type DbRow, type View } from "../../../src/core/database.ts";
+import { applyDatabaseMetaText, applyRowEditToText, planSchemaOp, SchemaError, type SchemaOp } from "../../../src/core/database-schema.ts";
 import { addDays, diffDays, localDate, localTime } from "../../../src/core/dates.ts";
 import type { NoteType, SearchHit, TaskRow, TaskStatus } from "../../../src/core/index.ts";
-import { appendToSection, normKey, parseNote, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "../../../src/core/markdown.ts";
+import { appendToSection, createRenameLinkMapper, normKey, parseNote, planNoteRename, RenamePlanError, renderNote, replaceLeadingHeading, rewriteWikilinks, sectionItems, setFrontmatter, splitFrontmatter } from "../../../src/core/markdown.ts";
 import type { Proposal } from "../../../src/core/proposals.ts";
 import { ApiError, lsGet, lsSet, type ChangeEvent } from "../api.ts";
 import type { AreaRow, CalendarEntry, CalendarProject, CalendarResponse, CalendarTask, CaptureResult, FocusState, NoteInfo, NoteListItem, ResumeCard, Suggestion, TodayView, UndoRecord } from "../types.ts";
@@ -661,6 +662,7 @@ export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: 
       type: e.type,
       mtime: e.mtime,
       tags: e.tags,
+      ...(typeof e.fm.icon === "string" && e.fm.icon ? { icon: e.fm.icon } : {}),
     }));
     return list as T;
   }
@@ -700,7 +702,12 @@ export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: 
   if (route === "/api/note/create" && method === "POST") {
     const title = String(payload.title ?? "").trim() || "Nueva nota";
     const type = (payload.type as NoteType) || "note";
-    const created = createDemoNote(st, { title, type });
+    let folder: string | undefined;
+    if (typeof payload.folder === "string" && payload.folder.trim()) {
+      try { folder = planNoteRename("Notas/tmp.md", "tmp", { folder: payload.folder }).targetDir; }
+      catch (e) { if (e instanceof RenamePlanError) throw new ApiError(400, e.message); throw e; }
+    }
+    const created = createDemoNote(st, { title, type, folder });
     return { path: created.path } as T;
   }
   if (route === "/api/note/props" && method === "POST") {
@@ -711,6 +718,57 @@ export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: 
     const next = setFrontmatter(file.text, props);
     const { hash } = writeNote(st, path, next);
     return { hash } as T;
+  }
+  if (route === "/api/note/rename" && method === "POST") {
+    const rel = String(payload.path ?? "");
+    const entry = entries.find((e) => e.path === rel);
+    if (!entry) throw new ApiError(404, "Nota no encontrada");
+    if (String(payload.hash ?? "") !== entry.hash) {
+      throw new ApiError(409, "La nota ha cambiado desde que se abrió");
+    }
+    if (entry.type === "block" || entry.type === "area") {
+      throw new ApiError(400, "Las actividades y áreas se renombran desde el Calendario");
+    }
+    let plan;
+    try {
+      plan = planNoteRename(
+        rel,
+        entry.title,
+        {
+          title: typeof payload.title === "string" ? payload.title : undefined,
+          fileName: typeof payload.fileName === "string" ? payload.fileName : undefined,
+          folder: typeof payload.folder === "string" ? payload.folder : undefined,
+        },
+        cleanFileName,
+      );
+    } catch (e) {
+      if (e instanceof RenamePlanError) throw new ApiError(400, e.message);
+      throw e;
+    }
+    const { destRel, nextTitle, nextBase } = plan;
+    const titleChanged = typeof payload.title === "string" && nextTitle !== entry.title;
+    if (destRel === rel && !titleChanged) {
+      return { path: rel, title: entry.title, hash: entry.hash, moved: false } as T;
+    }
+    if (destRel !== rel && st.files[destRel]) {
+      throw new ApiError(409, `Ya existe una nota en ${destRel}`);
+    }
+    let nextText = entry.text;
+    if (!entry.fmError && titleChanged) {
+      nextText = setFrontmatter(nextText, { title: nextTitle });
+      nextText = replaceLeadingHeading(nextText, entry.title, nextTitle);
+    }
+    const mapper = createRenameLinkMapper(rel, entry.title, destRel, nextBase, titleChanged ? nextTitle : entry.title);
+    for (const [otherPath, file] of Object.entries(st.files)) {
+      if (otherPath === rel) continue;
+      const rewritten = rewriteWikilinks(file.text, mapper);
+      if (rewritten !== file.text) st.files[otherPath] = { text: rewritten, mtime: Date.now() };
+    }
+    if (destRel !== rel) delete st.files[rel];
+    st.files[destRel] = { text: nextText, mtime: Date.now() };
+    saveState();
+    emitChange("note", destRel);
+    return { path: destRel, title: entry.fmError ? entry.title : nextTitle, hash: simpleHash(nextText), moved: destRel !== rel } as T;
   }
   if (route === "/api/note/delete" && method === "POST") {
     const path = String(payload.path ?? "");
@@ -766,37 +824,70 @@ export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: 
   }
 
   if (route === "/api/graph" && method === "GET") {
-    const visible = entries.filter((e) => e.type !== "block" && e.type !== "area" && e.type !== "database");
-    const idxByPath = new Map<string, number>();
-    visible.forEach((e, i) => idxByPath.set(e.path, i));
-    const edgeSet = new Set<string>();
-    const edges: [number, number][] = [];
-    const degree = new Array<number>(visible.length).fill(0);
-    for (let i = 0; i < visible.length; i++) {
-      for (const l of visible[i].links) {
-        const target = resolveTarget(visible, l.target);
-        if (!target) continue;
-        const j = idxByPath.get(target.path);
-        if (j === undefined || i === j) continue;
-        const a = Math.min(i, j);
-        const b = Math.max(i, j);
-        const key = `${a}:${b}`;
-        if (!edgeSet.has(key)) {
-          edgeSet.add(key);
-          edges.push([a, b]);
-          degree[a]++;
-          degree[b]++;
-        }
+    const focus = params.get("focus");
+    const depth = Math.min(3, Number(params.get("depth") ?? 1));
+    const max = Number(params.get("max") ?? 400);
+    const rawTypes = params.get("types")?.trim();
+    const allowAll = rawTypes === "all";
+    const allowedSet = rawTypes && !allowAll ? new Set(rawTypes.split(",").map((x: string) => x.trim())) : null;
+    const knowledge = entries.filter((e) =>
+      allowAll
+        ? e.type !== "block" && e.type !== "area" && e.type !== "database"
+        : allowedSet
+          ? allowedSet.has(e.type)
+          : e.type === "note" || e.type === "resource",
+    );
+    const byPath = new Map(knowledge.map((e) => [e.path, e]));
+    const adj = new Map<string, Set<string>>();
+    const addAdj = (a: string, b: string) => {
+      if (!adj.has(a)) adj.set(a, new Set());
+      adj.get(a)!.add(b);
+    };
+    const rawEdges: [string, string][] = [];
+    const seenPairs = new Set<string>();
+    for (const src of knowledge) {
+      for (const l of src.links) {
+        const dst = resolveTarget(knowledge, l.target);
+        if (!dst || dst.path === src.path) continue;
+        const pair = src.path < dst.path ? `${src.path}\0${dst.path}` : `${dst.path}\0${src.path}`;
+        if (seenPairs.has(pair)) continue;
+        seenPairs.add(pair);
+        rawEdges.push([src.path, dst.path]);
+        addAdj(src.path, dst.path);
+        addAdj(dst.path, src.path);
       }
     }
-    const nodes = visible.map((e, i) => ({
+    const deg = (p: string) => adj.get(p)?.size ?? 0;
+    const isolated = knowledge.filter((e) => deg(e.path) === 0).length;
+    let visible = knowledge;
+    if (focus && byPath.has(focus)) {
+      const keep = new Set([focus]);
+      let frontier = [focus];
+      for (let d = 0; d < depth; d++) {
+        const next: string[] = [];
+        for (const p of frontier) for (const q of adj.get(p) ?? []) if (!keep.has(q)) { keep.add(q); next.push(q); }
+        frontier = next;
+      }
+      visible = knowledge.filter((e) => keep.has(e.path));
+    } else if (params.get("isolated") === "0") {
+      visible = knowledge.filter((e) => deg(e.path) > 0).sort((a, b) => deg(b.path) - deg(a.path)).slice(0, max);
+    } else {
+      visible = [...knowledge].sort((a, b) => deg(b.path) - deg(a.path)).slice(0, max);
+    }
+    const idxByPath = new Map(visible.map((e, i) => [e.path, i]));
+    const edges: [number, number][] = [];
+    for (const [aPath, bPath] of rawEdges) {
+      const a = idxByPath.get(aPath), b = idxByPath.get(bPath);
+      if (a !== undefined && b !== undefined) edges.push([a, b]);
+    }
+    const nodes = visible.map((e) => ({
       path: e.path,
       title: e.title,
       type: e.type,
-      degree: degree[i],
+      degree: deg(e.path),
+      ...(typeof e.fm.icon === "string" && e.fm.icon ? { icon: e.fm.icon } : {}),
     }));
-    const isolated = nodes.filter((n) => n.degree === 0).length;
-    return { nodes, edges, total: nodes.length, isolated } as T;
+    return { nodes, edges, total: knowledge.length, isolated } as T;
   }
 
   // ── Bases de datos ──
@@ -806,9 +897,11 @@ export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: 
       .filter((r) => r.type === "database")
       .map((r) => {
         const def = parseDatabase(r);
+        const icon = typeof r.fm.icon === "string" && r.fm.icon ? r.fm.icon : undefined;
         return {
           path: def.path,
           title: def.title,
+          ...(icon ? { icon } : {}),
           rows: rows.filter((x) => matchesSource(def, x)).length,
           views: def.views,
           warnings: def.warnings,
@@ -837,6 +930,8 @@ export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: 
       database: {
         path: def.path,
         title: def.title,
+        ...(typeof dbEntry.fm.icon === "string" && dbEntry.fm.icon ? { icon: dbEntry.fm.icon } : {}),
+        source: def.source,
         views: def.views,
         warnings: def.warnings,
         available: availableColumns(def, allRows),
@@ -896,7 +991,72 @@ export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: 
     return { path: created.path } as T;
   }
   if ((route === "/api/database/schema" || route === "/api/database/schema/preview") && method === "POST") {
-    throw new ApiError(400, "Editar las propiedades de una base no está disponible en la demo; instala Kioku para probarlo.");
+    const dbPath = String(payload.path ?? "");
+    const op = payload.op as SchemaOp | undefined;
+    const dbFile = st.files[dbPath];
+    const dbEntry = entries.find((e) => e.path === dbPath && e.type === "database");
+    if (!dbFile || !dbEntry) throw new ApiError(404, "Base de datos no encontrada");
+    if (!op || typeof op !== "object" || typeof op.op !== "string") throw new ApiError(400, "Operación de esquema inválida");
+    const def = parseDatabase({ path: dbEntry.path, title: dbEntry.title, fm: dbEntry.fm });
+    const allRows: DbRow[] = entries.map((e) => ({ path: e.path, title: e.title, type: e.type, tags: e.tags, mtime: e.mtime, fm: e.fm })).filter((r) => matchesSource(def, r));
+    let plan;
+    try {
+      plan = planSchemaOp({ properties: dbEntry.fm.properties, views: dbEntry.fm.views }, allRows, op);
+    } catch (e) {
+      throw new ApiError(400, e instanceof SchemaError ? e.message : String(e));
+    }
+    const touchedRows = new Set(plan.rowEdits.map((e) => e.path).filter((p) => p !== dbPath));
+    if (route === "/api/database/schema/preview") {
+      return { affected: touchedRows.size, summary: plan.summary } as T;
+    }
+    const undoFiles: { path: string; beforeText: string | null; afterHash: string | null }[] = [];
+    const beforeDb = dbFile.text;
+    const afterDb = setFrontmatter(beforeDb, { properties: plan.properties, ...(plan.views ? { views: plan.views } : {}) });
+    if (afterDb !== beforeDb) {
+      writeNote(st, dbPath, afterDb);
+      undoFiles.push({ path: dbPath, beforeText: beforeDb, afterHash: simpleHash(afterDb) });
+    }
+    for (const p of touchedRows) {
+      const f = st.files[p];
+      if (!f) continue;
+      const before = f.text;
+      let after = before;
+      for (const e of plan.rowEdits) if (e.path === p) after = applyRowEditToText(after, e);
+      if (after !== before) {
+        writeNote(st, p, after);
+        undoFiles.push({ path: p, beforeText: before, afterHash: simpleHash(after) });
+      }
+    }
+    const undoId = `demo-schema-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    st.actions.unshift({
+      id: undoId,
+      ts: new Date().toISOString(),
+      sessionId: "demo-ui",
+      tool: `database.${op.op}`,
+      summary: plan.summary,
+      files: undoFiles,
+    });
+    saveState();
+    emitChange("note", dbPath);
+    return { undoId, summary: plan.summary, affected: touchedRows.size } as T;
+  }
+  if (route === "/api/database/meta" && method === "POST") {
+    const dbPath = String(payload.path ?? "");
+    const dbFile = st.files[dbPath];
+    const dbEntry = entries.find((e) => e.path === dbPath && e.type === "database");
+    if (!dbFile || !dbEntry) throw new ApiError(404, "Base de datos no encontrada");
+    try {
+      const updated = applyDatabaseMetaText(dbFile.text, dbPath, {
+        title: payload.title as string | undefined,
+        icon: payload.icon as string | null | undefined,
+        source: payload.source,
+      });
+      if (updated.text !== dbFile.text) writeNote(st, dbPath, updated.text);
+      emitChange("note", dbPath);
+      return { path: dbPath, title: updated.title } as T;
+    } catch (e) {
+      throw new ApiError(400, e instanceof SchemaError ? e.message : String(e));
+    }
   }
   if (route === "/api/database/view" && method === "POST") {
     const dbPath = String(payload.path ?? "");

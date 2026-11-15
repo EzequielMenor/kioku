@@ -12,6 +12,56 @@ export const PROP_TYPES: readonly PropType[] = ["text", "number", "date", "check
 export const FILTER_OPS: readonly FilterOp[] = ["is", "is_not", "contains", "empty", "not_empty", "gt", "lt", "before", "after", "checked"];
 export const VIEW_KINDS: readonly ViewKind[] = ["table", "board", "list"];
 const NOTE_TYPES: readonly string[] = ["note", "task", "project", "journal", "resource", "capture", "database"];
+export const DB_SOURCE_TYPES: readonly NoteType[] = ["note", "task", "project", "journal", "resource", "capture"];
+
+export function normalizeDbSourceInput(
+  cur: DbSource,
+  patch: { folder?: unknown; type?: unknown; tags?: unknown },
+): { source: DbSource; serialized: Record<string, unknown> | null } {
+  let folder = cur.folder;
+  if (patch.folder !== undefined) {
+    if (patch.folder === null || (typeof patch.folder === "string" && !patch.folder.trim())) {
+      folder = null;
+    } else if (typeof patch.folder === "string") {
+      const clean = patch.folder.trim().replace(/^(\.?\/)+|\/+$/g, "");
+      const segs = clean.split(/[\\/]/);
+      if (!clean || segs.some((x) => !x || x.startsWith("."))) throw new Error(`La carpeta de origen «${patch.folder}» no es válida`);
+      folder = `${clean}/`;
+    } else {
+      throw new Error("«source.folder» debe ser texto o null");
+    }
+  }
+  let type = cur.type;
+  if (patch.type !== undefined) {
+    if (patch.type === null || patch.type === "") {
+      type = null;
+    } else if (typeof patch.type === "string" && DB_SOURCE_TYPES.includes(patch.type as NoteType)) {
+      type = patch.type as NoteType;
+    } else {
+      throw new Error(`«source.type» inválido: ${String(patch.type)}`);
+    }
+  }
+  let tags = cur.tags;
+  if (patch.tags !== undefined) {
+    if (!Array.isArray(patch.tags) || !patch.tags.every((x) => typeof x === "string")) throw new Error("«source.tags» debe ser una lista de texto");
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const raw of patch.tags) {
+      const clean = raw.trim().replace(/^#+/, "");
+      if (!clean) continue;
+      const k = clean.normalize("NFC").toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      next.push(clean);
+    }
+    tags = next;
+  }
+  const serialized: Record<string, unknown> = {};
+  if (folder) serialized.folder = folder;
+  if (type) serialized.type = type;
+  if (tags.length) serialized.tags = tags;
+  return { source: { folder, type, tags }, serialized: Object.keys(serialized).length ? serialized : null };
+}
 
 export type OptionColor = "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "red";
 export const OPTION_COLORS: readonly OptionColor[] = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "red"];
