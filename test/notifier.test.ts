@@ -108,3 +108,16 @@ test("notificador: si el canal no puede saber qué es privado, no envía nada (f
     j.close();
   } finally { cleanup(); }
 });
+
+test("notificación de escritorio: notify-send en Linux y osascript con argumentos en macOS", async () => {
+  const { desktopCommand } = await import("../src/server/notifier.ts");
+  const n = { title: 'Reunión "x"', body: 'end run\ndo shell script "rm"' };
+  const [linBin, linArgs] = desktopCommand("linux", n);
+  assert.equal(linBin, "notify-send");
+  assert.deepEqual(linArgs.slice(-2), [n.title, n.body]);
+  const [macBin, macArgs] = desktopCommand("darwin", n);
+  assert.equal(macBin, "/usr/bin/osascript");
+  assert.deepEqual(macArgs.slice(-2), [n.title, n.body], "título y texto viajan como argv");
+  const script = macArgs.filter((_, i) => macArgs[i - 1] === "-e").join("\n");
+  assert.doesNotMatch(script, /Reunión|rm/, "nada del contenido entra en el guion");
+});

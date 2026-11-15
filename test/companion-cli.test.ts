@@ -25,7 +25,7 @@ async function setup(o: { preflight?: CompanionDeps["preflight"]; fetch?: typeof
     ensureDaemon: async () => { log.ensured++; return srv.url; },
     runningDaemon: async () => srv.url,
     fetch: o.fetch ?? fetch,
-    preflight: o.preflight ?? (() => ({ ok: true, python: "/usr/bin/python3" })),
+    preflight: o.preflight ?? (() => ({ ok: true, program: "/usr/bin/python3" })),
     spawnOverlay: () => { log.spawned++; if (o.spawns !== false) { const pid = 40_000 + log.spawned; alive.add(pid); writeFileSync(pidFile, `${pid}\n`); } },
     alive: (pid) => alive.has(pid),
     kill: (pid, sig) => { log.signals.push([pid, sig]); if (sig === "SIGTERM" || sig === "SIGKILL") alive.delete(pid); },
@@ -179,4 +179,13 @@ test("kioku companion: una orden desconocida muestra el uso", async () => {
 test("el script del overlay existe donde la CLI lo busca", async () => {
   const { OVERLAY_SCRIPT } = await import("../src/cli/companion.ts");
   assert.match(readFileSync(OVERLAY_SCRIPT, "utf8"), /Gtk4LayerShell/);
+});
+
+test("macOS: Kio lo dibuja Kioku.app; se busca la del entorno, la que contiene el código o la instalada", async () => {
+  const { macAppPath } = await import("../src/cli/companion.ts");
+  const has = (...apps: string[]) => (p: string) => apps.some((a) => p === `${a}/Contents/MacOS/Kioku`);
+  assert.equal(macAppPath({ KIOKU_MAC_APP: "/X/Kioku.app" }, "/repo", "/Users/e", has("/X/Kioku.app", "/Users/e/Applications/Kioku.app")), "/X/Kioku.app");
+  assert.equal(macAppPath({}, "/Users/e/Applications/Kioku.app/Contents/Resources/app", "/Users/e", has("/Users/e/Applications/Kioku.app")), "/Users/e/Applications/Kioku.app");
+  assert.equal(macAppPath({}, "/repo", "/Users/e", has("/Applications/Kioku.app")), "/Applications/Kioku.app");
+  assert.equal(macAppPath({ KIOKU_MAC_APP: "/nada.app" }, "/repo", "/Users/e", has()), null);
 });

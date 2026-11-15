@@ -1,9 +1,12 @@
-// `kioku companion`: lanza, detiene y alterna a Kio en el escritorio (companion/overlay/kioku_companion.py).
+// `kioku companion`: lanza, detiene y alterna a Kio en el escritorio: en Linux el overlay GTK
+// (companion/overlay/kioku_companion.py); en macOS la app nativa Kioku.app (macos/, SwiftUI/AppKit), que cumple el
+// mismo contrato: escribe `.kioku/companion-overlay.pid`, abre o cierra la conversación con SIGUSR1 y se va con SIGTERM.
 // El overlay es un proceso aparte con una credencial limitada (`.kioku/secret-companion`): conversa, ve el estado y
 // confirma, nada más. Aquí solo se gestiona su ciclo de vida; el modo (visible, concentración, oculto) vive en el
 // daemon y lo comparten el personaje de escritorio y el de dentro de Kioku.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { loadOrCreateCompanionKey, readCompanionKey, revokeCompanionKey } from "../server/key.ts";
 import { ensureDaemon, readRuntime, repoRoot } from "./desktop.ts";
@@ -23,9 +26,9 @@ export interface CompanionDeps {
   /** URL base del daemon solo si ya está en marcha (no arranca nada). */
   runningDaemon(home: string): Promise<string | null>;
   fetch: typeof fetch;
-  /** Comprueba que hay intérprete, GTK4 + layer-shell y sesión gráfica. */
-  preflight(): { ok: true; python: string } | { ok: false; reason: string };
-  spawnOverlay(python: string, home: string): void;
+  /** Comprueba que hay con qué dibujar a Kio: intérprete + GTK4 + layer-shell (Linux) o Kioku.app (macOS). */
+  preflight(): { ok: true; program: string } | { ok: false; reason: string };
+  spawnOverlay(program: string, home: string): void;
   /** ¿Ese pid es un overlay de Kioku vivo? */
   alive(pid: number): boolean;
   kill(pid: number, signal: NodeJS.Signals): void;
@@ -90,7 +93,7 @@ async function start(d: CompanionDeps): Promise<Result> {
   if (view?.mode === "hidden") await setMode(d, c.base, "active");
   const running = overlayPid(d);
   if (running) return { lines: [`Kio ya está en tu escritorio (pid ${running}).`], code: 0 };
-  d.spawnOverlay(pre.python, d.home);
+  d.spawnOverlay(pre.program, d.home);
   for (let i = 0; i < 100; i++) {
     await d.sleep(100);
     const pid = overlayPid(d);
@@ -98,7 +101,7 @@ async function start(d: CompanionDeps): Promise<Result> {
       return { code: 0, lines: [
         `Kio está en tu escritorio (pid ${pid}), conectado al mismo agente que Kioku.`,
         "  clic: abrir la conversación · arrastrar: moverlo · clic derecho: modo concentración",
-        "  kioku companion toggle|focus|panel|stop   (asígnalos a atajos de Hyprland)",
+        process.platform === "darwin" ? "  ⌥⌘K: abrir la conversación · menú de Kioku en la barra superior" : "  kioku companion toggle|focus|panel|stop   (asígnalos a atajos de Hyprland)",
       ] };
     }
   }
@@ -178,8 +181,28 @@ export async function companionCommand(sub: string | undefined, args: string[], 
 
 const MISSING = "Kio necesita GTK4 con gtk4-layer-shell y PyGObject. En Omarchy/Arch: sudo pacman -S --needed gtk4 gtk4-layer-shell python-gobject python-cairo";
 
-function preflight(): { ok: true; python: string } | { ok: false; reason: string } {
-  if (process.platform !== "linux") return { ok: false, reason: "El compañero de escritorio es para Linux con Wayland (Hyprland/Omarchy). En otros sistemas, Kio vive dentro de Kioku." };
+/**
+ * Kioku.app que dibuja a Kio en macOS: `KIOKU_MAC_APP`, la app que contiene este código (si se ejecuta desde ella)
+ * o la instalada en ~/Applications o /Applications.
+ */
+export function macAppPath(env: NodeJS.ProcessEnv = process.env, root = repoRoot, userHome = os.homedir(), exists: (p: string) => boolean = existsSync): string | null {
+  const inside = /^(.*\.app)\/Contents\/Resources\/app$/.exec(root)?.[1];
+  const candidates = [env.KIOKU_MAC_APP, inside, path.join(userHome, "Applications", "Kioku.app"), "/Applications/Kioku.app"];
+  for (const c of candidates) if (c && exists(path.join(c, "Contents", "MacOS", "Kioku"))) return c;
+  return null;
+}
+
+const macExecutable = (app: string) => path.join(app, "Contents", "MacOS", "Kioku");
+
+function preflightMac(): { ok: true; program: string } | { ok: false; reason: string } {
+  const app = macAppPath();
+  if (!app) return { ok: false, reason: "No encuentro Kioku.app (en ~/Applications o /Applications). Instálala con «Instalar Kioku.command» o indica su ruta en KIOKU_MAC_APP." };
+  return { ok: true, program: macExecutable(app) };
+}
+
+function preflight(): { ok: true; program: string } | { ok: false; reason: string } {
+  if (process.platform === "darwin") return preflightMac();
+  if (process.platform !== "linux") return { ok: false, reason: "El compañero de escritorio es para Linux con Wayland (Hyprland/Omarchy) o macOS. En otros sistemas, Kio vive dentro de Kioku." };
   if (!process.env.WAYLAND_DISPLAY) return { ok: false, reason: "No hay sesión Wayland (WAYLAND_DISPLAY): lanza «kioku companion» desde tu escritorio." };
   // El Python del sistema es el que trae PyGObject; uno de pyenv/mise normalmente no.
   const candidates = [process.env.KIOKU_COMPANION_PYTHON, "/usr/bin/python3", "python3"].filter((p): p is string => !!p);
@@ -188,7 +211,7 @@ function preflight(): { ok: true; python: string } | { ok: false; reason: string
     if (path.isAbsolute(python) && !existsSync(python)) continue;
     const r = spawnSync(python, [OVERLAY_SCRIPT, "--check"], { encoding: "utf8", timeout: 20_000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
     if (r.error) continue;
-    if (r.status === 0) return { ok: true, python };
+    if (r.status === 0) return { ok: true, program: python };
     if (r.status === 3) last = "No hay sesión gráfica a la que conectarse: lanza «kioku companion» desde tu escritorio.";
     else if (r.status === 4) last = "Este compositor no ofrece wlr-layer-shell, que Kio necesita para flotar sobre las ventanas (Hyprland, Sway y similares sí).";
     else last = MISSING;
@@ -196,10 +219,16 @@ function preflight(): { ok: true; python: string } | { ok: false; reason: string
   return { ok: false, reason: last };
 }
 
-function alive(pid: number): boolean {
+/** ¿Ese pid es un Kio vivo? En Linux, el script del overlay; en macOS, el ejecutable de Kioku.app (no basta con que exista el pid). */
+export function companionAlive(pid: number, platform: NodeJS.Platform = process.platform): boolean {
+  if (platform === "darwin") {
+    const r = spawnSync("/bin/ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 3000 });
+    return r.status === 0 && /\.app\/Contents\/MacOS\/Kioku(\s|$)/.test(r.stdout.trim());
+  }
   try { return readFileSync(`/proc/${pid}/cmdline`, "utf8").includes("kioku_companion.py"); }
   catch { return false; }
 }
+const alive = (pid: number) => companionAlive(pid);
 
 export function realDeps(home: string): CompanionDeps {
   return {
@@ -210,10 +239,12 @@ export function realDeps(home: string): CompanionDeps {
       try { return (await fetch(`http://127.0.0.1:${rt.port}/api/health`, { signal: AbortSignal.timeout(800) })).ok ? `http://127.0.0.1:${rt.port}` : null; }
       catch { return null; }
     },
-    spawnOverlay(python, h) {
+    spawnOverlay(program, h) {
       mkdirSync(path.join(h, ".kioku"), { recursive: true });
       const log = openSync(path.join(h, ".kioku", "companion.log"), "a");
-      spawn(python, [OVERLAY_SCRIPT], { detached: true, stdio: ["ignore", log, log], env: { ...process.env, KIOKU_HOME: h, PYTHONDONTWRITEBYTECODE: "1" } }).unref();
+      // macOS: el propio ejecutable de Kioku.app (un segundo arranque se retira solo si ya hay uno en marcha).
+      const [bin, args] = process.platform === "darwin" ? [program, []] : [program, [OVERLAY_SCRIPT]];
+      spawn(bin, args, { detached: true, stdio: ["ignore", log, log], env: { ...process.env, KIOKU_HOME: h, PYTHONDONTWRITEBYTECODE: "1" } }).unref();
     },
     kill(pid, signal) { try { process.kill(pid, signal); } catch { /* ya no existe */ } },
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),

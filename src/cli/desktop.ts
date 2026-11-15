@@ -11,8 +11,9 @@ export const QUICK_TITLE = "Kioku Quick";
 export const WORKSPACE_TITLE = "Kioku";
 const SPECIAL = "kioku";
 
-export function kiokuHome(): string {
-  return path.resolve(process.env.KIOKU_HOME ?? path.join(os.homedir(), "Documents", "Kioku"));
+/** Bóveda: `KIOKU_HOME` o `~/Documents/Kioku`. Un `KIOKU_HOME` vacío cuenta como no definido (si no, sería la carpeta actual). */
+export function kiokuHome(env: NodeJS.ProcessEnv = process.env): string {
+  return path.resolve(env.KIOKU_HOME?.trim() || path.join(os.homedir(), "Documents", "Kioku"));
 }
 
 export const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -113,6 +114,7 @@ const toggleSpecial = () => lua(`hl.dispatch(hl.dsp.workspace.toggle_special(${l
 /** Abre/alterna la ventana Quick. En Hyprland se mantiene "caliente" en un workspace especial. */
 export async function toggleQuick(base: string): Promise<string> {
   const url = loginUrl(base, readKey(kiokuHome()), "/quick");
+  if (process.platform === "darwin") { openMac(url); return "ventana abierta"; }
   if (!inHyprland()) {
     const cmd = browserLaunch(url, () => ({ bin: browser(), args: [...browserArgs(url, QUICK_TITLE, "browser-quick"), "--window-size=680,160"] }));
     spawn(cmd.bin, cmd.args, { detached: true, stdio: "ignore" }).unref();
@@ -150,8 +152,14 @@ export async function hideQuick(): Promise<void> {
   if (inHyprland() && (await specialVisible())) toggleSpecial();
 }
 
+/** macOS: el navegador por defecto (la app nativa abre su propia ventana de Kioku al recibir el evento `navigate`). */
+function openMac(url: string): void {
+  spawn("/usr/bin/open", [url], { detached: true, stdio: "ignore" }).unref();
+}
+
 /** Abre el Workspace en `route`; si ya hay ventana, la enfoca (la propia página navega vía evento SSE). */
 export function openWorkspace(base: string, route: string): void {
+  if (process.platform === "darwin") return openMac(loginUrl(base, readKey(kiokuHome()), `/#${route}`));
   if (inHyprland()) {
     const c = findClient(WORKSPACE_TITLE);
     if (c) { lua(`hl.dispatch(hl.dsp.focus({ window = ${luaStr("address:" + c.address)} }))`); return; }
