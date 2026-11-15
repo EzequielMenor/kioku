@@ -1,5 +1,6 @@
 // Editor Markdown (CodeMirror 6). Edita el CUERPO; el frontmatter se conserva intacto aparte.
-import { autocompletion, closeBrackets, type CompletionContext } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, closeBrackets, startCompletion, type CompletionContext } from "@codemirror/autocomplete";
+import { filterSlashCommands, matchSlashTrigger, toggleInlineWrap } from "./editor-commands.ts";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -100,6 +101,45 @@ async function linkCompletions(ctx: CompletionContext) {
   };
 }
 
+function slashCompletions(ctx: CompletionContext) {
+  const line = ctx.state.doc.lineAt(ctx.pos);
+  const trigger = matchSlashTrigger(line.text.slice(0, ctx.pos - line.from), line.from);
+  if (!trigger) return null;
+  const matches = filterSlashCommands(trigger.query);
+  if (!matches.length) return null;
+  return {
+    from: trigger.from,
+    filter: false,
+    options: matches.map((cmd) => ({
+      label: cmd.label,
+      detail: cmd.hint,
+      type: "keyword",
+      apply: (view: EditorView, _c: unknown, from: number, to: number) => {
+        const curLine = view.state.doc.lineAt(from);
+        const linePrefix = curLine.text.slice(0, from - curLine.from);
+        const { insert, cursorOffset, reopenLinks } = cmd.applyText({ linePrefix });
+        view.dispatch({
+          changes: { from, to, insert },
+          selection: { anchor: from + cursorOffset },
+        });
+        if (reopenLinks) setTimeout(() => startCompletion(view), 0);
+      },
+    })),
+  };
+}
+
+function wrapCommand(marker: string) {
+  return (view: EditorView): boolean => {
+    const sel = view.state.selection.main;
+    const res = toggleInlineWrap(view.state.doc.toString(), sel.from, sel.to, marker);
+    view.dispatch({
+      changes: { from: res.from, to: res.to, insert: res.insert },
+      selection: { anchor: res.anchor, head: res.head },
+    });
+    return true;
+  };
+}
+
 export interface EditorHandle {
   getBody(): string;
   setBody(body: string): void;
@@ -137,12 +177,15 @@ export function createEditor(
     state: EditorState.create({
       doc: initial,
       extensions: [
-        placeholder("Escribe aquí…  [[ enlaza otra nota · - [ ] crea una tarea · # título"), history(), drawSelection(), closeBrackets(), EditorView.lineWrapping,
+        placeholder("Escribe aquí…  / atajos y formato · [[ enlaza otra nota · - [ ] crea una tarea"), history(), drawSelection(), closeBrackets(), EditorView.lineWrapping,
         markdown(), syntaxHighlighting(highlight), decorate, doneLines,
-        autocompletion({ override: [linkCompletions], icons: false }),
+        autocompletion({ override: [linkCompletions, slashCompletions], icons: false, interactionDelay: 0 }),
         keymap.of([
+          { key: "Mod-b", run: wrapCommand("**") },
+          { key: "Mod-i", run: wrapCommand("*") },
           { key: "Mod-Enter", run: activate },
           { key: "Mod-s", run: () => { hooks.onSave(); return true; } },
+          { key: "Tab", run: acceptCompletion },
           indentWithTab, ...defaultKeymap, ...historyKeymap,
         ]),
         EditorView.updateListener.of((u) => { if (u.docChanged) hooks.onChange(); }),
