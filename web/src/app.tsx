@@ -6,6 +6,7 @@ import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.t
 import { AssistantManagement } from "./assistant-management.tsx";
 import { Companion, CompanionModeButton } from "./companion.tsx";
 import { ConnectionsView } from "./connections.tsx";
+import { UpdateBanner } from "./update-panel.tsx";
 import { DeviceEnrollment } from "./device-access.tsx";
 import { enrollmentToken } from "./device-access-model.ts";
 import { DatabasesList, DatabaseView } from "./databases.tsx";
@@ -280,6 +281,7 @@ function App() {
       </nav>
       <div class="content">
         {demo && <DemoBar onReset={() => { resetDemoState(); say("Datos de prueba restaurados."); }} onLanding={() => setRoute("/inicio")} />}
+        {!mobile && !demo && !isLanding && <UpdateBanner go={setRoute} />}
         {focus?.active && !mobile && <FocusBar focus={focus} onEnd={() => setOverlay("endfocus")} go={setRoute} />}
         <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{view}</main>
       </div>

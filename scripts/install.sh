@@ -186,6 +186,19 @@ cd "$stage/kioku"
 echo "Preparando la aplicación…"
 private_env npm ci --silent || fail "falló npm ci."
 private_env npm run build:web --silent || fail "falló la compilación de la interfaz."
+if [ -f "$stage/kioku/src/server/build-info.ts" ]; then
+  private_env node --no-warnings --input-type=module -e '
+    import fs from "node:fs";
+    import { extractCommitFromTarGz, readBuildInfo } from "./src/server/build-info.ts";
+    const [tarPath, repo, ref, installDir, binDir] = process.argv.slice(1);
+    const info = readBuildInfo(".", { inDocker: false });
+    const commit = extractCommitFromTarGz(tarPath) || info.commit;
+    fs.writeFileSync("build-info.json", JSON.stringify({
+      version: info.version, commit, ref, repo, channel: "linux-install",
+      installDir, binDir, installedAt: new Date().toISOString(),
+    }));
+  ' "$work/src.tar.gz" "$REPO" "$REF" "$INSTALL_DIR" "$BIN_DIR" 2>/dev/null || true
+fi
 if [ "$sys_node_ok" != 1 ]; then
   mv "$work/node" "$stage/kioku/runtime" || fail "no pude incluir el runtime de Node."
 fi

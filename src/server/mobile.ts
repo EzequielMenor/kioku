@@ -28,7 +28,7 @@ const PROPOSAL_ACTION = /^\/api\/proposals\/[0-9A-Z]{26}\/(?:apply|reject)$/;
 const under = (p: string, base: string) => p === base || p.startsWith(`${base}/`);
 
 export function mobileAllowed(method: string, p: string): boolean {
-  if (method === "GET") return !(under(p, "/api/devices") || under(p, "/api/connections") || under(p, "/api/ai") || (under(p, "/api/assistant") && !ASSISTANT_READS.has(p)) || (under(p, "/api/proposals") && p !== "/api/proposals"));
+  if (method === "GET") return !(under(p, "/api/devices") || under(p, "/api/connections") || under(p, "/api/update") || under(p, "/api/ai") || (under(p, "/api/assistant") && !ASSISTANT_READS.has(p)) || (under(p, "/api/proposals") && p !== "/api/proposals"));
   return WRITES.has(`${method} ${p}`) || (method === "POST" && PROPOSAL_ACTION.test(p));
 }
 
@@ -101,9 +101,9 @@ export function mobileView(route: string, v: unknown, exclude: string[]): unknow
   return clean(v, exclude);
 }
 
-/** Eventos en vivo que le llegan al móvil: cambios de notas visibles; nada de escritorio, asistente ni rutas privadas. */
+/** Eventos en vivo que le llegan al móvil: cambios de notas visibles; nada de escritorio, actualizaciones, asistente ni rutas privadas. */
 export function mobileEvent(ev: { kind?: string; path?: unknown }, exclude: string[]): boolean {
-  if (ev.kind === "navigate" || ev.kind?.startsWith("assistant")) return false;
+  if (ev.kind === "navigate" || ev.kind === "update" || ev.kind?.startsWith("assistant")) return false;
   return !(typeof ev.path === "string" && isPrivate(ev.path, exclude));
 }
 

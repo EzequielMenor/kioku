@@ -5,6 +5,7 @@ import { DEMO_NOTICE, connectionGuide, describeHealth, probeHealth, safeOrigin, 
 import { formatAgo, useOffline } from "./offline/runtime.ts";
 import { isMobile } from "./role.ts";
 import { PrivateDevicesPanel } from "./device-access.tsx";
+import { UpdateSection } from "./update-panel.tsx";
 
 export interface ConnectionsViewProps {
   /** Demostración en el navegador: se muestra como simulación y no se sondea ninguna red. */
@@ -51,6 +52,7 @@ export function ConnectionsView({ demo = false, mobile = isMobile(), children }:
       )}
       {mobile && demo && <p class="muted small">La cola de sincronización no se muestra en la simulación: no hay ordenador al que enviar nada.</p>}
       {!demo && !mobile && <PrivateDevicesPanel />}
+      {!demo && !mobile && <UpdateSection />}
       <details><summary>Ayuda avanzada y acceso antiguo</summary>
       {connectionGuide(mobile).map((s) => (
         <section class="card" key={s.title}>

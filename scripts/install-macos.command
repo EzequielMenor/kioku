@@ -158,9 +158,14 @@ tar -xzf "$work/src.tar.gz" -C "$work/src" --strip-components=1 || fail "el cód
 # 3) Dependencias, interfaz y .app, todo en la carpeta de preparación.
 cd "$work/src"
 echo "Preparando la aplicación…"
+build_commit=""
+if [ -f "src/server/build-info.ts" ]; then
+  build_commit="$(private_env node --no-warnings -e 'import("./src/server/build-info.ts").then(m=>{const c=m.extractCommitFromTarGz(process.argv[1]);if(c)console.log(c);})' "$work/src.tar.gz" 2>/dev/null || true)"
+fi
 private_env npm ci --silent || fail "falló npm ci."
 private_env npm run build:web --silent || fail "falló la compilación de la interfaz."
-private_env node scripts/build-macos-app.mjs --node "$work/node/bin/node" --output "$stage/Kioku.app" || fail "falló al crear la aplicación."
+private_env env KIOKU_BUILD_COMMIT="$build_commit" KIOKU_BUILD_REF="$REF" KIOKU_BUILD_REPO="$REPO" \
+  node --no-warnings scripts/build-macos-app.mjs --node "$work/node/bin/node" --output "$stage/Kioku.app" || fail "falló al crear la aplicación."
 # El Node oficial exige distribuir su licencia y los avisos de terceros (el fichero LICENSE oficial los incluye).
 cp "$work/node/LICENSE" "$stage/Kioku.app/Contents/Resources/runtime/LICENSE" || fail "no pude copiar la licencia de Node."
 for part in Contents/MacOS/Kioku Contents/Resources/runtime/node; do

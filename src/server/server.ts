@@ -23,6 +23,7 @@ import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
 import { keyMatches, newKey, presentedKey, readCompanionKey, readMobileKey } from "./key.ts";
 import { credentialDigest, DeviceError, Devices } from "./devices.ts";
 import { ConnectionError, PrivateConnection, savedRemoteHost, type ConnectionRunner } from "./private-connection.ts";
+import { UpdateError, UpdateManager } from "./updates.ts";
 import { CompanionHub, companionAllowed } from "./companion.ts";
 import { AssistantError } from "../assistant/policy.ts";
 import type { AgentStateOptions } from "../assistant/agent-state.ts";
@@ -156,6 +157,8 @@ export async function startServer(
     assistant?: { engine: AssistantEngine };
     /** Avisos push al móvil: claves VAPID y suscripciones. Sin esto las rutas /api/push responden 404. */
     push?: PushStore;
+    /** Comprobación y descarga de actualizaciones desde la interfaz de escritorio. */
+    updates?: UpdateManager;
     /** Duraciones de los estados transitorios del agente (las pruebas las acortan). */
     agentState?: AgentStateOptions;
   },
@@ -203,6 +206,8 @@ export async function startServer(
   const savedHost = savedRemoteHost(j.vault.root);
   if (savedHost) allowedHosts.add(savedHost);
   const privateConnection = new PrivateConnection(j.vault.root, opts.connectionRunner);
+  const updates = opts.updates ?? new UpdateManager({ home: j.vault.root, appRoot: path.resolve(import.meta.dirname, "..", ".."), autoCheck: false });
+  const unsubUpdates = updates.subscribe((status) => { j.bus.emit("change", { kind: "update", status }); });
   let mobileConfig: string[] = []; // carpetas privadas del móvil (`mobile.json`); se refresca en cada petición del rol `mobile`
   let mobileExclude: string[] = []; // lo anterior + actividades de calendario que apuntan a algo privado o sin resolver
   /** Carpetas privadas más las actividades ocultas según el estado actual del índice (no el de la última petición). */
@@ -300,19 +305,33 @@ export async function startServer(
     const send = role === "mobile" ? (r: http.ServerResponse, status: number, b: unknown) => sendJson(r, status, mobileView(p, b, mobileExclude)) : sendJson;
     const skip = role === "mobile" ? (x: string) => isPrivate(x, mobileExclude) : undefined;
 
+    const isLocalHost = (h: string | undefined) => h === `127.0.0.1:${boundPort}` || h === `localhost:${boundPort}`;
     if (p === "/api/connections/status" && m === "GET") {
       if (role !== "full") throw new HttpError(403, "Las conexiones se gestionan desde el ordenador");
-      const localAdmin = req.headers.host === `127.0.0.1:${boundPort}` || req.headers.host === `localhost:${boundPort}`;
+      const localAdmin = isLocalHost(req.headers.host);
       return sendJson(res, 200, { ...await privateConnection.status(boundPort, allowedHosts), localAdmin });
     }
     if (p === "/api/connections/configure" && m === "POST") {
-      if (role !== "full" || (req.headers.host !== `127.0.0.1:${boundPort}` && req.headers.host !== `localhost:${boundPort}`)) throw new HttpError(403, "Abre Kioku en el propio ordenador para configurar su conexión");
+      if (role !== "full" || !isLocalHost(req.headers.host)) throw new HttpError(403, "Abre Kioku en el propio ordenador para configurar su conexión");
       if (body.confirm !== true) throw new HttpError(400, "Confirma que quieres activar el proxy privado de esta instancia");
       const previous = savedRemoteHost(j.vault.root);
       const host = await privateConnection.configure(boundPort);
       if (previous && !(opts.allowedHosts ?? []).includes(previous)) allowedHosts.delete(previous);
       allowedHosts.add(host);
       return sendJson(res, 200, await privateConnection.status(boundPort, allowedHosts));
+    }
+
+    if (p === "/api/update" || p.startsWith("/api/update/")) {
+      if (role !== "full") throw new HttpError(403, "Las actualizaciones se gestionan desde el ordenador");
+      const localAdmin = isLocalHost(req.headers.host);
+      if (p === "/api/update/status" && m === "GET") return sendJson(res, 200, { ...await updates.status(), localAdmin });
+      if (p === "/api/update/check" && m === "POST") return sendJson(res, 200, { ...await updates.checkNow(), localAdmin });
+      if (p === "/api/update/install" && m === "POST") {
+        if (!localAdmin) throw new HttpError(403, "Abre Kioku en el propio ordenador para actualizarlo");
+        if (body.confirm !== true) throw new HttpError(400, "Confirma que quieres actualizar Kioku ahora");
+        return sendJson(res, 202, { ...await updates.startInstall(), localAdmin });
+      }
+      throw new HttpError(405, "Método no permitido");
     }
 
     if (p === "/api/devices" || p.startsWith("/api/devices/")) {
@@ -846,7 +865,7 @@ export async function startServer(
       } else throw new HttpError(405, "Método no permitido");
     } catch (e) {
       if (res.headersSent) return res.end();
-      if (e instanceof HttpError || e instanceof DeviceError || e instanceof ConnectionError) return sendJson(res, e.status, { error: e.message });
+      if (e instanceof HttpError || e instanceof DeviceError || e instanceof ConnectionError || e instanceof UpdateError) return sendJson(res, e.status, { error: e.message });
       if (e instanceof VaultError) {
         const status = e.code === "not-found" ? 404 : e.code === "conflict" || e.code === "exists" ? 409 : 400;
         return sendJson(res, status, { error: e.message, code: e.code });
@@ -875,6 +894,8 @@ export async function startServer(
   return {
     port, url: `http://127.0.0.1:${port}`, sessions, assistantTools, key, companion: hub,
     close: () => new Promise((resolve) => {
+      unsubUpdates();
+      if (!opts.updates) updates.close();
       clearInterval(keepAlive);
       hub.close();
       for (const c of sseClients.keys()) c.end();

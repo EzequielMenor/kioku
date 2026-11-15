@@ -2,6 +2,7 @@
 // Construcción local: no descarga, instala ni ejecuta el runtime de otro sistema.
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
+import { DEFAULT_REF, DEFAULT_REPO, readBuildInfo } from "../src/server/build-info.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2);
@@ -46,7 +47,20 @@ try {
   for (const name of ["src", "dist/web", "node_modules/yaml"]) {
     cpSync(path.join(root, name), path.join(app, name), { recursive: true, dereference: false });
   }
-  writeFileSync(path.join(app, "package.json"), JSON.stringify({ type: "module", private: true }));
+  const info = readBuildInfo(root, { inDocker: false });
+  const envCommit = process.env.KIOKU_BUILD_COMMIT ?? "";
+  const commit = /^[0-9a-f]{40}$/i.test(envCommit) ? envCommit.toLowerCase() : info.commit;
+  const ref = process.env.KIOKU_BUILD_REF || info.ref || DEFAULT_REF;
+  const repo = process.env.KIOKU_BUILD_REPO || info.repo || DEFAULT_REPO;
+  writeFileSync(path.join(app, "package.json"), JSON.stringify({ type: "module", private: true, version: info.version }));
+  writeFileSync(path.join(app, "build-info.json"), JSON.stringify({
+    version: info.version,
+    commit,
+    ref,
+    repo,
+    channel: "macos-app",
+    installedAt: new Date().toISOString(),
+  }));
   copyFileSync(path.join(root, "scripts/native-macos.mjs"), path.join(app, "scripts/native-macos.mjs"));
   copyFileSync(path.join(root, "LICENSE"), path.join(contents, "Resources", "LICENSE"));
   writeFileSync(path.join(contents, "Info.plist"), '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>CFBundleName</key><string>Kioku</string><key>CFBundleIdentifier</key><string>local.kioku.workspace</string><key>CFBundleExecutable</key><string>Kioku</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>1</string><key>LSMinimumSystemVersion</key><string>13.5</string></dict></plist>\n');

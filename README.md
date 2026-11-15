@@ -62,7 +62,9 @@ Instala Kioku completo con la **gestión de dispositivos por Tailscale**, **Kio*
 
 ### Actualizar
 
-Para actualizar una instalación hecha con el instalador rápido (tanto en **macOS** como en **Linux**), vuelve a ejecutar el mismo comando añadiendo `--yes` para aceptar el reemplazo sin confirmación:
+Desde el propio ordenador (en **macOS** y en **Linux**), Kioku comprueba automáticamente de forma discreta el historial público de `main` en GitHub (sin enviar ningún dato tuyo). Si hay cambios nuevos, muestra un aviso en la parte superior y en **Conexiones y sincronización** (`Actualizaciones`) con dos botones: **Buscar actualizaciones** y **Actualizar ahora**, que descarga la nueva versión, guarda la copia `.anterior-...` de respaldo y reinicia Kioku por ti.
+
+Si prefieres actualizar desde terminal (o tienes una versión anterior al detector), vuelve a ejecutar el mismo instalador añadiendo `--yes` para aceptar el reemplazo sin confirmación:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash -s -- --yes

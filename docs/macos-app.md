@@ -8,7 +8,7 @@ La aplicación reúne el servidor y un runtime de Node: el uso base no exige ins
 curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash
 ```
 
-Opciones útiles: `--yes` (reemplaza una `Kioku.app` previa guardando copia de respaldo sin preguntar) y `--no-open`.
+Opciones útiles: `--yes` (reemplaza una `Kioku.app` previa guardando copia de respaldo sin preguntar) y `--no-open`. Una vez instalada, `Kioku.app` comprueba discretamente en escritorio si hay cambios nuevos en `main` y muestra un aviso con **Actualizar ahora** dentro de la propia interfaz (**Conexiones y sincronización**), guardando la copia `.anterior-...` y reabriendo la app nueva automáticamente.
 
 ## Instalar con doble clic
 
