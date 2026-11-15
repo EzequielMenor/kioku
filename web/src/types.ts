@@ -28,3 +28,6 @@ export interface NoteInfo {
 export type { UndoRecord } from "../../src/assistant/undo.ts";
 export type { SchemaOp } from "../../src/core/database-schema.ts";
 export type { Column, Filter, FilterOp, OptionColor, PropOption, PropType, QueryResult, ResultRow, Sort, View } from "../../src/core/database.ts";
+export type { AgentPhase, AgentSnapshot } from "../../src/assistant/agent-state.ts";
+export type { CompanionMode, CompanionView, MessageView } from "../../src/server/companion.ts";
+export type { EngineInfo } from "../../src/assistant/engine.ts";

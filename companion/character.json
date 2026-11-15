@@ -1,0 +1,22 @@
+{
+  "name": "Kio",
+  "about": "El sello de Kioku con ojos. Esta especificación es la única fuente del personaje: la pintan igual la web (canvas, web/src/companion-face.ts) y el escritorio (Cairo, companion/overlay/face.py). Las medidas son fracciones del lado del personaje.",
+  "body": { "inset": 0.07, "radius": 0.26 },
+  "eyes": { "gap": 0.34, "y": 0.47, "w": 0.15, "h": 0.25, "travel": 0.07 },
+  "blink": { "every": 4.2, "jitter": 2.6, "duration": 0.14 },
+  "ease": 9,
+  "palette": {
+    "dark": { "accent": "#7f9bd6", "ink": "#0c1220", "good": "#8fb573", "bad": "#e8786c", "warn": "#d8a657", "muted": "#5b574f", "paper": "#ebe6dc" },
+    "light": { "accent": "#2f4b8a", "ink": "#ffffff", "good": "#4c7a32", "bad": "#b3342b", "warn": "#b07a1e", "muted": "#a39c8d", "paper": "#1f1b16" }
+  },
+  "states": {
+    "idle":                  { "open": 1.0,  "arc": 0, "tilt": 0,     "raise": 0,    "look": [0, 0],       "motion": "breathe", "badge": null,       "tone": "accent", "body": "accent", "blink": true },
+    "listening":             { "open": 1.22, "arc": 0, "tilt": 0,     "raise": 0,    "look": [0, -0.25],   "motion": "lean",    "badge": "wave",     "tone": "accent", "body": "accent", "blink": true },
+    "thinking":              { "open": 0.86, "arc": 0, "tilt": 0,     "raise": 0,    "look": [0.55, -0.7], "motion": "orbit",   "badge": "dots",     "tone": "paper" , "body": "accent", "blink": false },
+    "responding":            { "open": 0.96, "arc": 0, "tilt": 0.06,  "raise": 0,    "look": [0, 0.15],    "motion": "talk",    "badge": null,       "tone": "accent", "body": "accent", "blink": true },
+    "awaiting_confirmation": { "open": 1.08, "arc": 0, "tilt": 0,     "raise": 0.09, "look": [0, 0],       "motion": "nudge",   "badge": "question", "tone": "warn",   "body": "accent", "blink": true },
+    "success":               { "open": 1.0,  "arc": 1, "tilt": 0,     "raise": 0,    "look": [0, 0],       "motion": "bounce",  "badge": "check",    "tone": "good",   "body": "accent", "blink": false },
+    "error":                 { "open": 0.82, "arc": 0, "tilt": -0.3,  "raise": 0,    "look": [0, 0.35],    "motion": "shake",   "badge": "alert",    "tone": "bad",    "body": "bad",    "blink": false },
+    "quiet":                 { "open": 0.14, "arc": 0, "tilt": 0,     "raise": 0,    "look": [0, 0.2],     "motion": "none",    "badge": null,       "tone": "muted",  "body": "muted",  "blink": false }
+  }
+}

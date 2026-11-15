@@ -79,13 +79,27 @@ function isLocalHost(host: string): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
 }
 
+/**
+ * Red privada de Tailscale: direcciones 100.64.0.0/10 y nombres MagicDNS `*.ts.net`. El tráfico va cifrado por WireGuard
+ * entre equipos del propio usuario, así que ahí se admite `http://` (p. ej. Ollama en otro equipo del tailnet).
+ */
+export function isTailnetHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h.endsWith(".ts.net")) return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  return !!m && Number(m[1]) === 100 && Number(m[2]) >= 64 && Number(m[2]) <= 127 && Number(m[3]) <= 255 && Number(m[4]) <= 255;
+}
+
+/** Destino propio del usuario: esta máquina o un equipo de su tailnet. Solo ahí se admite `http://` y un endpoint sin clave. */
+export const isTrustedHost = (host: string): boolean => isLocalHost(host) || isTailnetHost(host);
+
 function checkBaseUrl(v: unknown, where: string): string {
-  const bad = () => new ModelConfigError(`${where}: «base_url» debe ser una URL https:// (http:// solo hacia localhost) sin usuario ni contraseña`);
+  const bad = () => new ModelConfigError(`${where}: «base_url» debe ser una URL https:// (http:// solo hacia localhost o hacia un equipo de tu tailnet de Tailscale) sin usuario ni contraseña`);
   if (typeof v !== "string" || v.length === 0 || v.length > 300) throw bad();
   let u: URL;
   try { u = new URL(v); } catch { throw bad(); }
   if (u.username || u.password || u.hash) throw bad();
-  if (!(u.protocol === "https:" || (u.protocol === "http:" && isLocalHost(u.hostname)))) throw bad();
+  if (!(u.protocol === "https:" || (u.protocol === "http:" && isTrustedHost(u.hostname)))) throw bad();
   return v;
 }
 
@@ -356,7 +370,7 @@ export async function resolveProviderSecrets(s: ModelSettings, o: { userHome: st
     }
     return { [found.name]: found.value };
   }
-  if (spec.keylessLocal && s.baseUrl && isLocalHost(new URL(s.baseUrl).hostname)) return {};
+  if (spec.keylessLocal && s.baseUrl && isTrustedHost(new URL(s.baseUrl).hostname)) return {};
   throw new ModelConfigError(`Falta la clave de ${s.provider}: define ${spec.keys[0]} en ~/.hermes/.env (o en el entorno con el que arranca Kioku)`);
 }
 
@@ -372,7 +386,7 @@ export interface CredentialStatus {
 export async function describeCredentials(s: ModelSettings, o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<CredentialStatus> {
   const spec = PROVIDERS[s.provider];
   if (!spec || spec.keys.length === 0) return { required: false, names: [], state: "not-needed" };
-  const local = !!(spec.keylessLocal && s.baseUrl && isLocalHost(new URL(s.baseUrl).hostname));
+  const local = !!(spec.keylessLocal && s.baseUrl && isTrustedHost(new URL(s.baseUrl).hostname));
   const base = { required: !local, names: [...spec.keys] };
   const found = await findSecret(spec, o);
   if (found) return badSecret(found.value) ? { ...base, state: "invalid", name: found.name } : { ...base, state: "found", name: found.name, source: found.source };

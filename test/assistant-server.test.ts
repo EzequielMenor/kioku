@@ -223,7 +223,9 @@ test("asistente API (escritorio sin cambios): la conversación viaja tal cual, l
     assert.match(seen[0].id, /^[0-9a-f]{16}$/, "sin prefijo de móvil");
     assert.equal(r.json.actions[0].files[0].beforeText.includes("lentejas"), true, "el escritorio sigue viendo la instantánea previa");
     assert.equal((await s.call("POST", "/api/assistant/ask", { message: "otra" })).status, 200);
-    assert.equal(seen[1].conversation, "default");
+    // Sin identificador explícito se usa la conversación activa del daemon, la que comparten Kioku y el compañero de escritorio.
+    assert.equal(seen[1].conversation, (await s.srv.companion.settings()).conversation);
+    assert.match(seen[1].conversation, /^c-[0-9a-z]{26}$/);
   } finally { await s.done(); }
 });
 

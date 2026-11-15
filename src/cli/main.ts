@@ -8,6 +8,12 @@ import { exportVault, importObsidian, restoreVault } from "../core/portability.t
 import { startServer } from "../server/server.ts";
 import { HermesEngine } from "../assistant/engine.ts";
 import { FakeEngine } from "../assistant/fake-engine.ts";
+import { NativeEngine } from "../assistant/native-engine.ts";
+import { RouterEngine } from "../assistant/router-engine.ts";
+import os from "node:os";
+
+/** El asistente del daemon: Hermes y el motor nativo detrás de un enrutador que elige según la configuración vigente. */
+const assistantEngine = (home: string) => new RouterEngine({ homeDir: home, userHome: os.homedir(), hermes: new HermesEngine({ homeDir: home }), native: new NativeEngine({ homeDir: home }) });
 import type { UndoRecord } from "../assistant/undo.ts";
 import { Notifier, desktopChannel } from "../server/notifier.ts";
 import { PushStore, pushChannel } from "../server/webpush.ts";
@@ -18,6 +24,8 @@ import { loadOrCreateKey, readKey } from "../server/key.ts";
 import { allowedHostsFrom, pairReport, publicHost } from "./pair.ts";
 import { doctorReport, setupGuide } from "./setup.ts";
 import { daemonAlive, ensureDaemon, hideQuick, kiokuHome, loginUrl, openWorkspace, readRuntime, toggleQuick, webDir } from "./desktop.ts";
+import { assistantStatusLines } from "./assistant-status.ts";
+import { companionCommand, realDeps as companionDeps } from "./companion.ts";
 
 const HELP = `kioku — segundo cerebro local-first
 
@@ -38,8 +46,9 @@ Uso: kioku <comando> [args]
   proposals [apply|reject <id>]   Propuestas pendientes de aprobación
   triage                   Genera propuestas para la Bandeja (reglas, sin red)
   ai status|preview|config <url> <modelo> [VAR_CLAVE]|off|triage --yes   IA opcional: tu modelo local o API; ves el payload antes de enviar
-  ask <mensaje>            Habla con el asistente (Hermes en una jaula; lee, organiza y propone)
-  assistant status|actions|undo <id>   Estado del asistente · lo que hizo por su cuenta · deshacer una acción
+  ask <mensaje>            Habla con el asistente (lee, organiza y propone; el modelo es el que tengas configurado)
+  assistant status|actions|undo <id>   Motor, proveedor y modelo activos · lo que hizo por su cuenta · deshacer una acción
+  companion [start|stop|toggle|focus|panel|status]   Kio en tu escritorio (Hyprland): lanzarlo, quitarlo, ocultarlo, concentración, abrir el panel
   reindex                  Reconstruye el índice desde los archivos
   export <archivo.tar.gz>  Copia de seguridad          restore <archivo.tar.gz> <carpeta>
   import-obsidian <ruta> [--yes]   Copia (solo lectura del origen) un vault de Obsidian
@@ -132,7 +141,7 @@ async function main(): Promise<void> {
       const allowedHosts = allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS);
       const pub = publicHost();
       if (pub && !allowedHosts.includes(pub)) allowedHosts.push(pub);
-      const srv = await startServer(j, { push, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : new HermesEngine({ homeDir: home }) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const srv = await startServer(j, { push, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : assistantEngine(home) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
       const rtFile = path.join(home, ".kioku", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`Kioku escuchando en ${srv.url}  (datos: ${home})`);
@@ -184,8 +193,7 @@ async function main(): Promise<void> {
       guardHome(home);
       const [sub, id] = args;
       if (sub === "status" || !sub) {
-        const av = await new HermesEngine({ homeDir: home }).available();
-        console.log(av.ok ? "Asistente: listo (Hermes en jaula bwrap)" : `Asistente: no disponible — ${av.reason}`);
+        (await assistantStatusLines(assistantEngine(home))).forEach((l) => console.log(l));
       } else if (sub === "actions") {
         const list = await api<UndoRecord[]>(await ensureDaemon(home), "GET", "/api/assistant/actions");
         if (!list.length) console.log("El asistente aún no ha hecho cambios por su cuenta.");
@@ -195,6 +203,13 @@ async function main(): Promise<void> {
         const r = await api<UndoRecord>(await ensureDaemon(home), "POST", "/api/assistant/undo", { id });
         console.log(`✓ Deshecho: ${r.summary}`);
       } else die("uso: kioku assistant status|actions|undo <id>");
+      return;
+    }
+    case "companion": {
+      guardHome(home);
+      const r = await companionCommand(args[0], args.slice(1), companionDeps(home));
+      r.lines.forEach((l) => console.log(l));
+      process.exitCode = r.code;
       return;
     }
     case "status": {
