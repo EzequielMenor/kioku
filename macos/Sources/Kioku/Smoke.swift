@@ -35,7 +35,7 @@ final class SmokeDriver {
 
     private func run(_ c: JSON, name: String) {
         guard let app else { return }
-        let m = app.model
+        let m: AppModel = app.model
         var result = "ok"
         switch c["do"].string ?? "" {
         case "open": app.openPanel()

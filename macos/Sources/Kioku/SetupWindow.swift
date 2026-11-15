@@ -176,7 +176,7 @@ struct SetupView: View {
                 if !setup.daemonRunning && setup.legacy.isEmpty { Button("Arrancar solo ahora") { setup.startDaemonOnce() } }
             }
             row(ok: setup.hasModel, title: "Ollama con \(setup.model)", detail: ollamaDetail) {
-                if setup.ollama == .unreachable {
+                if setup.ollama == Ollama.Probe.unreachable {
                     Button("Descargar Ollama") { NSWorkspace.shared.open(URL(string: "https://ollama.com/download")!) }
                 } else if setup.ollama?.reachable == true && !setup.hasModel {
                     if setup.pulling != nil { Button("Cancelar") { setup.cancelPull() } } else { Button("Descargar el modelo") { setup.pullModel() } }

@@ -370,11 +370,13 @@ final class ConversationController {
 
     init(model: AppModel, actions: PanelActions) {
         self.model = model
-        panel = FloatingPanel(size: NSSize(width: Geometry.panelW, height: Geometry.panelH), allowsKey: true)
-        panel.hasShadow = true
-        panel.becomesKeyOnlyIfNeeded = false
-        host = NSHostingView(rootView: ConversationView(model: model, actions: actions))
-        panel.contentView = host
+        let p = FloatingPanel(size: NSSize(width: Geometry.panelW, height: Geometry.panelH), allowsKey: true)
+        p.hasShadow = true
+        p.becomesKeyOnlyIfNeeded = false
+        let h = NSHostingView(rootView: ConversationView(model: model, actions: actions))
+        p.contentView = h
+        panel = p
+        host = h
     }
 
     var isOpen: Bool { panel.isVisible }

@@ -181,12 +181,12 @@ final class KioView: NSView {
 
     private func schedule() {
         timer?.invalidate()
-        let t = Timer(timeInterval: face.interval, repeats: true) { [weak self] _ in self?.tick() }
+        let t = Timer(timeInterval: face.interval, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
-    private func tick() {
+    @objc private func tick() {
         needsDisplay = true
         if !face.animated && KioView.now > awakeUntil { timer?.invalidate(); timer = nil; return }
         if let t = timer, abs(t.timeInterval - face.interval) > 0.001 { schedule() }
@@ -273,10 +273,12 @@ final class KioController {
 
     init(model: AppModel, spec: CharacterSpec) {
         self.model = model
-        view = KioView(face: Face(spec: spec, theme: Appearance.theme, reducedMotion: Appearance.reduceMotion))
+        let kioView = KioView(face: Face(spec: spec, theme: Appearance.theme, reducedMotion: Appearance.reduceMotion))
         let b = Geometry.box(Geometry.char)
-        panel = FloatingPanel(size: NSSize(width: b, height: b))
-        panel.contentView = view
+        let kioPanel = FloatingPanel(size: NSSize(width: b, height: b))
+        kioPanel.contentView = kioView
+        view = kioView
+        panel = kioPanel
         peek = FloatingPanel(size: NSSize(width: 160, height: 32))
         view.onClick = { [weak self] in self?.onClick() }
         view.onRightClick = { [weak self] in

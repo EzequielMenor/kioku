@@ -73,7 +73,7 @@ final class LineStream: NSObject, URLSessionDataDelegate {
     func cancel() { task?.cancel(); session?.invalidateAndCancel() }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
-                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+                    completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         completionHandler(onResponse(status) ? .allow : .cancel)
     }

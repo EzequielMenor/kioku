@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var fromLogin = false
     private var setupShownOnce = false
 
+    nonisolated override init() { super.init() }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let args = CommandLine.arguments
         fromLogin = args.contains("--login")
@@ -244,5 +246,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         else { showSetup() }  // sustituir un arranque antiguo se confirma en la ventana
     }
 
-    static let fallbackSpec = #"{"body":{"inset":0.07,"radius":0.26},"eyes":{"gap":0.34,"y":0.47,"w":0.15,"h":0.25,"travel":0.07},"blink":{"every":4.2,"jitter":2.6,"duration":0.14},"ease":9,"palette":{"dark":{"accent":"#7f9bd6","ink":"#0c1220","good":"#8fb573","bad":"#e8786c","warn":"#d8a657","muted":"#5b574f","paper":"#ebe6dc"},"light":{"accent":"#2f4b8a","ink":"#ffffff","good":"#4c7a32","bad":"#b3342b","warn":"#b07a1e","muted":"#a39c8d","paper":"#1f1b16"}},"states":{"idle":{"open":1,"arc":0,"tilt":0,"raise":0,"look":[0,0],"motion":"breathe","badge":null,"tone":"accent","body":"accent","blink":true},"quiet":{"open":0.14,"arc":0,"tilt":0,"raise":0,"look":[0,0.2],"motion":"none","badge":null,"tone":"muted","body":"muted","blink":false}}}"#
+    static let fallbackSpec = ##"{"body":{"inset":0.07,"radius":0.26},"eyes":{"gap":0.34,"y":0.47,"w":0.15,"h":0.25,"travel":0.07},"blink":{"every":4.2,"jitter":2.6,"duration":0.14},"ease":9,"palette":{"dark":{"accent":"#7f9bd6","ink":"#0c1220","good":"#8fb573","bad":"#e8786c","warn":"#d8a657","muted":"#5b574f","paper":"#ebe6dc"},"light":{"accent":"#2f4b8a","ink":"#ffffff","good":"#4c7a32","bad":"#b3342b","warn":"#b07a1e","muted":"#a39c8d","paper":"#1f1b16"}},"states":{"idle":{"open":1,"arc":0,"tilt":0,"raise":0,"look":[0,0],"motion":"breathe","badge":null,"tone":"accent","body":"accent","blink":true},"quiet":{"open":0.14,"arc":0,"tilt":0,"raise":0,"look":[0,0.2],"motion":"none","badge":null,"tone":"muted","body":"muted","blink":false}}}"##
 }
