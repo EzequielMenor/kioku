@@ -11,6 +11,8 @@ final class AppModel: ObservableObject {
     let client: KiokuClient
     let store: CompanionStore
     @Published private(set) var tick = 0
+    /// Últimos estados por los que pasó Kio (para la prueba de humo, que muestrea cada medio segundo).
+    private(set) var faceHistory: [String] = []
     @Published var acknowledged: Bool
     /// Propuestas con «Confirmar: aplicar» armado (borrar, mover o reemplazar piden dos pulsaciones).
     @Published var confirming: Set<String> = []
@@ -27,6 +29,8 @@ final class AppModel: ObservableObject {
         store.onChange = { [weak self] in
             guard let self else { return }
             self.tick &+= 1
+            let face = self.store.faceState
+            if self.faceHistory.last != face { self.faceHistory.append(face); if self.faceHistory.count > 40 { self.faceHistory.removeFirst() } }
             self.onStoreChange()
         }
     }

@@ -91,7 +91,7 @@ final class SmokeDriver {
         let report: [String: Any] = [
             "pid": Int(getpid()),
             "connected": s.connected, "ready": s.ready,
-            "faceState": s.faceState, "agentState": s.agent.state, "agentLabel": opt(s.agent.label), "busy": s.busy,
+            "faceState": s.faceState, "faceHistory": app.model.faceHistory, "agentState": s.agent.state, "agentLabel": opt(s.agent.label), "busy": s.busy,
             "mode": s.companion.mode, "quiet": s.companion.quiet, "webForeground": s.companion.webForeground,
             "overlay": opt(s.companion.overlay.map { [$0.x, $0.y] }),
             "kioVisible": kio.isVisible, "kioFrame": rect(kio.frame), "kioLevel": kio.level.rawValue,

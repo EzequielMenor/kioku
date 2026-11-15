@@ -124,6 +124,7 @@ try {
   const seen = new Set();
   const answered = await until("respuesta", () => { const r = report(); if (r) seen.add(r.faceState); return r?.lastAssistant && !r.busy && r; }, 30_000);
   check("responde desde la app (pregunta → respuesta del agente)", /Bandeja/.test(answered?.lastAssistant ?? ""), answered?.lastAssistant);
+  for (const f of answered?.faceHistory ?? []) seen.add(f);
   check("Kio pasa por pensando/respondiendo", seen.has("thinking") || seen.has("responding"), [...seen].join(","));
   const conv = await api("GET", "/api/assistant/conversation");
   check("la conversación vive en el daemon (la ve la web)", conv.json?.messages?.some((m) => m.surface === "desktop" && /bandeja/i.test(m.text)));
