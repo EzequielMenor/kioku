@@ -17,6 +17,16 @@ class KiokuError(Exception):
         self.status = status
 
 
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
 def kioku_home():
     return os.path.abspath(os.environ.get("KIOKU_HOME") or os.path.join(os.path.expanduser("~"), "Documents", "Kioku"))
 
@@ -45,7 +55,7 @@ class Client:
             return None
         if not 0 < port < 65536:
             return None
-        if pid > 0 and os.path.isdir("/proc") and not os.path.isdir(f"/proc/{pid}"):
+        if pid > 0 and not _pid_alive(pid):
             return None
         return port
 
