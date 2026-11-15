@@ -98,7 +98,12 @@ try {
       r0.kioVisible && r0.kioLevel === 3 && r0.kioAllSpaces && !r0.kioFullScreenAux && !r0.kioCanBecomeKey, JSON.stringify({ level: r0.kioLevel, frame: r0.kioFrame, screen: r0.screen }));
     const [kx, ky, kw] = r0.kioFrame, [sx, sy, sw] = r0.screen;
     check("en la esquina inferior derecha con 24 px de margen", Math.round(sx + sw - (kx + kw)) === 24 && Math.round(ky - sy) === 24, JSON.stringify(r0.kioFrame));
-    check("app de barra de menús (sin Dock) con su menú y ⌥⌘K", r0.activationPolicy === 1 && r0.statusItem && r0.hotKey, JSON.stringify({ policy: r0.activationPolicy, hotKey: r0.hotKey }));
+    // La primera vez se abre «Estado y configuración» (y con ella el Dock); al cerrarla queda solo en la barra de menús.
+    const first = await until("primer vistazo", () => { const r = report(); return r?.setupOpen && r; }, 10_000);
+    check("la primera vez abre «Estado y configuración»", !!first && first.activationPolicy === 0);
+    await cmd({ do: "closeSetup" });
+    const bar = await until("barra de menús", () => { const r = report(); return r && !r.setupOpen && r.activationPolicy === 1 && r; });
+    check("app de barra de menús (sin Dock) con su menú y ⌥⌘K", !!bar && bar.statusItem && bar.hotKey, JSON.stringify({ policy: bar?.activationPolicy ?? report()?.activationPolicy, hotKey: r0.hotKey }));
     check("motor informado: local · qwen3.5:9b", r0.engine?.model === "qwen3.5:9b" && r0.engine?.local === true && r0.engine?.provider === "ollama", JSON.stringify(r0.engine));
   }
   await sleep(600);

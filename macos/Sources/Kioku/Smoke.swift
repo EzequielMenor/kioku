@@ -53,6 +53,7 @@ final class SmokeDriver {
         case "workspace": app.showWorkspace(route: c["route"].string)
         case "closeWorkspace": app.workspace.window?.performClose(nil)
         case "setup": app.showSetup()
+        case "closeSetup": app.setupWindow?.performClose(nil)
         case "snapshot": snapshot(c["name"].string ?? name)
         case "quit": NSApp.terminate(nil)
         default: result = "unknown"
