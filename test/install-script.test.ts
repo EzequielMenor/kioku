@@ -61,15 +61,15 @@ function fixture() {
 
   const fakes: Record<string, string> = {
     uname: sh('case "$1" in -s) echo "${FAKE_UNAME_S:-Linux}";; -m) echo "${FAKE_UNAME_M:-x86_64}";; esac\n'),
-    shasum: sh('for t in /usr/bin/shasum /usr/bin/core_perl/shasum; do [ -x "$t" ] && exec "$t" "$@"; done\necho "shasum no disponible" >&2; exit 127\n'),
-    sha256sum: sh('exec /usr/bin/sha256sum "$@"\n'),
+    shasum: sh('for t in /usr/bin/shasum /usr/bin/core_perl/shasum; do [ -x "$t" ] && exec "$t" "$@"; done\nexec "$FAKE_REAL_NODE" -e "const fs=require(\'fs\'),c=require(\'crypto\');const f=process.argv.at(-1);console.log(c.createHash(\'sha256\').update(fs.readFileSync(f)).digest(\'hex\')+\'  \'+f);" "$@"\n'),
     systemctl: sh('echo "systemctl $*" >> "$FAKE_LOG"\n[ "$FAKE_SYSTEMCTL_FAIL" != 1 ]\n'),
     sudo: sh('echo "PROHIBIDO sudo $*" >> "$FAKE_LOG"\n'),
     mv: sh(`case "$1" in
   *kioku-linux-stage*/kioku) [ "$FAKE_MV_FAIL" = place ] && exit 1;;
   */.local/share/kioku) [ "$FAKE_MV_FAIL" = backup ] && exit 1;;
 esac
-exec /usr/bin/mv "$@"
+for t in /usr/bin/mv /bin/mv; do [ -x "$t" ] && exec "$t" "$@"; done
+echo "mv no disponible" >&2; exit 127
 `),
     curl: sh(`out=""; url=""
 while [ "$#" -gt 0 ]; do case "$1" in -o) out="$2"; shift;; https://*) url="$1";; esac; shift; done
