@@ -234,3 +234,31 @@ Rama preparada a partir de `main` (9076809: JARV-35/36/37/38 y el servidor nativ
 - **Proveedor de IA real.** Sigue sin haber conversación real: Ollama no está instalado en este equipo y el del Mac mini (`mac-mini-de-ezequiel`) está en el tailnet pero rechaza `:11434` (falta `OLLAMA_HOST`). El motor nativo solo se ha probado contra el servidor simulado. Hasta validarlo con el proveedor elegido, **no se da Kioku 1.0 por terminado**.
 - La instalación real (cambio de `ExecStart` del servicio) no se ha hecho.
 - La ventana de Kio no se lanzó en esta pasada (tocaría tu escritorio): los pasos manuales están en el apartado 5 de [upgrade-and-recovery.md](upgrade-and-recovery.md).
+
+## Kioku en macOS (app nativa)
+
+Rama `feat/kioku-macos` (desde `integration/kioku-1.0`). Verificación en el CI de GitHub, workflow `macos-native`, en un **macOS 15 real (Apple Silicon, runner `macos-15`)**. Ejecución verde: run 43740210039 (2026-11-15). Linux no cambia: `npm test` da 812 pruebas (810 superadas, 2 omitidas, 0 fallos) y `npm run typecheck` pasa.
+
+**Qué se ejecutó de verdad en macOS:**
+
+- `swift test` de KiokuKit: 34 pruebas (estado, geometría, cara, rutas, flujo de eventos y Ollama).
+- Pruebas de Node de la parte macOS: launchd, CLI del compañero, paquete, notificaciones y modelo del asistente.
+- Construcción de Kioku.app nativa (Swift + Node incluido) y su inspección: `plutil`, `codesign` ad hoc y Mach-O arm64.
+- Prueba de humo `scripts/macos-smoke.mjs`: **44/44 comprobaciones**, con capturas en el artefacto `kioku-macos-smoke`. Usa un HOME y una bóveda temporales, un daemon arrancado **por launchd** y un Ollama **simulado** (`scripts/mock-ollama.mjs`) que anuncia `qwen3.5:9b` y hace llamadas reales a herramientas. Comprueba:
+  - LaunchAgents válidos, daemon en 47800, relanzamiento tras `kill -9` y `service uninstall`;
+  - credencial limitada (0600), pid, una sola instancia;
+  - primer vistazo con «Estado y configuración» y, después, solo en la barra de menús;
+  - Kio flotante en todos los escritorios, sin tapar la pantalla completa, en la esquina con 24 px;
+  - panel con teclado sin activar la app, pregunta y respuesta, estados pensando/respondiendo, Deshacer;
+  - propuesta de borrado con aviso y doble confirmación;
+  - concentración, oculto y posición compartidos con la web/API, SIGUSR1 y `kioku companion status|panel`;
+  - ventana de Kioku (WKWebView, sin la clave en la URL), el Kio de escritorio se retira con ella delante, el Dock solo con ventanas abiertas y el evento `navigate`;
+  - reconexión tras caer el daemon y salida limpia.
+
+Errores que encontró el CI y ya están corregidos:
+
+- una recarga de la conversación a mitad de turno borraba la respuesta;
+- `undone` llega como fecha;
+- el Dock se quedaba al cerrar la ventana.
+
+**Sin verificar** (solo puede hacerse en el Mac del usuario): Ollama real con `qwen3.5:9b`, la sustitución del agente antiguo con la bóveda real, el arranque en un inicio de sesión real, el uso con ratón y teclado reales (arrastrar, clic en píxeles transparentes, ⌥⌘K), varios monitores y la primera apertura de una app sin firmar con Gatekeeper.
