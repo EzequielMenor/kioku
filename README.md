@@ -55,7 +55,9 @@ Además trae **bases de datos** (tabla, tablero y lista sobre tus propias notas)
 curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash
 ```
 
-- **macOS:** descarga un Node 24+ oficial verificado, compila la app en `~/Applications/Kioku.app` y la abre directamente en **Conexiones y sincronización** (sin necesidad de Node ni Docker previos; la primera vez macOS puede pedir clic derecho > Abrir porque la app no está firmada). También puedes descargar el repositorio y hacer doble clic en **`Instalar Kioku.command`**.
+Instala Kioku completo con la **gestión de dispositivos por Tailscale**, **Kio** integrado en la app y el **motor nativo del agente** (listo para Ollama y modelos locales o compatibles con OpenAI sin Docker).
+
+- **macOS:** descarga un Node 24+ oficial verificado, compila la app en `~/Applications/Kioku.app` y la abre directamente en **Conexiones y sincronización** (sin necesidad de Node ni Docker previos; la primera vez macOS puede pedir clic derecho > Abrir porque la app no está firmada). También puedes descargar el [ZIP de `main`](https://codeload.github.com/EzequielMenor/kioku/zip/main), extraerlo y hacer doble clic en **`Instalar Kioku.command`**.
 - **Linux:** instala en `~/.local/share/kioku`, añade el comando `kioku` en `~/.local/bin` (incluyendo un Node 24 privado si no lo tienes instalado), ofrece activar el servicio de usuario `systemd` y abre **Conexiones y sincronización**.
 
 ### Actualizar
@@ -67,10 +69,10 @@ curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/in
 ```
 
 Qué pasa al actualizar:
-- **Tus datos no se tocan:** mantiene intactas tus notas (`~/Library/Application Support/Kioku/Workspace` en macOS o `${KIOKU_HOME:-~/Documents/Kioku}` en Linux), tus claves y tus dispositivos emparejados.
+- **Tus datos no se tocan:** mantiene intactas tus notas (`~/Library/Application Support/Kioku/Workspace` en macOS o `${KIOKU_HOME:-~/Documents/Kioku}` en Linux), tus claves, tus conversaciones y tus dispositivos emparejados.
 - **Reemplazo seguro:** compila primero la nueva versión en una carpeta temporal y, solo cuando está lista, aparta la anterior como copia de respaldo (`Kioku.app.anterior-...` en macOS o `~/.local/share/kioku.anterior-...` en Linux). Si falla cualquier descarga o comprobación, deja intacta tu versión actual.
 - **Reiniciar la app/servicio si estaba en marcha:** en **macOS**, cierra `Kioku.app` si ya estaba abierta antes de volver a abrirla; en **Linux**, si usabas el servicio automático, reinícialo con `systemctl --user restart kioku.service` (o reinicia tu daemon si lo lanzabas manualmente). Puedes borrar la copia `.anterior-...` cuando compruebes que todo va bien.
-- **Si instalaste desde un clon de Git (`git clone`):** actualiza dentro de tu carpeta con `git pull && npm ci && npm run build:web`.
+- **Si instalaste desde un clon de Git (`git clone`):** actualiza dentro de tu carpeta con `git pull && npm ci && npm run build:web`. Si administras manualmente una unidad `systemd` en Linux, tienes el procedimiento paso a paso con vuelta atrás en [docs/upgrade-and-recovery.md](docs/upgrade-and-recovery.md).
 
 ### Requisitos (si instalas desde código)
 
@@ -78,7 +80,9 @@ Qué pasa al actualizar:
 |---|---|---|
 | **Node.js ≥ 24** | Sí | Ejecuta el servidor y la CLI (usa `node:sqlite`, sin dependencias nativas). En la instalación rápida se descarga automáticamente si falta. |
 | **Chromium, Chrome o Brave** | Recomendado | Abre la interfaz como ventana de aplicación. Sin él puedes abrir la URL del daemon en cualquier navegador. |
-| **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** con `bwrap` (Linux) o Docker Desktop (Mac) | Opcional | Solo para el asistente conversacional; [modelos](docs/assistant-models.md) y [Mac](docs/assistant-macos.md). |
+| **[Ollama](https://ollama.com)** (u otro endpoint OpenAI local) | Opcional | Asistente local directo con el motor nativo, sin Hermes ni Docker ([guía](docs/assistant-local.md)). |
+| **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** con `bwrap` (Linux) o Docker Desktop (Mac) | Opcional | Solo si usas Codex u otras APIs remotas con Hermes; [modelos](docs/assistant-models.md) y [Mac](docs/assistant-macos.md). |
+| **GTK4 + `gtk4-layer-shell` + PyGObject** (solo Linux Wayland) | Opcional | Solo para sacar a **Kio** flotando sobre el escritorio con `kioku companion` ([guía](docs/companion.md)). Dentro de Kioku ya funciona sin instalar nada. |
 
 Desarrollado y probado en **Arch Linux / Omarchy con Hyprland** y validado en **macOS (Apple Silicon e Intel)**. Para la app Mac, consulta la [guía de Mac](docs/macos-app.md). Para el despliegue privado con Dokploy, consulta la [guía de Dokploy](docs/dokploy.md). Windows no está probado.
 
@@ -115,6 +119,18 @@ Desde la propia aplicación, abre **Conexiones y sincronización** en la barra l
 3. **Desconectar** permite revocar el acceso de un dispositivo concreto en cualquier momento.
 
 El ordenador debe permanecer encendido; no hay sincronización garantizada en segundo plano. Más detalles en la [guía de conexiones](docs/connections.md) y en la [API de acceso por dispositivo](docs/device-access-api.md).
+
+### Activar el asistente y a Kio tras instalar
+
+1. **Kio dentro de Kioku:** ya viene activado al instalar tanto en **macOS** como en **Linux** (pulsa `.` o haz clic en su personaje en la esquina inferior derecha).
+2. **Kio flotando en el escritorio (opcional, solo Linux Wayland/Hyprland/Sway):**
+   ```bash
+   sudo pacman -S --needed gtk4 gtk4-layer-shell python-gobject python-cairo
+   kioku companion
+   ```
+   En macOS, GNOME o X11, Kio vive integrado dentro de Kioku ([guía del compañero](docs/companion.md)).
+3. **Modelo local con Ollama (sin Hermes ni Docker):** instala [Ollama](https://ollama.com), descarga un modelo que admita herramientas (por ejemplo `ollama pull qwen3:8b`), abre en Kioku la paleta de comandos (`Ctrl+K` → «Modelo de Hermes») y selecciona **Ollama (local)**. Si Ollama corre en otro equipo de tu red privada, conéctalo por Tailscale con [la guía de modelo local](docs/assistant-local.md) y compruébalo con `kioku assistant status`.
+4. **Codex u otras APIs remotas (opcional):** usa [Hermes Agent](docs/assistant-models.md) (`bwrap` en Linux o [Docker Desktop en Mac](docs/assistant-macos.md)).
 
 ### Dónde se guardan tus datos
 
@@ -290,6 +306,7 @@ Si prefieres hacerlo sin interfaz desde la terminal (`kioku doctor`, `KIOKU_ALLO
 | `context <proyecto>` | JSON con el contexto exacto que recibiría una IA |
 | `proposals [apply\|reject <id>]` · `triage` | Propuestas pendientes · generar propuestas con reglas locales |
 | `ai …` · `ask <mensaje>` · `assistant status\|actions\|undo` | IA opcional y asistente |
+| `companion [start\|stop\|toggle\|focus\|panel\|status]` | Kio flotando en el escritorio (Linux Wayland) |
 | `reindex` | Reconstruye el índice desde los ficheros |
 | `export` · `restore` · `import-obsidian` | Portabilidad |
 | `url` · `pair [--revoke]` | URL de acceso con clave · emparejar (o desemparejar) el móvil |

@@ -1,6 +1,6 @@
 # Aplicación Mac de Kioku
 
-La aplicación reúne el servidor y un runtime de Node: el uso base no exige instalar Node ni gestionar Docker. **El instalador y el arranque nativo pasaron las pruebas automáticas en Mac Intel y Apple Silicon.** Al ser una instalación local sin firma ni notarización de Apple, macOS puede pedir confirmación la primera vez al abrirla. El asistente queda para una etapa posterior.
+La aplicación reúne el servidor y un runtime de Node: el uso base no exige instalar Node ni gestionar Docker. **El instalador y el arranque nativo pasaron las pruebas automáticas en Mac Intel y Apple Silicon.** Incluye **Kio** dentro de la interfaz web y el **motor nativo** para usar un modelo local compatible ([Ollama](assistant-local.md)) sin Docker; usar Hermes Agent vía Docker para proveedores remotos sigue siendo opcional aparte ([guía Mac](assistant-macos.md)). Al ser una instalación local sin firma ni notarización de Apple, macOS puede pedir confirmación la primera vez al abrirla.
 
 ## Instalar con un comando (recomendado)
 
