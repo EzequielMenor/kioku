@@ -30,7 +30,15 @@ sys.path.insert(0, ${JSON.stringify(overlay)})
 from client import Client, KiokuError
 from store import Store, face_state
 c = Client()
-s = Store(c)
+faces = []
+recording = False
+faces_lock = threading.Lock()
+def on_notify():
+    if not recording: return
+    snap = s.snapshot(); f = face_state(snap["agent"], snap["companion"]["quiet"], snap["connected"])
+    with faces_lock:
+        if not faces or faces[-1] != f: faces.append(f)
+s = Store(c, notify=on_notify)
 stop = threading.Event()
 threading.Thread(target=c.events, args=(s.on_event, s.on_status, stop), daemon=True).start()
 def wait(pred, secs=15):
@@ -41,13 +49,8 @@ def wait(pred, secs=15):
         time.sleep(0.02)
     raise SystemExit("tiempo agotado: " + json.dumps(s.snapshot(), default=str)[:600])
 wait(lambda x: x["ready"] and x["connected"])
-faces = []
-def watch():
-    while not stop.is_set():
-        snap = s.snapshot(); f = face_state(snap["agent"], snap["companion"]["quiet"], snap["connected"])
-        if not faces or faces[-1] != f: faces.append(f)
-        time.sleep(0.005)
-threading.Thread(target=watch, daemon=True).start()
+recording = True
+on_notify()
 out = {"role": c.get("/api/session")["role"], "engine": s.snapshot()["engine"]}
 s.send("crea una tarea: regar las plantas")
 snap = wait(lambda x: len(x["msgs"]) == 2 and not x["agent"]["busy"])
@@ -70,7 +73,9 @@ for method, path in (("GET", "/api/search?q=x"), ("POST", "/api/note"), ("GET", 
     try: c.request(method, path, {}); denied[path] = 200
     except KiokuError as e: denied[path] = e.status
 out["denied"] = denied
-out["faces"] = faces
+on_notify()
+with faces_lock:
+    out["faces"] = list(faces)
 stop.set()
 print(json.dumps(out))
 `;
