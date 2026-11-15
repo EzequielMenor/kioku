@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model = AppModel(paths: paths)
         setup = SetupModel(paths: paths, cli: cli, app: model)
         workspace = WorkspaceWindow(paths: paths)
-        workspace.onVisibilityChange = { [weak self] visible in self?.dock(visible: visible) }
+        workspace.onVisibilityChange = { [weak self] visible in self?.dock(workspace: visible) }
         workspace.onProblem = { [weak self] text in self?.model.store.report(text); self?.showSetup() }
 
         let spec = loadSpec()
@@ -155,20 +155,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             w.isReleasedWhenClosed = false
             w.center()
             NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.dock(visible: self?.workspace.isOpen ?? false) }
+                Task { @MainActor in self?.dock(setup: false) }
             }
             setupWindow = w
         }
         setupShownOnce = true
-        dock(visible: true)
+        dock(setup: true)
         setup.refresh()
         NSApp.activate(ignoringOtherApps: true)
         setupWindow?.makeKeyAndOrderFront(nil)
     }
 
     /// En el Dock solo mientras hay una ventana de verdad abierta; si no, vive en la barra de menús.
-    private func dock(visible: Bool) {
-        let anyWindow = visible || workspace.isOpen || (setupWindow?.isVisible ?? false)
+    /// Quien avisa pasa su estado: durante `windowWillClose` la ventana aún cuenta como visible.
+    private func dock(workspace ws: Bool? = nil, setup su: Bool? = nil) {
+        let anyWindow = (ws ?? workspace.isOpen) || (su ?? (setupWindow?.isVisible ?? false))
         NSApp.setActivationPolicy(anyWindow ? .regular : .accessory)
     }
 

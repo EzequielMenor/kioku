@@ -12,6 +12,8 @@ final class FakeAPI: KiokuAPI {
         "engine": ["provider": "ollama", "model": "qwen3.5:9b", "local": true],
     ]
     var conversation: [String: Any] = ["id": "c1", "messages": [[String: Any]]()]
+    var holdConversation = false
+    var held: [() -> Void] = []
 
     func request(_ method: String, _ path: String, body: [String: Any]?, timeout: TimeInterval,
                  completion: @escaping (Result<JSON, KiokuError>) -> Void) {
@@ -19,7 +21,9 @@ final class FakeAPI: KiokuAPI {
         if let fail { completion(.failure(KiokuError(fail))); return }
         switch (method, path) {
         case ("GET", "/api/assistant/state"): completion(.success(JSON(any: state)))
-        case ("GET", "/api/assistant/conversation"): completion(.success(JSON(any: conversation)))
+        case ("GET", "/api/assistant/conversation"):
+            let snapshot = JSON(any: conversation)
+            if holdConversation { held.append { completion(.success(snapshot)) } } else { completion(.success(snapshot)) }
         case ("GET", "/api/assistant/status"): completion(.success(JSON(any: ["ok": true])))
         case ("POST", "/api/assistant/companion"):
             var c = state["companion"] as! [String: Any]
@@ -183,6 +187,34 @@ final class StoreTests: XCTestCase {
             XCTAssertEqual(faceState(agent: agent(st), quiet: false, connected: false), "quiet")
         }
         XCTAssertFalse(KioText.peekStates.contains("idle"))
+    }
+
+    func testUndoneIsTheDaemonsTimestamp() {
+        let m = Message(JSON(any: ["id": "m", "role": "assistant", "text": "",
+                                   "actions": [["id": "a1", "summary": "x", "undone": "2026-11-15T10:00:00Z"], ["id": "a2", "summary": "y"]]]))
+        XCTAssertEqual(m.actions.map(\.undone), [true, false])
+    }
+
+    func testAStaleReloadNeverDropsAMessageThatArrivedMeanwhile() {
+        let (s, api, _) = make()
+        let action: [String: Any] = ["id": "a1", "summary": "Crear tarea"]
+        let first: [String: Any] = ["id": "m1", "role": "assistant", "text": "hecho", "actions": [action]]
+        api.conversation = ["id": "c1", "messages": [first]]
+        s.onStatus(true)
+        XCTAssertEqual(s.messages.count, 1)
+        // A mitad de turno llega «proposals» (recarga), y la respuesta se graba y llega antes que esa recarga.
+        api.holdConversation = true
+        s.onEvent(ev(["kind": "proposals"]))
+        let reply: [String: Any] = ["id": "m2", "role": "assistant", "text": "te dejo una propuesta",
+                                    "proposals": [["id": "p1", "title": "Descartar", "status": "pending", "ops": [["op": "trash", "path": "Bandeja/x.md"]]]]]
+        api.conversation = ["id": "c1", "messages": [first, reply]]
+        s.onEvent(ev(["kind": "assistant.message", "conversation": "c1", "message": reply]))
+        XCTAssertEqual(s.messages.count, 2)
+        api.holdConversation = false
+        let stale = api.held; api.held = []
+        stale.forEach { $0() }
+        XCTAssertEqual(s.messages.map(\.id), ["m1", "m2"])
+        XCTAssertEqual(s.messages.flatMap(\.proposals).filter(\.pending).count, 1)
     }
 
     func testProposalTexts() {

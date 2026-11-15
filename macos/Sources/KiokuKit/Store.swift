@@ -95,7 +95,7 @@ public struct Message: Equatable, Identifiable {
         error = j["error"].bool
         reads = j["reads"].array.compactMap { $0.string }
         actions = j["actions"].array.compactMap { a in
-            a["id"].string.map { ActionRecord(id: $0, summary: a["summary"].string ?? "", undone: a["undone"].bool) }
+            a["id"].string.map { ActionRecord(id: $0, summary: a["summary"].string ?? "", undone: a["undone"].string != nil || a["undone"].bool) }
         }
         proposals = j["proposals"].array.compactMap { p in
             p["id"].string.map { Proposal(id: $0, title: p["title"].string ?? "", rationale: p["rationale"].string ?? "",
@@ -156,6 +156,7 @@ public final class CompanionStore {
     public private(set) var conversation = ""
     public private(set) var messages: [Message] = []
     public private(set) var streaming = ""
+    private var messageEpoch = 0
     public private(set) var sending = false
     public private(set) var problem: String? = nil
 
@@ -174,8 +175,11 @@ public final class CompanionStore {
     // ───────── carga ─────────
 
     private func loadConversation(_ done: @escaping (Bool) -> Void = { _ in }) {
+        let epoch = messageEpoch
         api.get("/api/assistant/conversation") { [weak self] r in
             guard let self else { return }
+            // Si mientras tanto llegó un mensaje por eventos, esta copia ya es vieja: se vuelve a pedir.
+            if epoch != self.messageEpoch { self.loadConversation(done); return }
             if case .success(let c) = r {
                 self.conversation = c["id"].string ?? ""
                 self.messages = c["messages"].array.map(Message.init)
@@ -255,6 +259,7 @@ public final class CompanionStore {
             let m = Message(e["message"])
             if messages.contains(where: { $0.id == m.id }) { return }
             messages.append(m)
+            messageEpoch += 1
             if m.role == "assistant" { streaming = "" } else { sending = false }
             changed()
         case "proposals", "note", "delete":
