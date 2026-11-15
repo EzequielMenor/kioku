@@ -3,7 +3,7 @@
 Kio es la cara del asistente de Kioku. Hay **un solo agente** y dos sitios donde verlo:
 
 - **Dentro de Kioku:** flotando en la esquina de la aplicación, con un panel compacto para hablarle (tecla `.`).
-- **En tu escritorio** (Hyprland/Omarchy): flotando sobre tus ventanas, con el mismo panel.
+- **En tu escritorio**: flotando sobre tus ventanas, con el mismo panel. En Hyprland/Omarchy es el overlay GTK que se describe aquí; en macOS es la app nativa [Kioku.app](macos.md) (⌥⌘K, menú en la barra superior y arranque con launchd).
 
 Los dos comparten **conversación, estado y ajustes**, que viven en el daemon: lo que le preguntas en el escritorio aparece en la pestaña *Asistente*, y si lo pones en concentración en un sitio, lo está en los dos. El modelo que responde es el que tengas configurado ([local con Ollama](assistant-local.md) o [cualquier otro](assistant-models.md)).
 
@@ -108,10 +108,10 @@ Ficheros que usa, todos en `.kioku/` de tu espacio: `secret-companion` (credenci
 
 ## Límites conocidos
 
-- Solo Linux/Wayland con `wlr-layer-shell`. En macOS, GNOME o X11, Kio vive únicamente dentro de Kioku.
+- El overlay GTK es solo para Linux/Wayland con `wlr-layer-shell`. En macOS lo hace [Kioku.app](macos.md). En GNOME o X11, Kio vive únicamente dentro de Kioku.
 - Aparece en la pantalla que el compositor elige al lanzarlo (la que tiene el foco); no hay selector de monitor.
 - El panel es de texto plano: no pinta Markdown ni abre las notas citadas (para eso, `⤢`).
 - Sin voz: el estado «te escucha» corresponde a que estás escribiendo.
-- El diseño del personaje está en `companion/character.json`; la web (`web/src/companion-face.ts`) y el escritorio (`companion/overlay/face.py`) lo pintan igual. Si cambias uno, cambia el otro.
+- El diseño del personaje está en `companion/character.json`. La web (`web/src/companion-face.ts`), el escritorio de Linux (`companion/overlay/face.py`) y el de macOS (`macos/Sources/KiokuKit/Face.swift`) lo pintan igual. Si cambias uno, cambia los otros.
 
 Qué se ha probado y qué no: [validation.md](validation.md).

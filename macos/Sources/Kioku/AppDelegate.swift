@@ -171,6 +171,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func dock(workspace ws: Bool? = nil, setup su: Bool? = nil) {
         let anyWindow = (ws ?? workspace.isOpen) || (su ?? (setupWindow?.isVisible ?? false))
         NSApp.setActivationPolicy(anyWindow ? .regular : .accessory)
+        // Tras el cierre real (siguiente vuelta del bucle) se recalcula con lo que de verdad queda abierto.
+        if !anyWindow || ws == false || su == false {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let still = self.workspace.isOpen || (self.setupWindow?.isVisible ?? false)
+                if !still && NSApp.activationPolicy() != .accessory { NSApp.setActivationPolicy(.accessory) }
+            }
+        }
     }
 
     static func relaunch() {

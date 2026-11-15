@@ -176,7 +176,9 @@ try {
   const fg = await until("Kioku delante", () => { const r = report(); return r?.webForeground && r; }, 15_000);
   check("con Kioku delante el Kio de escritorio se retira", fg && !fg.kioVisible, JSON.stringify({ webForeground: fg?.webForeground, kio: fg?.kioVisible }));
   await cmd({ do: "closeWorkspace" });
-  check("al cerrar la ventana vuelve a la barra de menús", !!(await until("accesoria", () => { const r = report(); return r && !r.workspaceOpen && r.activationPolicy === 1 && r; })));
+  const back = await until("accesoria", () => { const r = report(); return r && !r.workspaceOpen && r.activationPolicy === 1 && r; });
+  const now = report();
+  check("al cerrar la ventana vuelve a la barra de menús", !!back, JSON.stringify({ workspaceOpen: now?.workspaceOpen, setupOpen: now?.setupOpen, policy: now?.activationPolicy }));
   await api("POST", "/api/desktop/open", { route: "/asistente" });
   const nav = await until("navegar", () => { const r = report(); return r?.workspaceOpen && r; }, 15_000);
   check("«abrir en Kioku» (evento navigate del daemon) abre la ventana nativa", !!nav, nav?.workspaceURL);
