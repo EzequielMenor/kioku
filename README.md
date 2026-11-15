@@ -58,6 +58,20 @@ curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/in
 - **macOS:** descarga un Node 24+ oficial verificado, compila la app en `~/Applications/Kioku.app` y la abre directamente en **Conexiones y sincronización** (sin necesidad de Node ni Docker previos; la primera vez macOS puede pedir clic derecho > Abrir porque la app no está firmada). También puedes descargar el repositorio y hacer doble clic en **`Instalar Kioku.command`**.
 - **Linux:** instala en `~/.local/share/kioku`, añade el comando `kioku` en `~/.local/bin` (incluyendo un Node 24 privado si no lo tienes instalado), ofrece activar el servicio de usuario `systemd` y abre **Conexiones y sincronización**.
 
+### Actualizar
+
+Para actualizar una instalación hecha con el instalador rápido (tanto en **macOS** como en **Linux**), vuelve a ejecutar el mismo comando añadiendo `--yes` para aceptar el reemplazo sin confirmación:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash -s -- --yes
+```
+
+Qué pasa al actualizar:
+- **Tus datos no se tocan:** mantiene intactas tus notas (`~/Library/Application Support/Kioku/Workspace` en macOS o `${KIOKU_HOME:-~/Documents/Kioku}` en Linux), tus claves y tus dispositivos emparejados.
+- **Reemplazo seguro:** compila primero la nueva versión en una carpeta temporal y, solo cuando está lista, aparta la anterior como copia de respaldo (`Kioku.app.anterior-...` en macOS o `~/.local/share/kioku.anterior-...` en Linux). Si falla cualquier descarga o comprobación, deja intacta tu versión actual.
+- **Reiniciar la app/servicio si estaba en marcha:** en **macOS**, cierra `Kioku.app` si ya estaba abierta antes de volver a abrirla; en **Linux**, si usabas el servicio automático, reinícialo con `systemctl --user restart kioku.service` (o reinicia tu daemon si lo lanzabas manualmente). Puedes borrar la copia `.anterior-...` cuando compruebes que todo va bien.
+- **Si instalaste desde un clon de Git (`git clone`):** actualiza dentro de tu carpeta con `git pull && npm ci && npm run build:web`.
+
 ### Requisitos (si instalas desde código)
 
 | | Necesario | Para qué |
@@ -257,14 +271,13 @@ Ajustes opcionales en `.kioku/notifications.json`: `{"desktop": true, "eventLead
 
 Kioku es una app web: el móvil la abre desde tu portátil a través de [Tailscale](https://tailscale.com) (una VPN privada entre tus dispositivos; no se abre ningún puerto a Internet). Sirve para **leer, repasar y apuntar** fuera de casa; lo demás (asistente, propuestas, foco, borrar, bases) sigue siendo cosa del portátil. **Sin conexión (0.6):** la app instalada guarda una copia de tus notas (todo menos las carpetas privadas): Hoy, Tareas, Proyectos, Bandeja y Notas se abren sin red con la marca «sincronizado hace X», se puede abrir y buscar una nota, y lo que captures queda pendiente y se envía solo, **una vez**, al abrir la app con red (iOS no deja sincronizar en segundo plano). **Edición y tareas (0.7):** los borradores y cambios de estado se guardan en IndexedDB antes del envío. Si la nota cambió en el portátil, se conserva el original y se crea una copia de conflicto. En «Más» puedes revisar la copia y confirmar el descarte de cambios locales; no se sobrescribe automáticamente. Si el almacenamiento persistente no está disponible, estas escrituras se rechazan. Crear notas y editar otras propiedades sin conexión no está incluido.
 
-1. Instala Tailscale en el portátil y en el móvil (misma cuenta) y activa HTTPS en tu tailnet.
-2. En el portátil: `tailscale serve --bg 47800` (publica `https://<equipo>.<tu-tailnet>.ts.net` hacia el daemon; sigue ligado a `127.0.0.1`).
-3. Dile al daemon qué nombre aceptar: `KIOKU_ALLOWED_HOSTS=<equipo>.<tu-tailnet>.ts.net` (con `kioku service install` hecho **después** de definirla, se conserva) y reinicia el daemon.
-4. **Carpetas privadas (recomendado):** crea `.kioku/mobile.json` con `{"exclude": ["Privado/"]}`; lo que esté ahí no sale del portátil.
-5. `kioku pair` imprime la dirección de emparejamiento (con QR si tienes `qrencode`). Ábrela en Safari y pulsa Compartir → **Añadir a pantalla de inicio**. Si la app instalada pide la clave, pega la dirección en la pantalla «Falta la clave».
-6. Para desemparejar un móvil perdido: `kioku pair --revoke` (surte efecto al instante).
+1. Instala [Tailscale](https://tailscale.com) en el ordenador y en el móvil (misma cuenta) y activa HTTPS en tu tailnet. En Linux, si Tailscale pide permiso para configurarse sin `root`, ejecuta una vez `sudo tailscale set --operator=$USER`.
+2. Abre **Conexiones y sincronización** en el ordenador (desde la barra lateral o con `kioku open /conexiones`) y pulsa **Activar acceso privado** en la tarjeta **Acceso privado**.
+3. **Carpetas privadas (recomendado):** crea `.kioku/mobile.json` con `{"exclude": ["Privado/"]}`; lo que esté ahí no sale del portátil.
+4. En esa misma pantalla pulsa **Añadir dispositivo**, escribe el nombre del móvil o tablet y escanea el **código QR** (o abre el enlace de un solo uso válido 5 minutos). En Safari pulsa Compartir → **Añadir a pantalla de inicio** (o en Chrome → **Instalar aplicación**).
+5. Para desconectar un móvil o tablet concreto: pulsa **Desconectar** junto a ese dispositivo en **Conexiones y sincronización** (surte efecto al instante).
 
-El móvil usa una clave **limitada** (`.kioku/secret-mobile`): puede leer, capturar, marcar tareas y editar notas, pero el daemon le niega borrar, el asistente y el escritorio aunque se fuerce la petición. Ten en cuenta que, tras abrir una nota, su texto está en el teléfono.
+Si prefieres hacerlo sin interfaz desde la terminal (`kioku doctor`, `KIOKU_ALLOWED_HOSTS`, `kioku pair` / `kioku pair --revoke`), tienes la guía paso a paso en [docs/connections.md](docs/connections.md). Cada dispositivo vinculado desde la interfaz recibe su propia credencial móvil limitada; también se conserva el modo clásico con `kioku pair` (`.kioku/secret-mobile`). Ten en cuenta que, tras abrir una nota, su texto queda en la copia del teléfono.
 
 ## Referencia de la CLI
 
