@@ -212,7 +212,7 @@ Entorno: Omarchy, Hyprland 0.56.2 (configuración Lua), GTK 4.24.1, gtk4-layer-s
 - Consumo: ~140 MB de memoria residente y ~1,5 % de una CPU en reposo con el renderizador por defecto de GTK; no se optimizó.
 
 **Pendiente**
-- `test/demo.test.ts` falla por una fecha fija ya pasada; está corregido en `feat/JARV-38-private-setup-ui`, que no se ha fusionado aquí a propósito.
+- ~~`test/demo.test.ts` falla por una fecha fija ya pasada~~: resuelto al integrar con `main`, que ya trae la corrección (`fdde288`, JARV-38).
 - `test/db-schema-browser.test.ts` (borrar opción) es intermitente bajo carga; en esta ejecución pasó.
 - ProjectOS (MCP `projectos`) rechazó el token: el trabajo no se registró en el proyecto JARV.
 
