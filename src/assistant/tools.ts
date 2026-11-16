@@ -422,7 +422,7 @@ const WRITE_DEFS: Def[] = [
       catch (e) { throw new AssistantError("invalid", e instanceof Error ? e.message : String(e)); }
       const to = plan.to;
       return {
-        summary: `Convertir la captura «${path}» en ${kind === "task" ? "tarea" : "nota"} «${to}»`, touches: [path], creates: [to],
+        summary: `Ordenado como ${kind === "task" ? "tarea" : "nota"}: «${to.slice(to.lastIndexOf("/") + 1, -3)}»`, touches: [path], creates: [to],
         ops: async () => {
           const cur = await c.j.vault.read(path);
           return [{ op: "update", path, before: cur.hash, text: plan.rewrite(cur.text) }, { op: "move", from: path, to, before: cur.hash }];
