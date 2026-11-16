@@ -697,3 +697,23 @@ button.small { padding: 4px 9px; font-size: 12px; min-height: 0; }
   .page-head .row:has(.search) { width: 100%; margin-top: 4px; }
   .page-head .row .search { flex: 1 1 100%; }
 }
+
+/* ── Caja única de Kio (Hoy) ── */
+.kio-box { margin: 6px 0 18px; }
+.kio-box form { display: flex; gap: 8px; align-items: flex-end; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 10px 14px; box-shadow: var(--shadow); }
+.kio-box form:focus-within { border-color: var(--accent); }
+.kio-box textarea { flex: 1; border: 0; background: none; resize: none; padding: 4px 0; font-size: 15px; line-height: 1.45; min-height: 44px; box-shadow: none; outline: none; }
+.kio-live { color: var(--muted); margin: 10px 4px 0; }
+.kio-reply { margin-top: 10px; padding: 12px 16px; border-radius: 10px; background: var(--accent-soft); }
+.kio-reply.bad { background: var(--hover); }
+.kio-reply p { margin: 0 0 6px; white-space: pre-wrap; }
+.kio-reply .row { margin-top: 6px; }
+.undo-line { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13.5px; border-bottom: 1px solid var(--line); }
+.undo-line:last-child { border-bottom: 0; }
+.undo-line span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.undo-line.undone span { text-decoration: line-through; color: var(--muted); }
+.kio-recent { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 4px 16px; }
+.sec a.small { font-weight: 400; margin-left: 8px; }
+@media (max-width: 720px) { .kio-box textarea { font-size: 16px; } }
+.kio-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.kio-head h1 { margin: 0; }

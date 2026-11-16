@@ -23,6 +23,7 @@ import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submi
 import type { TaskStatus } from "./offline/store.ts";
 import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
+import { KioBox, KioRecent } from "./kio-box.tsx";
 import { extractFolders, isKnowledgeNote, listKnowledgeNotes, noteFolder } from "./notes-model.ts";
 import { priorityLabel } from "./priority.ts";
 import { OpView } from "./proposal-ops.tsx";
@@ -258,11 +259,11 @@ function App() {
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
     case "conexiones": case "ajustes": view = <SettingsView mobile={mobile} demo={demo} theme={theme} setTheme={setTheme} onManageKio={() => setOverlay("assistant-management")}><ConnectionsView mobile={mobile} demo={demo}>{mobile && <OfflineSection off={off} />}</ConnectionsView></SettingsView>; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
-    default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} onCapture={() => setOverlay("capture")} />;
+    default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} />;
   }
   const activeRoute = head ? SECTION_OF[head] ?? `/${head}` : "/hoy";
   const inbox = counts?.inbox.count ?? 0;
-  const subRoute = head === "nota" ? null : head === "proyecto" ? "/proyectos" : head === "asistente" && arg === "actividad" ? "/asistente/actividad" : `/${head ?? "hoy"}`;
+  const subRoute = head === "nota" ? null : head === "proyecto" ? "/proyectos" : head === "asistente" && arg ? "/asistente/actividad" : `/${head ?? "hoy"}`;
   const tabs = subRoute && ({
     "/notas": [["/notas", "Notas"], ["/bandeja", inbox ? `Sin organizar · ${inbox}` : "Sin organizar"], ["/grafo", "Grafo"]],
     "/tareas": [["/tareas", "Tareas"], ["/proyectos", "Proyectos"]],
@@ -406,7 +407,7 @@ function TodayAgenda({ date, rev }: { date: string; rev: number }) {
   );
 }
 
-function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; guard: Guard; say: Say; onCapture(): void }) {
+function TodayScreen({ rev, go, guard, say }: { rev: number; go: Go; guard: Guard; say: Say }) {
   const { data: t, error } = useApi<TodayView>("/api/today", rev);
   if (error) return <div class="empty">No se pudo cargar: {error}</div>;
   if (!t) return <div class="empty muted">Cargando…</div>;
@@ -416,6 +417,7 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
   return (
     <div class="page narrow">
       <h1>Hoy <span class="muted date">{t.date}</span></h1>
+      <KioBox rev={rev} say={say} />
       {t.suggestion ? (
         <section class="card next">
           <div class="eyebrow">Siguiente paso</div>
@@ -438,18 +440,19 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
           )}
         </section>
       ) : (
-        <section class="card"><div class="eyebrow">Siguiente paso</div><p class="muted">{mobile ? <>No hay tareas abiertas. Toca <b>+</b> para capturar algo.</> : <>No hay tareas abiertas. Captura algo con <kbd>c</kbd> o escribe <code>t …</code>.</>}</p></section>
+        <section class="card"><div class="eyebrow">Siguiente paso</div><p class="muted">No hay tareas abiertas. Escribe una arriba («llamar a Ana mañana») y Kio la apunta.</p></section>
       )}
 
       {(t.overdue > 0 || t.inbox.count > 0 || t.proposals > 0) && (
         <div class="pills">
           {t.overdue > 0 && <a class="pill bad" href="#/tareas">{plural(t.overdue, "tarea vencida", "tareas vencidas")}</a>}
-          {t.inbox.count > 0 && <a class="pill" href="#/bandeja">{plural(t.inbox.count, "captura sin procesar", "capturas sin procesar")}</a>}
+          {t.inbox.count > 0 && <a class="pill" href="#/bandeja">{plural(t.inbox.count, "cosa sin organizar", "cosas sin organizar")}</a>}
           {t.proposals > 0 && <a class="pill accent" href="#/propuestas">{plural(t.proposals, "propuesta por revisar", "propuestas por revisar")}</a>}
         </div>
       )}
 
       {mobile && <TodayAgenda date={t.date} rev={rev} />}
+      <KioRecent rev={rev} say={say} />
 
       {t.resume.length > 0 && (
         <section>
@@ -462,14 +465,12 @@ function TodayScreen({ rev, go, guard, say, onCapture }: { rev: number; go: Go; 
       {nothing && (
         <section class="card welcome">
           <h2>Empieza por aquí</h2>
-          <p class="muted">{mobile ? <>Toca <b>+</b> y escribe sin pensar dónde va:</> : <>Pulsa <kbd>c</kbd> (o usa Quick) y escribe sin pensar dónde va:</>}</p>
+          <p class="muted">Escribe arriba lo que tengas en la cabeza, sin pensar dónde va. Kio lo guarda donde toca y siempre puedes deshacerlo:</p>
           <ul class="plain ex">
-            <li><code>Idea suelta</code> → Bandeja</li>
-            <li><code>t Llamar a Ana !mañana p1</code> → tarea con fecha y prioridad</li>
-            <li><code>t Maquetar home @MiWeb</code> → tarea en un proyecto</li>
-            <li><code>d Usaremos SQLite @MiWeb</code> → decisión registrada en el proyecto</li>
+            <li><code>Llamar a Ana mañana</code> → una tarea con fecha</li>
+            <li><code>Idea: un blog sobre lo que leo</code> → una nota con etiquetas y enlaces</li>
+            <li><code>¿Qué tengo esta semana?</code> → Kio te responde</li>
           </ul>
-          <div class="row"><button class="primary" onClick={onCapture}>Capturar ahora</button><a href="#/proyectos">Crear un proyecto</a></div>
         </section>
       )}
     </div>
@@ -493,9 +494,9 @@ function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; gua
   const mobile = isMobile();
   const props = useApi<Proposal[]>(mobile ? null : "/api/proposals", rev).data ?? [];
   const triaged = new Set(props.map((p) => p.key));
-  const suggest = () => guard(async () => {
-    const r = await api<Proposal[]>("POST", "/api/triage");
-    say(r.length ? `${plural(r.length, "propuesta nueva", "propuestas nuevas")} en Propuestas.` : "Nada nuevo que proponer.");
+  const organize = () => guard(async () => {
+    const r = await api<{ organized: number }>("POST", "/api/assistant/organize");
+    say(r.organized ? `Kio ha ordenado ${plural(r.organized, "cosa", "cosas")}. Puedes deshacerlo en Actividad.` : "Nada que ordenar ahora.");
   });
   const convert = (path: string, kind: "task" | "note") => guard(async () => {
     await api("POST", "/api/capture/convert", { path, kind });
@@ -509,13 +510,11 @@ function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; gua
   return (
     <div class="page narrow">
       <header class="page-head">
-        <h1>Bandeja</h1>
-        {!mobile && <button onClick={() => void suggest()}>Sugerir organización</button>}
+        <h1>Sin organizar</h1>
+        {data && data.length > 0 && <button onClick={() => void organize()}>Ordenar con Kio</button>}
       </header>
-      {mobile
-        ? <p class="muted">Capturas sin procesar. Conviértelas en tarea o nota; organizarlas con sugerencias se hace en el portátil.</p>
-        : <p class="muted">Capturas sin procesar. Nada se mueve solo: las sugerencias llegan como <a href="#/propuestas">propuestas</a> que tú apruebas.</p>}
-      {data && data.length === 0 && <div class="empty">Bandeja vacía.</div>}
+      <p class="muted">Lo que has escrito sin decir dónde va. Kio lo ordena solo cuando está disponible (cada cambio se puede deshacer en <a href="#/asistente/actividad">Actividad</a>), o hazlo tú aquí.</p>
+      {data && data.length === 0 && <div class="empty">Todo ordenado.</div>}
       <ul class="cards">
         {(data ?? []).map((n) => (
           <li key={n.path} class="card">
@@ -1041,7 +1040,7 @@ function Palette(p: { go(r: string): void; onClose(): void; newNote(): void; new
   const cmds: PaletteItem[] = [
     ...visibleNav().map((n) => ({ label: `Ir a ${n.label}`, hint: isMobile() ? undefined : `g ${n.key}`, run: () => p.go(n.route) })),
     { label: "Nueva nota", run: p.newNote },
-    ...(isMobile() ? [] : [{ label: "Nuevo proyecto", run: p.newProject }, { label: "Modelo de Hermes", run: p.manageAssistant }]),
+    ...(isMobile() ? [] : [{ label: "Nuevo proyecto", run: p.newProject }, { label: "Modelo de Kio", run: p.manageAssistant }]),
     { label: "Abrir diario de hoy", run: p.journal },
     ...(isMobile() ? [] : [{ label: p.focusActive ? "Terminar foco" : "Iniciar foco", hint: "f", run: p.toggleFocus }]),
   ];

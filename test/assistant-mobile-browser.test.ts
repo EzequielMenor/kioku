@@ -40,7 +40,7 @@ test("asistente móvil: conversar, revisar, cancelar y aprobar un cambio crític
     await page.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 780, deviceScaleFactor: 2, mobile: true });
     await page.send("Page.navigate", { url: `${srv.url}/?k=${loadOrCreateMobileKey(v.root)}#/asistente` });
     await until(() => page.ev<boolean>(`!!document.querySelector('.notice-card button')`), "aviso de privacidad");
-    assert.match(await page.ev<string>(`document.querySelector('.notice-card').textContent`), /proveedor que configuraste en Hermes/);
+    assert.match(await page.ev<string>(`document.querySelector('.notice-card').textContent`), /se envía a ese servidor/);
     await page.ev(`document.querySelector('.notice-card button').click()`);
     await until(() => page.ev<boolean>(`!document.querySelector('.composer textarea').disabled`), "chat habilitado");
     const fit = await page.ev<boolean>(`(() => { const c = document.querySelector('.composer').getBoundingClientRect(); const n = document.querySelector('.bottomnav').getBoundingClientRect(); return c.bottom <= n.top + 2 && c.left >= 0 && c.right <= innerWidth; })()`);
@@ -68,7 +68,7 @@ test("asistente móvil: conversar, revisar, cancelar y aprobar un cambio crític
     await until(() => page.ev<boolean>(`!!document.querySelector('.composer')`), "volver al chat");
     await page.send("Network.enable");
     await page.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
-    await until(() => page.ev<boolean>(`document.querySelector('.composer textarea').disabled && document.body.textContent.includes('Sin conexión con tu portátil')`), "chat bloqueado sin conexión");
+    await until(() => page.ev<boolean>(`document.querySelector('.composer textarea').disabled && document.body.textContent.includes('Sin conexión con tu ordenador')`), "chat bloqueado sin conexión");
     assert.equal(asks, 1, "no se reenvía ni se encola la pregunta");
   } finally {
     await p?.close();

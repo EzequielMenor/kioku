@@ -22,8 +22,8 @@ test("lanzador: gestión de Hermes accesible en escritorio y oculta para el móv
     await page.ev(`[...document.querySelectorAll('.side-btn')].find(x => x.textContent.includes('Buscar')).click()`);
     await until(() => page!.ev<boolean>(`!!document.querySelector('.palette')`), "lanzador");
     assert.equal(await page.ev<boolean>(`[...document.querySelectorAll('.plist li')].some(x => x.textContent === 'Nueva nota')`), true);
-    assert.equal(await page.ev<boolean>(`[...document.querySelectorAll('.plist li')].some(x => x.textContent === 'Modelo de Hermes')`), true);
-    await page.ev(`[...document.querySelectorAll('.plist li')].find(x => x.textContent === 'Modelo de Hermes').click()`);
+    assert.equal(await page.ev<boolean>(`[...document.querySelectorAll('.plist li')].some(x => x.textContent === 'Modelo de Kio')`), true);
+    await page.ev(`[...document.querySelectorAll('.plist li')].find(x => x.textContent === 'Modelo de Kio').click()`);
     await until(() => page!.ev<boolean>(`!!document.querySelector('[aria-labelledby="am-title"]')`), "gestión");
     assert.equal(await page.ev<string>(`document.querySelector('#am-title').textContent`), "Gestión del asistente");
     assert.equal(await page.ev<boolean>(`!!document.querySelector('.palette')`), false);
@@ -35,13 +35,13 @@ test("lanzador: gestión de Hermes accesible en escritorio y oculta para el móv
     await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "k", code: "KeyK", modifiers: 2 });
     await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "k", code: "KeyK", modifiers: 2 });
     await until(() => page!.ev<boolean>(`!!document.querySelector('.palette')`), "lanzador móvil");
-    assert.equal(await page.ev<boolean>(`[...document.querySelectorAll('.plist li')].some(x => x.textContent === 'Modelo de Hermes')`), false);
+    assert.equal(await page.ev<boolean>(`[...document.querySelectorAll('.plist li')].some(x => x.textContent === 'Modelo de Kio')`), false);
   } finally {
     await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true });
   }
 });
 
-test("conversación en capas: menú y cabecera en móvil", { skip: browserSkip, timeout: 60_000 }, async () => {
+test("conversación en capas: cabecera y subpantallas de Kio en móvil", { skip: browserSkip, timeout: 60_000 }, async () => {
   const v = tmpVault();
   const j = await Kioku.open({ root: v.root });
   const srv = await startServer(j, { port: 0, webDir: WEB, key: "b".repeat(64), assistant: { engine: { isolatesMobile: true, available: async () => ({ ok: true }), ask: async () => ({ answer: "Respuesta" }) } } });
@@ -52,11 +52,9 @@ test("conversación en capas: menú y cabecera en móvil", { skip: browserSkip, 
     await page.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 780, deviceScaleFactor: 2, mobile: true });
     await page.send("Page.navigate", { url: `${srv.url}/?k=${loadOrCreateMobileKey(v.root)}#/asistente` });
     await until(() => page!.ev<boolean>(`!!document.querySelector('.assistant-page')`), "asistente");
-    assert.equal(await page.ev<string>(`document.querySelector('.assistant-page h1')?.textContent`), "Kioku");
-    assert.equal(await page.ev<boolean>(`!!document.querySelector('[aria-label="Conversaciones"]')`), true);
-    await page.ev(`document.querySelector('[aria-label="Conversaciones"]').click()`);
-    assert.match(await page.ev<string>(`document.querySelector('.assistant-menu').textContent`), /Nueva conversación/);
-    assert.match(await page.ev<string>(`document.querySelector('.assistant-menu').textContent`), /Actividad/);
+    assert.equal(await page.ev<string>(`document.querySelector('.assistant-page h1')?.textContent`), "Kio");
+    assert.equal(await page.ev<boolean>(`[...document.querySelectorAll('.kio-head button')].some((b) => b.textContent === 'Nueva conversación')`), true);
+    assert.equal(await page.ev<string>(`[...document.querySelectorAll('.section-tabs a')].map((a) => a.textContent).join('|')`), "Conversación|Propuestas|Actividad");
     assert.equal(await page.ev<boolean>(`document.documentElement.scrollWidth <= innerWidth`), true);
   } finally {
     await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true });

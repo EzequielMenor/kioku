@@ -24,7 +24,32 @@ const chat = createChat({
 });
 onChange((e) => { if (e.kind === "assistant.tool" && e.tool) chat.setLive(liveLabel(e.tool, e.path)); });
 
-const SUGGESTIONS = ["¿Qué hago hoy?", "Clasifica mi Bandeja", "Revisa mi espacio: Bandeja, proyectos parados, enlaces rotos y duplicados. Propón lo necesario."];
+/**
+ * La conversación con Kio vista desde cualquier pantalla: en escritorio la del daemon (compartida con el compañero),
+ * en el móvil la de este cliente. `send` devuelve false si Kio no llegó a atender el mensaje (no disponible).
+ */
+export function useKioThread(): { msgs: Msg[]; busy: boolean; live: string | null; streaming: string } {
+  const mobile = isMobile();
+  const [legacy, setLegacy] = useState(chat.getState());
+  useEffect(() => { if (!mobile) return; setLegacy(chat.getState()); return chat.subscribe(setLegacy); }, [mobile]);
+  const shared = useCompanion(!mobile);
+  if (mobile) return { msgs: legacy.msgs, busy: legacy.busy, live: legacy.live, streaming: "" };
+  return { msgs: shared.msgs, busy: shared.agent.busy || shared.sending, live: shared.agent.label ?? "Pensando…", streaming: shared.streaming };
+}
+
+export async function sendToKio(message: string, route: string): Promise<boolean> {
+  if (isMobile()) {
+    const before = chat.getState().msgs.length;
+    await chat.send(message);
+    const last = chat.getState().msgs.at(-1);
+    // Falló antes de que Kio hiciera nada (sin red, sin modelo): que quien llama lo guarde.
+    return !(chat.getState().msgs.length > before && last?.error && !last.actions?.length);
+  }
+  await companion.send(message, { route });
+  return !companion.getState().problem;
+}
+
+const SUGGESTIONS = ["¿Qué hago hoy?", "Ordena lo que tengo sin organizar", "Revisa mi espacio: lo sin organizar, proyectos parados, enlaces rotos y duplicados. Propón lo necesario."];
 
 const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");
 
@@ -51,9 +76,7 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
   const [legacy, setChat] = useState(chat.getState());
   useEffect(() => { setChat(chat.getState()); return chat.subscribe(setChat); }, []);
   const [text, setText] = useState("");
-  const [menu, setMenu] = useState(false);
-  const [connection, setConnection] = useState(false);
-  const [ack, setAck] = useState(lsGet("assistant.privacy.v2") === "1");
+  const [acked, setAck] = useState(lsGet("assistant.privacy.v3") === "1");
   const mobile = isMobile();
   // Escritorio: la conversación vive en el daemon y es la misma que la del compañero (aquí y en el escritorio).
   // Móvil: sigue en memoria del cliente, con su privacidad propia.
@@ -66,9 +89,12 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
   const offline = mobile && !online; // el asistente es solo en línea: sin conexión no se pregunta ni se encola nada
   const statusRequest = useApi<{ ok: boolean; reason?: string }>("/api/assistant/status", rev);
   const status = statusRequest.data;
+  const engine = useApi<{ engine: { local: boolean; origin: string | null } | null }>("/api/assistant/state", 0).data?.engine;
+  // Con el modelo en tu ordenador no hace falta aviso: las notas no salen de él. Si es remoto, se avisa una vez.
+  const remote = engine ? !engine.local : true; // sin saber dónde corre, se trata como remoto: se avisa antes de enviar nada
+  const ack = acked || remote === false;
   const bottom = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
-  const menuButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [msgs, live, streaming]);
   useEffect(() => { input.current?.focus(); }, [ack]);
@@ -81,40 +107,30 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
   const reset = () => {
     if (busy) return;
     if (mobile) chat.reset(); else void companion.newConversation();
-    setText(""); setMenu(false);
+    setText("");
   };
 
   return (
     <div class="page narrow assistant-page">
-      <header class="layered-head">
-        <button ref={menuButton} aria-label="Conversaciones" aria-expanded={menu} onClick={() => { setMenu(!menu); setConnection(false); }}>☰</button>
-        {mobile ? <h1>Kioku</h1> : <div class="assistant-kio"><KioFace state={faceState(shared.agent, false)} size={40} /><h1>Kioku</h1></div>}
-        <button aria-label="Estado de conexión" aria-expanded={connection} onClick={() => { setConnection(!connection); setMenu(false); }}>◉</button>
+      <header class="kio-head">
+        {mobile ? <h1>Kio</h1> : <div class="assistant-kio"><KioFace state={faceState(shared.agent, false)} size={40} /><h1>Kio</h1></div>}
+        <button class="ghost" onClick={reset} disabled={busy || !msgs.length}>Nueva conversación</button>
       </header>
-      {menu && <nav class="assistant-menu" aria-label="Conversación" onKeyDown={(e) => { if (e.key === "Escape") { setMenu(false); menuButton.current?.focus(); e.stopPropagation(); } }}>
-        <span>Conversación actual</span>
-        <button onClick={reset} disabled={busy}>Nueva conversación</button>
-        <a class="pill" href="#/asistente/actividad">Actividad</a>
-        {!mobile && <a class="pill" href="#/asistente/memoria">Memoria</a>}
-      </nav>}
-      {connection && <div class="assistant-connection" role="status">{offline ? "Sin conexión con Kioku." : status ? status.ok ? "Kioku responde · requisitos detectados. Esto no comprueba la ejecución del asistente." : `Kioku responde · faltan requisitos: ${status.reason ?? "sin detalle"}` : statusRequest.error ? "No se pudo comprobar la conexión con Kioku." : "Comprobando Kioku…"}</div>}
 
-      {status && !status.ok && <div class="notice bad">El asistente no está disponible: {status.reason}</div>}
-      {offline && <div class="notice bad" role="status">Sin conexión con tu portátil. El asistente solo funciona con el portátil encendido y con red; no se guarda nada para después.</div>}
+      {status && !status.ok && <div class="notice bad">Kio no está disponible: {status.reason}. Puedes seguir escribiendo en Hoy: se guarda en «Sin organizar».</div>}
+      {offline && <div class="notice bad" role="status">Sin conexión con tu ordenador. Lo que escribas en Hoy se guarda y se envía al volver la red.</div>}
 
       {!ack && (
         <div class="card notice-card">
-          <div class="eyebrow">Antes de empezar</div>
-          <p>Para responder, el asistente <b>lee las notas que necesita</b> y su texto se envía al modelo y proveedor que configuraste en Hermes. Si el proveedor es remoto, esas notas salen de tu equipo; con un modelo local permanecen allí. Queda registrado qué notas lee en cada consulta y puedes excluir carpetas en <code>.kioku/assistant.json</code>.{mobile && <> Desde el móvil tampoco ve las carpetas privadas del móvil (<code>.kioku/mobile.json</code>).</>}</p>
-          <p class="muted small">Lo pequeño y reversible lo hace solo, con botón <b>Deshacer</b>. Borrar, mover o tocar muchas notas siempre te lo propone antes{mobile && <>, y lo apruebas tú aquí mismo en Propuestas</>}.</p>
-          <button class="primary" onClick={() => { lsSet("assistant.privacy.v2", "1"); setAck(true); }}>Entendido</button>
+          <p>Kio usa un modelo en <b>{engine?.origin?.replace(/^https?:\/\//, "") ?? "un servidor que Kioku no reconoce como tuyo"}</b>: para responder, el texto de las notas que lee <b>se envía a ese servidor</b>. Queda registrado qué notas lee en cada respuesta.</p>
+          <button class="primary" onClick={() => { lsSet("assistant.privacy.v3", "1"); setAck(true); }}>Entendido</button>
         </div>
       )}
 
       <div class="chat" aria-live="polite">
         {msgs.length === 0 && ack && (
           <div class="chat-empty">
-            <p class="muted">Preguntame lo que quieras: pensar una idea, organizar la Bandeja, planificar tu día o retomar un proyecto. No reescribo tus notas sin que me lo pidas.</p>
+            <p class="muted">Pregúntame o cuéntame algo: lo guardo donde toca, organizo lo pendiente, planifico tu día o te ayudo a retomar un proyecto. Lo que hago se puede deshacer y lo importante te lo pregunto antes.</p>
             <div class="pills">{SUGGESTIONS.map((s) => <button key={s} class="pill" onClick={() => void send(s)}>{s.length > 40 ? "Revisar mi espacio" : s}</button>)}</div>
           </div>
         )}
@@ -129,7 +145,7 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
       <div class="assistant-input-area">
       <AssistantProposals rev={rev} busy={busy} offline={offline} />
       <form class="composer" onSubmit={(e) => { e.preventDefault(); void send(text); }}>
-        <textarea ref={input} rows={2} value={text} disabled={!ack || offline} aria-label="Mensaje para el asistente" placeholder={!ack ? "Acepta el aviso para empezar" : offline ? "Sin conexión con el portátil" : mobile ? "Escribe al asistente…" : "Escribe al asistente…  (Enter envía · Shift+Enter nueva línea)"}
+        <textarea ref={input} rows={2} value={text} disabled={!ack || offline} aria-label="Mensaje para Kio" placeholder={!ack ? "Acepta el aviso para empezar" : offline ? "Sin conexión con tu ordenador" : mobile ? "Escribe a Kio…" : "Escribe a Kio…  (Enter envía · Shift+Enter nueva línea)"}
           onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); void send(text); } }} />
         <button class="primary" type="submit" disabled={!ack || offline || busy || !text.trim()}>Enviar</button>
@@ -177,9 +193,9 @@ export function AssistantActivity({ rev, say }: { rev: number; say: Say }) {
   const { data, reload } = useApi<UndoRecord[]>("/api/assistant/actions", rev);
   return (
     <div class="page narrow">
-      <header class="page-head"><h1>Actividad del asistente</h1><a class="pill" href="#/asistente">Volver</a></header>
-      <p class="muted">Cada cambio automático queda aquí, y también los cambios de estructura que haces desde una tabla (marcados «Desde la tabla»). Deshacer solo funciona si no has tocado la nota desde entonces (si la editaste tú, avisa del conflicto y no pisa nada).</p>
-      {data && data.length === 0 && <div class="empty">El asistente aún no ha hecho cambios por su cuenta.</div>}
+      <header class="page-head"><h1>Lo que ha hecho Kio</h1>{!isMobile() && <a class="pill" href="#/asistente/memoria">Qué recuerda</a>}</header>
+      <p class="muted">Cada cambio que Kio hace por su cuenta queda aquí con Deshacer (también los cambios de estructura de una tabla, marcados «Desde la tabla»). Si editaste la nota después, Deshacer avisa del conflicto y no pisa nada.</p>
+      {data && data.length === 0 && <div class="empty">Kio aún no ha hecho cambios por su cuenta.</div>}
       <ul class="cards">
         {(data ?? []).map((a) => (
           <li key={a.id} class="card activity">
@@ -218,8 +234,8 @@ export function AssistantMemory({ rev, say }: { rev: number; say: Say }) {
   };
   return (
     <div class="page narrow">
-      <header class="page-head"><h1>Qué recuerda el asistente</h1><a class="pill" href="#/asistente">Volver</a></header>
-      <p class="muted">Son ficheros de texto en <code>.kioku/hermes/memories/</code>: nada opaco. Puedes borrar lo que no quieras que recuerde.</p>
+      <header class="page-head"><h1>Qué recuerda Kio</h1><a class="pill" href="#/asistente/actividad">Volver</a></header>
+      <p class="muted">Preferencias que le has pedido recordar. Son ficheros de texto dentro de tu espacio: puedes borrar lo que no quieras que recuerde.</p>
       {data && data.length === 0 && <div class="empty">Todavía no recuerda nada.</div>}
       <ul class="cards">
         {(data ?? []).map((m) => (

@@ -523,3 +523,12 @@ test("gestión (compatibilidad): un custom remoto de assistant.json, sin confirm
     assert.equal(seen[0].fd3, "--setenv\0OPENAI_API_KEY\0sk-SECRETO\0");
   } finally { e.done(); }
 });
+
+test("soul: lo que el usuario cuenta (no pregunta) se guarda sin preguntar, sin duplicar y con una línea de respuesta", () => {
+  const t = soulText({ memory: "native" });
+  assert.match(t, /## Cuando el usuario solo te cuenta algo/);
+  assert.match(t, /create_task/);
+  assert.match(t, /create_note con un título corto y claro/);
+  assert.match(t, /append_to_note en vez de duplicarla/);
+  assert.match(t, /No preguntes «¿quieres que lo guarde\?»/);
+});

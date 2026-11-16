@@ -86,7 +86,7 @@ test("móvil: el asistente es solo en línea (no pregunta sin red), sin memoria 
   assert.match(assistantSrc, /const online = useOffline\(\)\.online;\s*const offline = mobile && !online;/, "el hook se llama siempre, no en cortocircuito");
   assert.match(assistantSrc, /offline\) return Promise\.resolve\(\)/, "sin conexión no se envía ni se encola");
   assert.match(assistantSrc, /disabled={!ack \|\| offline \|\| busy \|\| !text\.trim\(\)}/);
-  assert.match(assistantSrc, /{!mobile && <a class="pill" href="#\/asistente\/memoria">/, "la memoria no es accesible desde el móvil");
+  assert.match(assistantSrc, /{!isMobile\(\) && <a class="pill" href="#\/asistente\/memoria">/, "la memoria no es accesible desde el móvil");
   assert.match(appCss, /@media \(max-width: 720px\) {\s*\.assistant-page[^}]*}[\s\S]*\.composer { bottom: calc\(54px \+ var\(--nav-pad\)\); }/);
   assert.match(appCss, /\.composer textarea { font-size: 16px; }/, "iOS no amplía al enfocar");
 });
