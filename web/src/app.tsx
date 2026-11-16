@@ -24,6 +24,7 @@ import type { TaskStatus } from "./offline/store.ts";
 import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
 import { KioBox, KioRecent } from "./kio-box.tsx";
+import { HabitsToday } from "./db-trackers.tsx";
 import { extractFolders, isKnowledgeNote, listKnowledgeNotes, noteFolder } from "./notes-model.ts";
 import { priorityLabel } from "./priority.ts";
 import { OpView } from "./proposal-ops.tsx";
@@ -452,6 +453,7 @@ function TodayScreen({ rev, go, guard, say }: { rev: number; go: Go; guard: Guar
       )}
 
       {mobile && <TodayAgenda date={t.date} rev={rev} />}
+      <HabitsToday rev={rev} />
       <KioRecent rev={rev} say={say} />
 
       {t.resume.length > 0 && (

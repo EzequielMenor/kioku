@@ -1,6 +1,7 @@
 // Vistas visuales de seguimiento sobre una base: «habits» (rejilla de la semana, un toque marca el día) y «progress»
 // (barras de lectura por grupo, con − / +). Las filas siguen siendo notas Markdown: cada toque cambia una propiedad.
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
+import { api } from "./api.ts";
 import { enc, type Result } from "./db-common.ts";
 import { daysOf, lastDays, readingTotals, streak, toggleDay } from "./trackers.ts";
 import type { ResultRow, View } from "./types.ts";
@@ -107,5 +108,44 @@ export function Progress({ res, view, setCell }: { res: Result; view: View; setC
         );
       })}
     </div>
+  );
+}
+
+/** Hoy: los hábitos del día como fichas; un toque marca o desmarca hoy. Sin base de hábitos no ocupa sitio. */
+export function HabitsToday({ rev }: { rev: number }) {
+  const [data, setData] = useState<{ res: Result; track: string } | null>(null);
+  const [local, setLocal] = useState<Record<string, string[]>>({});
+  const now = today();
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      const dbs = await api<{ path: string; views: View[] }[]>("GET", "/api/databases").catch(() => []);
+      const db = dbs.find((d) => d.views.some((v) => v.kind === "habits"));
+      if (!db) { if (!dead) setData(null); return; }
+      const view = db.views.find((v) => v.kind === "habits")!;
+      const res = await api<Result>("POST", "/api/database/query", { path: db.path, view: view.name }).catch(() => null);
+      if (!dead && res) { setData({ res, track: view.track ?? "Hechos" }); setLocal({}); }
+    })();
+    return () => { dead = true; };
+  }, [rev]);
+  if (!data?.res.rows.length) return null;
+  const { res, track } = data;
+  return (
+    <section>
+      <h2 class="sec">Hábitos de hoy <a class="muted small" href={`#/bases/${enc(res.database.path)}`}>ver semana</a></h2>
+      <div class="habit-chips">
+        {res.rows.map((r) => {
+          const days = local[r.path] ?? daysOf(r.cells[track]);
+          const on = days.includes(now);
+          return (
+            <button key={r.path} class={`habit-chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => {
+              const next = toggleDay(days, now);
+              setLocal((m) => ({ ...m, [r.path]: next }));
+              void api("POST", "/api/note/props", { path: r.path, props: { [track]: next.length ? next : null } });
+            }}>{on ? "✓ " : ""}{r.title}</button>
+          );
+        })}
+      </div>
+    </section>
   );
 }

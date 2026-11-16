@@ -751,3 +751,6 @@ button.small { padding: 4px 9px; font-size: 12px; min-height: 0; }
   .habit-day { width: 26px; height: 26px; }
   .books { grid-template-columns: repeat(2, 1fr); }
 }
+.habit-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.habit-chip { border-radius: 999px; padding: 8px 14px; border: 1.5px solid var(--line); background: var(--surface); }
+.habit-chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
