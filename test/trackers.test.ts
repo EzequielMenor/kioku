@@ -84,3 +84,19 @@ test("seguimientos: últimos días, marcar y desmarcar, racha y totales de lectu
   const t = readingTotals([{ cells: { "Leídos": 50, "Capítulos": 50 } }, { cells: { "Leídos": 7, "Capítulos": 40 } }, { cells: { "Leídos": "x", "Capítulos": 27 } }] as never, "Leídos", "Capítulos");
   assert.deepEqual(t, { read: 57, total: 117, done: 1, pct: 49 });
 });
+
+test("índice: una resincronización que coincide con una escritura no quita del índice la nota recién creada", async () => {
+  const { root, cleanup } = tmpVault();
+  const j = await Kioku.open({ root });
+  try {
+    const orig = j.vault.listMarkdown.bind(j.vault);
+    let created = "";
+    j.vault.listMarkdown = async () => {
+      const list = await orig();
+      created = (await j.createNote({ title: "Escrita durante el sync" })).path; // llega entre el listado y la foto del índice
+      return list;
+    };
+    await j.index.sync(j.vault);
+    assert.ok(j.index.getNote(created), "sigue en el índice: el fichero existe");
+  } finally { j.close(); cleanup(); }
+});

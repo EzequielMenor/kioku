@@ -278,7 +278,8 @@ export class Index {
     }
     this.tx(() => {
       for (const l of loaded) this.upsertNote(l.path, l.text, l);
-      for (const gone of known.keys()) { this.removeNote(gone); removed++; }
+      // Solo se quita lo que de verdad ya no está: una nota escrita mientras se listaba el disco no sale en `files`.
+      for (const gone of known.keys()) { if (vault.exists(gone)) continue; this.removeNote(gone); removed++; }
       this.resolveAll();
     });
     return { added, updated, removed };
