@@ -6,3 +6,7 @@ dist
 .superpowers
 __pycache__/
 *.pyc
+
+# Compilación de la app de macOS (Swift)
+macos/.build/
+macos/.swiftpm/

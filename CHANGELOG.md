@@ -4,6 +4,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 
 ## [Sin publicar]
 
+### Kioku en macOS (app nativa con Kio)
+- **Kioku.app nativa** (SwiftUI/AppKit, `macos/`): Kio flota sobre las ventanas en un `NSPanel` que no activa la app. Está en todos los escritorios, queda debajo de las apps a pantalla completa y nunca roba el foco. Tiene su conversación (Deshacer, propuestas con doble confirmación, Detener) y el atajo global ⌥⌘K. Incluye la ventana de Kioku (la web local en un WKWebView), un menú en la barra superior y una ventana **Estado y configuración** que guía la bóveda, el arranque con macOS, Ollama con `qwen3.5:9b` y el modelo del asistente. Mismo daemon, mismo agente y misma conversación que en Linux y la web. Guía: [`docs/macos.md`](docs/macos.md).
+- **`kioku service` en macOS con launchd:** LaunchAgents `local.kioku.daemon` (puerto 47800, se relanza si cae) y `local.kioku.app` (Kio al iniciar sesión). Un arranque antiguo de Kioku (p. ej. `com.ezequiel.kioku-server`) solo se sustituye con `--replace-legacy`, y su plist se guarda para poder volver atrás.
+- **`kioku assistant model ollama [modelo]`:** deja el asistente en Ollama local (por defecto `qwen3.5:9b`) con el mismo override que el panel de gestión del modelo.
+- `kioku companion` en macOS gobierna Kioku.app con el mismo contrato que el overlay de Linux. Las notificaciones de escritorio en macOS usan `osascript` y le pasan el texto como argumentos. `kioku open` en macOS usa `open`.
+- El instalador compila la app nativa si el Mac tiene las herramientas de Xcode; `scripts/build-macos-native.sh` la construye a mano.
+- CI `macos-native`: pruebas de Swift y de Node, construcción y una prueba de humo en macOS 15 real, con launchd, un daemon aislado y un Ollama simulado.
+- Corregido: un `KIOKU_HOME` vacío ya no hace que se use la carpeta actual como bóveda.
+
 ### Kioku Companion y modelo local
 - **Kio, el compañero de Kioku.** El asistente tiene un personaje que refleja su actividad real (reposo, te escucha, pensando, respondiendo, espera tu decisión, hecho, error) y un panel compacto para hablarle. Vive dentro de Kioku (tecla `.`) y, en Hyprland/Omarchy, también en el escritorio.
 - **`kioku companion [start|stop|toggle|focus|panel|status]`:** Kio flotando sobre tus ventanas (GTK4 + Layer Shell). Se arrastra y recuerda su sitio; solo su cuerpo recibe clics (lo transparente los deja pasar); el panel permite conversar, detener una consulta, deshacer lo que hizo y confirmar propuestas (lo que borra, mueve o reemplaza pide una segunda pulsación). Queda debajo de las aplicaciones a pantalla completa, te sigue entre escritorios virtuales y se retira cuando Kioku está en primer plano. Guía: [`docs/companion.md`](docs/companion.md).

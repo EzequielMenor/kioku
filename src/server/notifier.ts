@@ -72,13 +72,25 @@ export class Notifier {
 }
 
 /** Aviso nativo del escritorio con notify-send; sin dependencias ni red. */
-export function desktopChannel(): Channel {
+/**
+ * Orden de la notificación de escritorio: `notify-send` en Linux; en macOS, AppleScript con el título y el texto como
+ * argumentos (`argv`), nunca interpolados en el guion.
+ */
+export function desktopCommand(platform: NodeJS.Platform, n: { title: string; body: string }): [string, string[]] {
+  if (platform === "darwin") {
+    return ["/usr/bin/osascript", ["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", n.title, n.body]];
+  }
+  return ["notify-send", ["-a", "Kioku", "-u", "normal", "-i", "appointment-soon", n.title, n.body]];
+}
+
+export function desktopChannel(platform: NodeJS.Platform = process.platform): Channel {
   return {
     name: "desktop",
     enabled: (c) => c.desktop,
     visible: () => true,
     send: (n) => new Promise((resolve, reject) => {
-      execFile("notify-send", ["-a", "Kioku", "-u", "normal", "-i", "appointment-soon", n.title, n.body], { timeout: 5000 }, (e) => (e ? reject(e) : resolve()));
+      const [bin, args] = desktopCommand(platform, n);
+      execFile(bin, args, { timeout: 5000 }, (e) => (e ? reject(e) : resolve()));
     }),
   };
 }

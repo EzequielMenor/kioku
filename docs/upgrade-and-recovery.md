@@ -75,7 +75,7 @@ Un único cambio: la ruta del `ExecStart`. `KIOKU_HOME` y `KIOKU_ALLOWED_HOSTS` 
 ```bash
 U=~/.config/systemd/user/kioku.service
 cp "$U" "$U.bak-antes-1.0"
-sed -i 's#/home/eze/Proyectos/Kioku/src/cli/main.ts#/home/eze/Proyectos/Kioku-release/src/cli/main.ts#' "$U"
+sed -i "s#$HOME/Proyectos/Kioku/src/cli/main.ts#$HOME/Proyectos/Kioku-release/src/cli/main.ts#" "$U"
 grep ExecStart "$U"                       # debe apuntar a Kioku-release
 systemctl --user daemon-reload
 systemctl --user restart kioku.service

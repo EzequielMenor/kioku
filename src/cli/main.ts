@@ -20,13 +20,14 @@ import { PushStore, pushChannel } from "../server/webpush.ts";
 import { UpdateManager } from "../server/updates.ts";
 import { parseMobileConfig } from "../server/mobile.ts";
 import { hiddenCalendarPaths } from "../server/calendar.ts";
-import { installService, serviceStatus, uninstallService } from "./service.ts";
+import { installFor, parseServiceArgs, statusFor, uninstallFor } from "./service.ts";
 import { loadOrCreateKey, readKey } from "../server/key.ts";
 import { allowedHostsFrom, pairReport, publicHost } from "./pair.ts";
 import { doctorReport, setupGuide } from "./setup.ts";
 import { daemonAlive, ensureDaemon, hideQuick, kiokuHome, loginUrl, openWorkspace, readRuntime, toggleQuick, webDir } from "./desktop.ts";
 import { assistantStatusLines } from "./assistant-status.ts";
-import { companionCommand, realDeps as companionDeps } from "./companion.ts";
+import { companionAlive, companionCommand, overlayPid, realDeps as companionDeps } from "./companion.ts";
+import { assistantModelCommand } from "./assistant-model.ts";
 
 const HELP = `kioku — segundo cerebro local-first
 
@@ -49,12 +50,13 @@ Uso: kioku <comando> [args]
   ai status|preview|config <url> <modelo> [VAR_CLAVE]|off|triage --yes   IA opcional: tu modelo local o API; ves el payload antes de enviar
   ask <mensaje>            Habla con el asistente (lee, organiza y propone; el modelo es el que tengas configurado)
   assistant status|actions|undo <id>   Motor, proveedor y modelo activos · lo que hizo por su cuenta · deshacer una acción
-  companion [start|stop|toggle|focus|panel|status]   Kio en tu escritorio (Hyprland): lanzarlo, quitarlo, ocultarlo, concentración, abrir el panel
+  assistant model ollama [modelo]      Usa tu Ollama local (por defecto qwen3.5:9b) · model reset|status
+  companion [start|stop|toggle|focus|panel|status]   Kio en tu escritorio (Hyprland o la app de macOS): lanzarlo, quitarlo, ocultarlo, concentración, abrir el panel
   reindex                  Reconstruye el índice desde los archivos
   export <archivo.tar.gz>  Copia de seguridad          restore <archivo.tar.gz> <carpeta>
   import-obsidian <ruta> [--yes]   Copia (solo lectura del origen) un vault de Obsidian
   daemon                   Servidor en primer plano     status
-  service install|uninstall|status   Arranque automático con tu sesión (servicio de usuario de systemd)
+  service install|uninstall|status   Arranque automático con tu sesión (systemd en Linux, launchd en macOS)
 
 Datos: ${kiokuHome()}   (cambia con KIOKU_HOME)
 `;
@@ -144,7 +146,11 @@ async function main(): Promise<void> {
       const allowedHosts = allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS);
       const pub = publicHost();
       if (pub && !allowedHosts.includes(pub)) allowedHosts.push(pub);
-      const srv = await startServer(j, { push, updates, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : assistantEngine(home) }, onOpenWorkspace: (route) => openWorkspace(`http://127.0.0.1:${srv.port}`, route) });
+      const srv = await startServer(j, { push, updates, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : assistantEngine(home) }, onOpenWorkspace: (route) => {
+        // En macOS, si Kioku.app está en marcha, ella misma abre su ventana al recibir el evento `navigate`.
+        if (process.platform === "darwin" && overlayPid({ home, alive: (pid) => companionAlive(pid) })) return;
+        openWorkspace(`http://127.0.0.1:${srv.port}`, route);
+      } });
       const rtFile = path.join(home, ".kioku", "runtime.json");
       writeFileSync(rtFile, JSON.stringify({ pid: process.pid, port: srv.port, startedAt: new Date().toISOString() }));
       console.log(`Kioku escuchando en ${srv.url}  (datos: ${home})`);
@@ -175,11 +181,16 @@ async function main(): Promise<void> {
     }
     case "service": {
       guardHome(home);
-      const sub = args[0];
-      if (sub === "install") installService(home).forEach((l) => console.log(l));
-      else if (sub === "uninstall") uninstallService().forEach((l) => console.log(l));
-      else if (sub === "status" || !sub) console.log(serviceStatus());
-      else die("uso: kioku service install|uninstall|status");
+      const [sub, ...rest] = args;
+      let opts;
+      try { opts = parseServiceArgs(rest); } catch (e) { die((e as Error).message); }
+      if (sub === "install") {
+        try { installFor(process.platform, home, opts).forEach((l) => console.log(l)); } catch (e) { die((e as Error).message); }
+      } else if (sub === "uninstall") uninstallFor(process.platform).forEach((l) => console.log(l));
+      else if (sub === "status" || !sub) {
+        const st = statusFor(process.platform);
+        console.log(rest.includes("--json") ? JSON.stringify(st.json) : st.text);
+      } else die("uso: kioku service install [--app Kioku.app] [--replace-legacy]|uninstall|status [--json]");
       return;
     }
     case "ask": {
@@ -206,7 +217,11 @@ async function main(): Promise<void> {
         if (!id) die("uso: kioku assistant undo <id>");
         const r = await api<UndoRecord>(await ensureDaemon(home), "POST", "/api/assistant/undo", { id });
         console.log(`✓ Deshecho: ${r.summary}`);
-      } else die("uso: kioku assistant status|actions|undo <id>");
+      } else if (sub === "model") {
+        const r = await assistantModelCommand(home, args.slice(1));
+        r.lines.forEach((l) => console.log(l));
+        process.exitCode = r.code;
+      } else die("uso: kioku assistant status|actions|undo <id>|model ollama [modelo]");
       return;
     }
     case "companion": {
@@ -219,7 +234,7 @@ async function main(): Promise<void> {
     case "status": {
       const rt = readRuntime(home);
       console.log(rt ? `daemon pid ${rt.pid} en http://127.0.0.1:${rt.port}` : "daemon detenido");
-      console.log(serviceStatus());
+      console.log(statusFor(process.platform).text);
       console.log(`datos: ${home}${existsSync(home) ? "" : " (aún no existe)"}`);
       return;
     }
