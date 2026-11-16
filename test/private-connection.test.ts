@@ -93,3 +93,47 @@ test("private setup: operator access denial surfaces actionable Tailscale operat
     assert.match(body.error, /tailscale set --operator/);
   } finally { await srv.close(); j.close(); cleanup(); rmSync(web, { recursive: true, force: true }); }
 });
+
+// Caso real (Mac mini): Kioku publicado en 443 y otro servicio del usuario en 8443. Solo importa el 443.
+test("private setup: otras publicaciones de Tailscale (8443, Funnel ajeno) no bloquean a Kioku en el 443", async () => {
+  const { PrivateConnection } = await import("../src/server/private-connection.ts");
+  const home = mkdtempSync(path.join(os.tmpdir(), "kioku-private-other-"));
+  const port = 47800;
+  const ours = { Handlers: { "/": { Proxy: `http://127.0.0.1:${port}` } } };
+  const other = { Handlers: { "/": { Proxy: "http://127.0.0.1:3000" } } };
+  let config: Record<string, any> = {};
+  const calls: string[][] = [];
+  const conn = new PrivateConnection(home, async (args) => {
+    calls.push(args);
+    if (args[0] === "status") return JSON.stringify({ BackendState: "Running", Self: { DNSName: host + "." } });
+    if (args[1] === "status") return JSON.stringify(config);
+    config = { ...config, TCP: { ...config.TCP, "443": { HTTPS: true } }, Web: { ...config.Web, [host + ":443"]: ours } };
+    return "";
+  });
+  const allowed = new Set([host]);
+  try {
+    config = { TCP: { "443": { HTTPS: true }, "8443": { HTTPS: true } }, Web: { [host + ":443"]: ours, [host + ":8443"]: other } };
+    let s = await conn.status(port, allowed);
+    assert.equal(s.ready, true, "443 ya apunta a Kioku: listo aunque exista 8443");
+    assert.equal(s.problem, null);
+    assert.equal(await conn.configure(port), host);
+    assert.equal(calls.filter((a) => a.includes("--bg")).length, 0, "no reconfigura lo que ya está bien");
+
+    config = { TCP: { "8443": { HTTPS: true } }, Web: { [host + ":8443"]: other }, AllowFunnel: { [host + ":8443"]: true } };
+    s = await conn.status(port, allowed);
+    assert.equal(s.canConfigure, true, "443 libre: se puede publicar Kioku sin tocar 8443");
+    assert.equal(await conn.configure(port), host);
+    assert.deepEqual(calls.filter((a) => a.includes("--bg")), [["serve", "--bg", "--https=443", `http://127.0.0.1:${port}`]]);
+    assert.deepEqual(config.Web[host + ":8443"], other, "la publicación ajena sigue intacta");
+
+    config = { TCP: { "443": { HTTPS: true } }, Web: { [host + ":443"]: ours }, AllowFunnel: { [host + ":443"]: true } };
+    s = await conn.status(port, allowed);
+    assert.equal(s.ready, false, "Kioku nunca se expone por Funnel");
+    assert.match(s.problem ?? "", /443/);
+
+    config = { TCP: { "443": { HTTPS: true } }, Web: { [host + ":443"]: other } };
+    s = await conn.status(port, allowed);
+    assert.equal(s.canConfigure, false, "el 443 ocupado por otro servicio no se sobrescribe");
+    assert.match(s.problem ?? "", /443/);
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});

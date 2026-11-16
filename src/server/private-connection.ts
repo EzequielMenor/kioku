@@ -41,13 +41,13 @@ function object(text: string): Record<string, any> {
   try { const value = JSON.parse(text); if (value && typeof value === "object" && !Array.isArray(value)) return value; } catch { /* fallar cerrado */ }
   throw new ConnectionError(503, "Tailscale no devolvió un estado válido");
 }
+// Solo cuenta el HTTPS 443 de este equipo: otras publicaciones del usuario (8443, otros servicios, Funnel en otros
+// puertos) no son de Kioku y no se tocan ni bloquean. Kioku nunca se publica con Funnel.
 function state(config: Record<string, any>, host: string, port: number): "empty" | "ours" | "conflict" {
-  const tcp = config.TCP ?? {}, web = config.Web ?? {}, funnel = config.AllowFunnel ?? {};
-  if (Object.values(funnel).some(Boolean) || Object.keys(config).some((key) => !["TCP", "Web", "AllowFunnel"].includes(key))) return "conflict";
-  if (!Object.keys(tcp).length && !Object.keys(web).length) return "empty";
-  const service = web[host + ":443"];
-  if (Object.keys(tcp).length !== 1 || tcp["443"]?.HTTPS !== true || Object.keys(web).length !== 1 || !service) return "conflict";
-  if (Object.keys(tcp["443"]).some((key) => key !== "HTTPS") || Object.keys(service).some((key) => key !== "Handlers")) return "conflict";
+  const tcp = config.TCP?.["443"], service = config.Web?.[host + ":443"], funnel = config.AllowFunnel?.[host + ":443"];
+  if (funnel) return "conflict";
+  if (!tcp && !service) return "empty";
+  if (!tcp || !service || tcp.HTTPS !== true || Object.keys(tcp).some((key) => key !== "HTTPS") || Object.keys(service).some((key) => key !== "Handlers")) return "conflict";
   const handlers = service.Handlers ?? {};
   const handler = handlers["/"];
   return Object.keys(handlers).length === 1 && handler && Object.keys(handler).length === 1 && handler.Proxy === `http://127.0.0.1:${port}` ? "ours" : "conflict";
@@ -68,7 +68,7 @@ export class PrivateConnection {
     try {
       const { host, proxy } = await this.inspect(port);
       const ready = proxy === "ours" && allowedHosts.has(host);
-      return { connected: true, host, ready, canConfigure: proxy !== "conflict", publicOrigin: ready ? `https://${host}` : null, problem: proxy === "conflict" ? "Tailscale ya tiene otra publicación o Funnel: Kioku no la sobrescribe. Revísala en el ordenador." : null };
+      return { connected: true, host, ready, canConfigure: proxy !== "conflict", publicOrigin: ready ? `https://${host}` : null, problem: proxy === "conflict" ? "El HTTPS 443 de Tailscale ya lo usa otro servicio (o Funnel): Kioku no lo sobrescribe. Libéralo en el ordenador o publica ese servicio en otro puerto." : null };
     } catch (e) {
       return { connected: false, host: null, ready: false, canConfigure: false, publicOrigin: null, problem: e instanceof ConnectionError ? e.message : "No se pudo comprobar Tailscale" };
     }
@@ -78,7 +78,7 @@ export class PrivateConnection {
     this.busy = true;
     try {
       const found = await this.inspect(port);
-      if (found.proxy === "conflict") throw new ConnectionError(409, "Tailscale ya publica otro servicio o Funnel; no se modifica ni reinicia esa configuración.");
+      if (found.proxy === "conflict") throw new ConnectionError(409, "El HTTPS 443 de Tailscale ya lo usa otro servicio (o Funnel); Kioku no lo modifica.");
       if (found.proxy === "empty") {
         try { await this.run(["serve", "--bg", "--https=443", `http://127.0.0.1:${port}`]); }
         catch (e) { throw tailscaleError(e); }
