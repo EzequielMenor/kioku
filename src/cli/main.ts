@@ -146,7 +146,7 @@ async function main(): Promise<void> {
       const allowedHosts = allowedHostsFrom(process.env.KIOKU_ALLOWED_HOSTS);
       const pub = publicHost();
       if (pub && !allowedHosts.includes(pub)) allowedHosts.push(pub);
-      const srv = await startServer(j, { push, updates, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : assistantEngine(home) }, onOpenWorkspace: (route) => {
+      const srv = await startServer(j, { push, updates, port: Number(process.env.KIOKU_PORT) || undefined, key: loadOrCreateKey(home), allowedHosts, webDir, onQuickHide: hideQuick, assistant: { engine: process.env.KIOKU_ASSISTANT_FAKE === "1" ? new FakeEngine() : assistantEngine(home) }, organize: process.env.KIOKU_ORGANIZE !== "0", onOpenWorkspace: (route) => {
         // En macOS, si Kioku.app está en marcha, ella misma abre su ventana al recibir el evento `navigate`.
         if (process.platform === "darwin" && overlayPid({ home, alive: (pid) => companionAlive(pid) })) return;
         openWorkspace(`http://127.0.0.1:${srv.port}`, route);

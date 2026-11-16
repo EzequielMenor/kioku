@@ -34,6 +34,16 @@ export class FakeEngine implements AssistantEngine {
     if (/\b(falla|error)\b/i.test(i.message)) throw new Error("El modelo de pruebas ha fallado a propósito.");
     const inbox = JSON.parse((await tool("inbox")).text) as { path: string; title: string }[];
     await pause();
+    if (i.message.startsWith("Ordena estas capturas")) {
+      const paths = [...i.message.matchAll(/^- (.+\.md)$/gm)].map((m) => m[1]);
+      const done: string[] = [];
+      for (const p of paths) {
+        const title = (inbox.find((c) => c.path === p)?.title ?? "Nota").split(/\s+/).slice(0, 4).join(" ");
+        const r = await tool("convert_capture", { path: p, kind: /^(llamar|comprar|hacer|enviar|pagar)\b/i.test(title) ? "task" : "note", title, tags: ["kio"] });
+        done.push(r.isError ? `${p}: no pude (${r.text})` : `${p} → ${JSON.parse(r.text).path}`);
+      }
+      return say(done.join("\n") || "Nada que ordenar.");
+    }
     if (/tarea/i.test(i.message)) {
       const r = await tool("create_task", { title: i.message.replace(/.*tarea:?\s*/i, "").slice(0, 80) || "Tarea del asistente" });
       return say(r.isError ? `No pude crear la tarea: ${r.text}` : "He creado la tarea. Si no era lo que querías, pulsa Deshacer.");

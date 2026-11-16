@@ -1,4 +1,5 @@
 // Daemon HTTP local (solo 127.0.0.1). API JSON + SSE + estáticos de la UI.
+import { Organizer, organizePrompt } from "./organizer.ts";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { promises as fs } from "node:fs";
@@ -12,7 +13,7 @@ import type { CalendarInput } from "../core/calendar-store.ts";
 import type { AssistantEngine } from "../assistant/engine.ts";
 import { ModelConfigError } from "../assistant/model-config.ts";
 import { ModelManagementError } from "../assistant/model-management.ts";
-import { parseAssistantConfig } from "../assistant/policy.ts";
+import { isExcludedPath, parseAssistantConfig } from "../assistant/policy.ts";
 import { SessionRegistry, type AssistantSession } from "../assistant/session.ts";
 import { AssistantTools } from "../assistant/tools.ts";
 import { UndoStore, type UndoRecord } from "../assistant/undo.ts";
@@ -162,6 +163,8 @@ export async function startServer(
     updates?: UpdateManager;
     /** Duraciones de los estados transitorios del agente (las pruebas las acortan). */
     agentState?: AgentStateOptions;
+    /** Kio ordena «Sin organizar» por su cuenta (el daemon real lo activa; las pruebas, solo cuando lo prueban). */
+    organize?: boolean;
   },
 ): Promise<ServerHandle> {
   const devices = new Devices(j.vault.root);
@@ -172,6 +175,20 @@ export async function startServer(
   const sessions = new SessionRegistry();
   const undo = new UndoStore(j);
   const hub = new CompanionHub(j, undo, opts.agentState);
+  const organizer = opts.assistant && opts.organize ? new Organizer({
+    pending: () => j.inbox().filter((n) => !isExcludedPath(n.path, exclude)).map((n) => ({ path: n.path, mtime: n.mtime })),
+    ready: async () => (await opts.assistant!.engine.available().catch(() => ({ ok: false }))).ok,
+    idle: () => !hub.agent.snapshot().busy,
+    organize: async (paths) => {
+      await loadExclude();
+      const sess = sessions.open("full");
+      try {
+        await j.log.record("ai.organize", null, { sessionId: sess.id, count: paths.length });
+        await opts.assistant!.engine.ask({ message: organizePrompt(paths, (await j.today()).date as string), conversation: "kio-ordena", session: sess, daemonUrl: `http://127.0.0.1:${boundPort}` });
+      } finally { sessions.close(sess.id); }
+    },
+    now: () => Date.now(),
+  }) : null;
   const ops = new OpsLedger(j.vault);
   const mobileOps = new MobileOperations(j);
   const exclude: string[] = []; // misma referencia que usa AssistantTools; se refresca desde .kioku/assistant.json
@@ -764,8 +781,13 @@ export async function startServer(
           hub.setPresence(companion ? "desktop" : `web:${typeof body.id === "string" ? body.id.slice(0, 20) : ""}`, body.focused === true);
           return send(res, 200, { ok: true });
         }
+        case "/api/assistant/organize": {
+          if (!organizer) throw new HttpError(503, "Kio no está ordenando en este daemon");
+          return send(res, 200, { organized: (await organizer.tick({ now: true })).length });
+        }
         case "/api/assistant/ask": {
           if (!opts.assistant) throw new HttpError(503, "El asistente no está configurado");
+          organizer?.noteUserActivity();
           const message = str(body.message, "message").trim();
           if (!message) throw new HttpError(400, "Escribe un mensaje");
           const mobile = role === "mobile";
@@ -933,6 +955,7 @@ export async function startServer(
   }
   boundPort = (server.address() as AddressInfo).port;
   port = boundPort;
+  organizer?.start();
   return {
     port, url: `http://127.0.0.1:${port}`, sessions, assistantTools, key, companion: hub,
     close: () => new Promise((resolve) => {
@@ -940,6 +963,7 @@ export async function startServer(
       if (!opts.updates) updates.close();
       clearInterval(keepAlive);
       hub.close();
+      organizer?.stop();
       for (const c of sseClients.keys()) c.end();
       server.close(() => resolve());
       server.closeAllConnections();
