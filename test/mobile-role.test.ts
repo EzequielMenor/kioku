@@ -104,6 +104,7 @@ test("móvil: solo puede leer y escribir lo permitido; borrar, memoria y herrami
       ["POST", "/api/database/create", { name: "X", template: "libros" }],
       ["POST", "/api/database/schema/preview", { path: "Bases/Nada.md", op: { op: "add-property", name: "X", type: "text" } }],
       ["POST", "/api/database/schema", { path: "Bases/Nada.md", op: { op: "add-property", name: "X", type: "text" } }],
+      ["POST", "/api/database/meta", { path: "Bases/Nada.md", icon: "📊" }],
     ];
     for (const [m, p, b] of forbidden) assert.equal((await s.call(m, p, b)).status, 403, `${m} ${p}`);
     assert.ok(s.j.index.getNote("Notas/Publica.md"), "nada se borró");
@@ -142,16 +143,18 @@ test("móvil: las carpetas privadas no aparecen en NINGUNA lectura (la clave com
   } finally { await s.done(); }
 });
 
-test("móvil: el grafo sin lo privado conserva las aristas entre notas visibles", async () => {
+test("móvil: el grafo sin lo privado conserva las aristas entre notas visibles y excluye tareas", async () => {
   const s = await setup();
   try {
     await s.j.createNote({ title: "Otra pública", body: "ver [[Publica]]" });
-    const g = (await s.call("GET", "/api/graph")).json as { nodes: { path: string; degree: number }[]; edges: [number, number][]; total: number; isolated: number };
+    await s.j.createNote({ title: "Suelta pública", body: "sin enlaces" });
+    const g = (await s.call("GET", "/api/graph")).json as { nodes: { path: string; type: string; degree: number }[]; edges: [number, number][]; total: number; isolated: number };
     assert.ok(g.nodes.every((n) => !n.path.startsWith("Privado/")));
+    assert.ok(g.nodes.every((n) => n.type === "note" || n.type === "resource"), "el grafo solo incluye notas de conocimiento");
     assert.ok(g.edges.every(([a, b]) => g.nodes[a] && g.nodes[b]), "ninguna arista apunta a un nodo inexistente");
     const names = g.edges.map(([a, b]) => [g.nodes[a].path, g.nodes[b].path].sort().join("|"));
     assert.ok(names.some((n) => n.includes("Notas/Otra pública.md") && n.includes("Notas/Publica.md")), "se conserva el enlace visible");
-    // los contadores tampoco delatan lo privado: 3 notas visibles, una aislada, y el grado cuenta solo vecinos visibles
+    // los contadores tampoco delatan lo privado: 3 notas de conocimiento visibles, una aislada, y el grado cuenta solo vecinos visibles
     assert.equal(g.total, 3);
     assert.equal(g.isolated, 1);
     assert.equal(g.nodes.find((n) => n.path === "Notas/Publica.md")!.degree, 1, "el enlace a [[Secreto]] no cuenta");
@@ -164,6 +167,9 @@ test("móvil: no puede escribir en carpetas privadas", async () => {
     for (const [m, p, b] of [
       ["PUT", "/api/note", { path: "Privado/Secreto.md", text: "x", hash: "h" }],
       ["POST", "/api/note/props", { path: "Privado/Secreto.md", props: { a: 1 } }],
+      ["POST", "/api/note/rename", { path: "Privado/Secreto.md", title: "X", hash: "h" }],
+      ["POST", "/api/note/rename", { path: "Notas/Publica.md", folder: "Privado", hash: "h" }],
+      ["POST", "/api/note/rename", { path: "Notas/Publica.md", folder: "Privado/Sub", hash: "h" }],
       ["POST", "/api/task/status", { path: "Privado/Tarea privada.md", status: "done" }],
       ["POST", "/api/note/open", { path: "Privado/Secreto.md" }],
     ] as const) assert.equal((await s.call(m, p, b)).status, 403, `${m} ${p}`);

@@ -9,6 +9,7 @@ const SCHEMA_VERSION = 2;
 
 export type NoteType = "note" | "task" | "project" | "journal" | "resource" | "capture" | "database" | "block" | "area";
 const NOTE_TYPES = new Set<string>(["note", "task", "project", "journal", "resource", "capture", "database", "block", "area"]);
+export const KNOWLEDGE_TYPES: readonly NoteType[] = ["note", "resource"];
 export type TaskStatus = "todo" | "doing" | "done" | "dropped";
 export const OPEN_STATUSES: TaskStatus[] = ["todo", "doing"];
 
@@ -24,6 +25,7 @@ export interface NoteRow {
   fm: Frontmatter;
   fmError: boolean;
   tags: string[];
+  icon?: string;
 }
 
 export interface TaskRow {
@@ -327,12 +329,13 @@ export class Index {
     if (opts.prefix) { where.push("path LIKE ?"); args.push(opts.prefix.replace(/[%_]/g, "") + "%"); }
     args.push(opts.limit ?? 1000);
     const rows = this.db
-      .prepare(`SELECT path,uid,type,title,mtime,size,hash,fm_error,tags_json FROM notes ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY mtime DESC LIMIT ?`)
+      .prepare(`SELECT path,uid,type,title,mtime,size,hash,fm_error,tags_json,json_extract(fm_json, '$.icon') AS icon FROM notes ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY mtime DESC LIMIT ?`)
       .all(...args) as Record<string, unknown>[];
     return rows.map((r) => ({
       path: r.path as string, uid: (r.uid as string) ?? null, type: r.type as NoteType, title: r.title as string,
       mtime: r.mtime as number, size: r.size as number, hash: r.hash as string, fmError: !!r.fm_error,
       tags: JSON.parse(r.tags_json as string),
+      ...(typeof r.icon === "string" && r.icon ? { icon: r.icon } : {}),
     }));
   }
 
@@ -465,14 +468,15 @@ export class Index {
   }
 
   /** Grafo de enlaces resueltos. Con `focus`, solo el vecindario (no dirigido) hasta `depth`; si no, los `max` nodos más conectados. */
-  graph(opts: { focus?: string; depth?: number; max?: number; skip?: (path: string) => boolean } = {}): {
-    nodes: { path: string; title: string; type: NoteType; degree: number }[];
+  graph(opts: { focus?: string; depth?: number; max?: number; types?: readonly NoteType[]; includeIsolated?: boolean; skip?: (path: string) => boolean } = {}): {
+    nodes: { path: string; title: string; type: NoteType; degree: number; icon?: string }[];
     edges: [number, number][];
     total: number;
     isolated: number;
   } {
-    const all = this.db.prepare("SELECT path,title,type FROM notes").all() as { path: string; title: string; type: NoteType }[];
-    const notes = opts.skip ? all.filter((n) => !opts.skip!(n.path)) : all; // lo omitido no cuenta ni como nodo, ni como vecino, ni en los totales
+    const all = this.db.prepare("SELECT path,title,type,json_extract(fm_json, '$.icon') AS icon FROM notes").all() as { path: string; title: string; type: NoteType; icon: string | null }[];
+    const typeSet = opts.types ? new Set<NoteType>(opts.types) : null;
+    const notes = all.filter((n) => (!opts.skip || !opts.skip(n.path)) && (!typeSet || typeSet.has(n.type))); // lo omitido no cuenta ni como nodo, ni como vecino, ni en los totales
     const raw = this.db
       .prepare("SELECT DISTINCT src, dst_path AS dst FROM links WHERE dst_path IS NOT NULL AND src<>dst_path")
       .all() as { src: string; dst: string }[];
@@ -495,8 +499,9 @@ export class Index {
         frontier = next;
       }
     } else {
+      const pool = opts.includeIsolated ? notes : notes.filter((n) => degree(n.path) > 0);
       keep = new Set(
-        notes.filter((n) => degree(n.path) > 0).sort((a, b) => degree(b.path) - degree(a.path)).slice(0, opts.max ?? 400).map((n) => n.path),
+        pool.sort((a, b) => degree(b.path) - degree(a.path)).slice(0, opts.max ?? 400).map((n) => n.path),
       );
     }
     const list = [...keep];
@@ -507,7 +512,16 @@ export class Index {
       if (a !== undefined && b !== undefined) edges.push([a, b]);
     }
     return {
-      nodes: list.map((p) => ({ path: p, title: known.get(p)!.title, type: known.get(p)!.type, degree: degree(p) })),
+      nodes: list.map((p) => {
+        const row = known.get(p)!;
+        return {
+          path: p,
+          title: row.title,
+          type: row.type,
+          degree: degree(p),
+          ...(typeof row.icon === "string" && row.icon ? { icon: row.icon } : {}),
+        };
+      }),
       edges, total: notes.length, isolated,
     };
   }

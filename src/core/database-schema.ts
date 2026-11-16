@@ -1,10 +1,11 @@
 // Planificador de cambios de esquema de una base: dado el frontmatter de la base (`properties`, `views`) y sus filas,
 // calcula el esquema/las vistas resultantes y las ediciones que hay que hacer en las notas. Es puro: no toca disco ni
 // el índice. Quien lo llama (Kioku) valida y aplica el plan; aquí solo se decide qué cambia.
-import { OPTION_COLORS, PROP_TYPES, cellValue, isEmptyValue, parseDatabase, propType, serializeOptions, type DbRow, type OptionColor, type PropOption, type PropType } from "./database.ts";
+import { normalizeDbSourceInput, OPTION_COLORS, PROP_TYPES, cellValue, isEmptyValue, parseDatabase, propType, serializeOptions, type DbRow, type OptionColor, type PropOption, type PropType } from "./database.ts";
+import { parseNote, renameFrontmatterKey, replaceLeadingHeading, setFrontmatter } from "./markdown.ts";
 
 export type SchemaOp =
-  | { op: "add-property"; name: string; type: PropType }
+  | { op: "add-property"; name: string; type: PropType; options?: (PropOption | string)[] }
   | { op: "rename-property"; name: string; to: string }
   | { op: "set-type"; name: string; type: PropType }
   | { op: "delete-property"; name: string }
@@ -264,6 +265,24 @@ function checkShape(op: SchemaOp): void {
   if (op.op === "delete-option" && op.clear !== undefined && typeof op.clear !== "boolean") throw new SchemaError("«clear» debe ser verdadero o falso");
 }
 
+function parseSeedOptions(type: PropType, raw: unknown): PropOption[] {
+  if (raw === undefined) return [];
+  if (type !== "select" && type !== "multi") throw new SchemaError(`Una propiedad de tipo ${TYPE_LABEL[type]} no admite opciones iniciales`);
+  if (!Array.isArray(raw)) throw new SchemaError("«options» debe ser una lista de opciones");
+  const out: PropOption[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const rawName = typeof item === "string" ? item : isObj(item) ? item.name : undefined;
+    const optName = validOption(rawName);
+    if (seen.has(fold(optName))) continue;
+    seen.add(fold(optName));
+    const opt: PropOption = { name: optName };
+    if (isObj(item) && item.color !== undefined && item.color !== null) opt.color = validColor(item.color);
+    out.push(opt);
+  }
+  return out;
+}
+
 export function planSchemaOp(raw: { properties?: unknown; views?: unknown }, rows: DbRow[], op: SchemaOp): SchemaPlan {
   checkShape(op);
   switch (op.op) {
@@ -271,9 +290,11 @@ export function planSchemaOp(raw: { properties?: unknown; views?: unknown }, row
       const properties = schemaProperties(raw);
       const name = validName(op.name);
       const type = validType(op.type);
+      const opts = parseSeedOptions(type, op.options);
       assertFree(name, usedKeys(properties, rows));
+      const entry: Record<string, unknown> = opts.length ? { type, options: serializeOptions(opts) } : { type };
       return {
-        properties: Object.fromEntries([...Object.entries(properties), [name, { type }]]),
+        properties: Object.fromEntries([...Object.entries(properties), [name, entry]]),
         views: undefined,
         rowEdits: [],
         summary: `Añadida «${name}» (${TYPE_LABEL[type]})`,
@@ -426,4 +447,44 @@ export function planSchemaOp(raw: { properties?: unknown; views?: unknown }, row
       throw new SchemaError(`Operación desconocida: ${String((unknownOp as { op?: unknown }).op)}`);
     }
   }
+}
+
+/** Aplica una edición de fila calculada por `planSchemaOp` sobre el Markdown crudo de una nota. */
+export function applyRowEditToText(text: string, e: RowEdit): string {
+  if (e.kind === "rename-key") return renameFrontmatterKey(text, e.from, e.to);
+  if (e.kind === "delete-key") return setFrontmatter(text, { [e.key]: null });
+  return setFrontmatter(text, { [e.key]: e.value });
+}
+
+/** Aplica cambios de metadatos (`title`, `icon`, `source`) sobre el Markdown de una base de datos. */
+export function applyDatabaseMetaText(
+  text: string,
+  rel: string,
+  opts: { title?: string; icon?: string | null; source?: unknown },
+): { text: string; title: string } {
+  const parsed = parseNote(text, rel);
+  const def = parseDatabase({ path: rel, title: parsed.title, fm: parsed.frontmatter });
+  const patch: Record<string, unknown> = {};
+  let next = text;
+  let title = parsed.title;
+  if (opts.title !== undefined) {
+    const clean = typeof opts.title === "string" ? opts.title.trim() : "";
+    if (!clean) throw new SchemaError("El título de la base no puede estar vacío");
+    patch.title = clean;
+    next = replaceLeadingHeading(next, parsed.title, clean);
+    title = clean;
+  }
+  if (opts.icon !== undefined) {
+    patch.icon = typeof opts.icon === "string" && opts.icon.trim() ? opts.icon.trim() : null;
+  }
+  if (opts.source !== undefined) {
+    if (!opts.source || typeof opts.source !== "object" || Array.isArray(opts.source)) throw new SchemaError("«source» debe ser un objeto");
+    try {
+      patch.source = normalizeDbSourceInput(def.source, opts.source as Record<string, unknown>).serialized;
+    } catch (e) {
+      throw new SchemaError(e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (Object.keys(patch).length) next = setFrontmatter(next, patch);
+  return { text: next, title };
 }

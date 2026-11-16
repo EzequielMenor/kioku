@@ -113,5 +113,8 @@ test("graph: nodos conectados, vecindario con focus, ignora enlaces rotos", asyn
     assert.equal(g.edges.length, 3); // Kioku↔Arquitectura (2 sentidos) + tarea→Kioku
     const local = ix.graph({ focus: "Tareas/Cablear watcher.md", depth: 1 });
     assert.deepEqual(local.nodes.map((n) => n.path).sort(), ["Proyectos/Kioku.md", "Tareas/Cablear watcher.md"]);
+    const knowledge = ix.graph({ types: ["note", "resource"] });
+    assert.ok(knowledge.nodes.every((n) => n.type === "note" || n.type === "resource"));
+    assert.ok(!knowledge.nodes.some((n) => n.path === "Proyectos/Kioku.md" || n.path === "Tareas/Cablear watcher.md"));
   } finally { cleanup(); }
 });

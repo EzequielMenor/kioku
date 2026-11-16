@@ -280,3 +280,189 @@ export function normKey(s: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+export interface RenameOpts {
+  title?: string;
+  fileName?: string;
+  folder?: string;
+}
+
+export interface RenamePlan {
+  nextTitle: string;
+  targetDir: string;
+  nextBase: string;
+  destRel: string;
+}
+
+export class RenamePlanError extends Error {
+  code = "invalid" as const;
+}
+
+function defaultSanitizeFileName(name: string): string {
+  const s = name
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+|\.+$/g, "")
+    .slice(0, 80)
+    .trim();
+  return s || "Sin título";
+}
+
+const RESERVED_TOP_FOLDERS = new Set([".kioku", ".obsidian", "calendario", "areas"]);
+
+/** Calcula título, carpeta y ruta destino válidas para renombrar o mover una nota. */
+export function planNoteRename(
+  rel: string,
+  curTitle: string,
+  opts: RenameOpts,
+  sanitize: (name: string) => string = defaultSanitizeFileName,
+): RenamePlan {
+  const normRel = rel.replace(/\\/g, "/");
+  const slash = normRel.lastIndexOf("/");
+  const curDir = slash >= 0 ? normRel.slice(0, slash) : "";
+  const curBase = (slash >= 0 ? normRel.slice(slash + 1) : normRel).replace(/\.md$/i, "");
+
+  const nextTitle = opts.title !== undefined ? opts.title.trim() : curTitle;
+  if (opts.title !== undefined && !nextTitle) throw new RenamePlanError("El título no puede estar vacío");
+
+  let targetDir = curDir;
+  if (opts.folder !== undefined) {
+    targetDir = opts.folder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    if (targetDir) {
+      const segs = targetDir.split("/");
+      if (segs.some((s) => !s || s === "." || s === ".." || s.startsWith("."))) {
+        throw new RenamePlanError("Carpeta no permitida");
+      }
+      if (RESERVED_TOP_FOLDERS.has(segs[0].toLowerCase())) {
+        throw new RenamePlanError("Esa carpeta está reservada");
+      }
+    }
+  }
+
+  let nextBase = curBase;
+  if (opts.fileName !== undefined) {
+    const rawName = opts.fileName.trim().replace(/\.md$/i, "");
+    if (!rawName.replace(/[<>:"/\\|?*\x00-\x1f.\s]+/g, "")) {
+      throw new RenamePlanError("Nombre de archivo inválido");
+    }
+    nextBase = sanitize(rawName);
+  } else if (opts.title !== undefined && nextTitle !== curTitle) {
+    nextBase = sanitize(nextTitle);
+  }
+
+  const destRel = targetDir ? `${targetDir}/${nextBase}.md` : `${nextBase}.md`;
+  return { nextTitle, targetDir, nextBase, destRel };
+}
+
+const FM_FENCE_RE = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
+const WIKILINK_MATCH_RE = /(!?)\[\[([^\]\n]+)\]\]/g;
+const CODE_FENCE_LINE_RE = /^[ \t]{0,3}(`{3,}|~{3,})/;
+
+function rewriteWikilinksInSegment(text: string, mapTarget: (target: string) => string | null): string {
+  return text.replace(WIKILINK_MATCH_RE, (m, embed: string, inner: string) => {
+    const pipe = inner.indexOf("|");
+    const beforeAlias = pipe >= 0 ? inner.slice(0, pipe) : inner;
+    const alias = pipe >= 0 ? inner.slice(pipe) : "";
+    const hash = beforeAlias.indexOf("#");
+    const rawTarget = (hash >= 0 ? beforeAlias.slice(0, hash) : beforeAlias).trim();
+    const anchor = hash >= 0 ? beforeAlias.slice(hash) : "";
+    const next = mapTarget(rawTarget);
+    if (next === null || next === rawTarget) return m;
+    return `${embed}[[${next}${anchor}${alias}]]`;
+  });
+}
+
+function rewriteLineOutsideCode(line: string, mapTarget: (target: string) => string | null): string {
+  let out = "";
+  let i = 0;
+  let plainStart = 0;
+  while (i < line.length) {
+    if (line[i] === "`") {
+      let tickLen = 0;
+      while (i + tickLen < line.length && line[i + tickLen] === "`") tickLen++;
+      const close = line.indexOf("`".repeat(tickLen), i + tickLen);
+      if (close >= 0) {
+        out += rewriteWikilinksInSegment(line.slice(plainStart, i), mapTarget);
+        out += line.slice(i, close + tickLen);
+        i = close + tickLen;
+        plainStart = i;
+        continue;
+      }
+      i += tickLen;
+      continue;
+    }
+    i++;
+  }
+  out += rewriteWikilinksInSegment(line.slice(plainStart), mapTarget);
+  return out;
+}
+
+/** Reescribe enlaces `[[...]]` en frontmatter y cuerpo (respetando bloques y spans de código). */
+export function rewriteWikilinks(text: string, mapTarget: (target: string) => string | null): string {
+  const fm = FM_FENCE_RE.exec(text);
+  const fmPart = fm ? rewriteWikilinksInSegment(fm[0], mapTarget) : "";
+  const body = fm ? text.slice(fm[0].length) : text;
+  const lines = body.split("\n");
+  let fenceChar: string | null = null;
+  let fenceLen = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].replace(/\r$/, "");
+    const m = CODE_FENCE_LINE_RE.exec(trimmed);
+    if (!fenceChar && m) {
+      fenceChar = m[1][0];
+      fenceLen = m[1].length;
+      continue;
+    }
+    if (fenceChar) {
+      if (new RegExp(`^[ \\t]{0,3}${fenceChar}{${fenceLen},}[ \\t]*$`).test(trimmed)) {
+        fenceChar = null;
+        fenceLen = 0;
+      }
+      continue;
+    }
+    lines[i] = rewriteLineOutsideCode(lines[i], mapTarget);
+  }
+  return fmPart + lines.join("\n");
+}
+
+/** Si el cuerpo empieza con `# oldTitle`, lo sincroniza con `newTitle` preservando el frontmatter. */
+export function replaceLeadingHeading(text: string, oldTitle: string, newTitle: string): string {
+  if (normKey(oldTitle) === normKey(newTitle) && oldTitle === newTitle) return text;
+  const fm = FM_FENCE_RE.exec(text);
+  const fmPart = fm ? fm[0] : "";
+  const body = fm ? text.slice(fmPart.length) : text;
+  const head = /^([ \t]*(?:\r?\n)*)(#[ \t]+)([^\r\n]+)/.exec(body);
+  if (!head || normKey(head[3]) !== normKey(oldTitle)) return text;
+  return fmPart + head[1] + head[2] + newTitle + body.slice(head[0].length);
+}
+
+/** Construye un mapeador para actualizar enlaces `[[...]]` tras renombrar o mover una nota. */
+export function createRenameLinkMapper(
+  oldRel: string,
+  oldTitle: string,
+  newRel: string,
+  newBase: string,
+  newTitle: string,
+): (rawTarget: string) => string | null {
+  const oldPathNoExt = normKey(oldRel.replace(/\.md$/i, ""));
+  const newPathNoExt = newRel.replace(/\.md$/i, "");
+  const oldSlash = oldRel.lastIndexOf("/");
+  const oldBase = (oldSlash >= 0 ? oldRel.slice(oldSlash + 1) : oldRel).replace(/\.md$/i, "");
+  const oldBaseKey = normKey(oldBase);
+  const oldTitleKey = normKey(oldTitle);
+  const fileChanged = oldBaseKey !== normKey(newBase) || newBase !== oldBase;
+  const titleChanged = oldTitleKey !== normKey(newTitle) || newTitle !== oldTitle;
+
+  return (rawTarget: string) => {
+    const stripped = rawTarget.replace(/\.md$/i, "").trim();
+    if (!stripped) return null;
+    const key = normKey(stripped);
+    if (key === oldPathNoExt) return newPathNoExt;
+    if (!stripped.includes("/")) {
+      if (key === oldBaseKey && fileChanged) return newBase;
+      if (key === oldTitleKey && titleChanged) return newBase;
+    }
+    return null;
+  };
+}

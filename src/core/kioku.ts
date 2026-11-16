@@ -7,13 +7,13 @@ import { RulesProvider, triageInput, type AIProvider } from "./ai.ts";
 import { buildPayload, LlmProvider, MAX_CAPTURES, parseLlmConfig, type LlmConfig, type LlmPayload } from "./llm.ts";
 import { parseCapture, type ParsedCapture } from "./capture.ts";
 import { addDays, diffDays, localDate, localTime } from "./dates.ts";
-import { availableColumns, matchesSource, parseDatabase, queryRows, type Column, type DatabaseDef, type QueryResult, type View } from "./database.ts";
-import { planSchemaOp, SchemaError, type RowEdit, type SchemaOp, type SchemaPlan } from "./database-schema.ts";
+import { availableColumns, matchesSource, parseDatabase, queryRows, type Column, type DatabaseDef, type DbSource, type QueryResult, type View } from "./database.ts";
+import { applyDatabaseMetaText, applyRowEditToText, planSchemaOp, SchemaError, type RowEdit, type SchemaOp, type SchemaPlan } from "./database-schema.ts";
 import { fuzzyScore, Index, relationTarget, type NoteRow, type NoteType, type TaskRow, type TaskStatus } from "./index.ts";
 import { ulid } from "./ids.ts";
 import { Areas } from "./areas.ts";
 import { Calendar } from "./calendar-store.ts";
-import { appendToSection, normKey, parseNote, renameFrontmatterKey, renderNote, sectionItems, setFrontmatter, splitFrontmatter } from "./markdown.ts";
+import { appendToSection, createRenameLinkMapper, normKey, parseNote, planNoteRename, renameFrontmatterKey, RenamePlanError, renderNote, replaceLeadingHeading, rewriteWikilinks, sectionItems, setFrontmatter, splitFrontmatter, type RenameOpts } from "./markdown.ts";
 import { ProposalStore, type Op, type Proposal, type ProposalDraft } from "./proposals.ts";
 import { sanitizeFileName, Vault, VaultError } from "./vault.ts";
 
@@ -356,6 +356,76 @@ export class Kioku {
     return note;
   }
 
+  /** Renombra título/archivo o mueve de carpeta comprobando hash y actualizando referencias entrantes. */
+  async renameNote(
+    rel: string,
+    opts: RenameOpts,
+    baseHash: string,
+  ): Promise<{ path: string; title: string; hash: string; moved: boolean }> {
+    this.vault.assertUserPath(rel);
+    const cur = await this.vault.read(rel);
+    if (cur.hash !== baseHash) throw new VaultError("conflict", "La nota ha cambiado en el disco desde que se abrió");
+    const parsed = parseNote(cur.text, path.posix.basename(rel));
+    const curType = this.index.getNote(rel)?.type;
+    if (curType === "block" || curType === "area") {
+      throw new VaultError("invalid", "Las actividades y áreas se renombran desde el Calendario");
+    }
+
+    let plan;
+    try {
+      plan = planNoteRename(rel, parsed.title, opts, sanitizeFileName);
+    } catch (e) {
+      if (e instanceof RenamePlanError) throw new VaultError("invalid", e.message);
+      throw e;
+    }
+
+    const { destRel, nextTitle, nextBase } = plan;
+    const titleChanged = opts.title !== undefined && nextTitle !== parsed.title;
+    if (destRel === rel && !titleChanged) {
+      return { path: rel, title: parsed.title, hash: cur.hash, moved: false };
+    }
+    if (destRel !== rel && this.vault.exists(destRel)) {
+      throw new VaultError("exists", `Ya existe una nota en ${destRel}`);
+    }
+
+    let nextText = cur.text;
+    if (!parsed.frontmatterError && titleChanged) {
+      nextText = setFrontmatter(nextText, { title: nextTitle });
+      nextText = replaceLeadingHeading(nextText, parsed.title, nextTitle);
+    }
+
+    const backlinkPaths = this.index.backlinks(rel).map((b) => b.path);
+    if (nextText !== cur.text) await this.vault.write(rel, nextText, cur.hash);
+    if (destRel !== rel) await this.vault.move(rel, destRel);
+    const after = await this.vault.read(destRel);
+
+    const mapper = createRenameLinkMapper(rel, parsed.title, destRel, nextBase, titleChanged ? nextTitle : parsed.title);
+    const updatedRefs: { path: string; text: string; mtimeMs: number; hash: string }[] = [];
+    for (const refPath of backlinkPaths) {
+      if (refPath === rel || refPath === destRel) continue;
+      const refRead = await this.vault.read(refPath).catch(() => null);
+      if (!refRead) continue;
+      const rewritten = rewriteWikilinks(refRead.text, mapper);
+      if (rewritten === refRead.text) continue;
+      try {
+        await this.vault.write(refPath, rewritten, refRead.hash);
+        const afterRef = await this.vault.read(refPath);
+        updatedRefs.push({ path: refPath, text: afterRef.text, mtimeMs: afterRef.mtimeMs, hash: afterRef.hash });
+      } catch (e) {
+        if (!(e instanceof VaultError && e.code === "conflict")) throw e;
+      }
+    }
+
+    this.index.tx(() => {
+      if (destRel !== rel) this.index.removeNote(rel);
+      this.index.upsertNote(destRel, after.text, { mtimeMs: after.mtimeMs, size: Buffer.byteLength(after.text) });
+      for (const u of updatedRefs) this.index.upsertNote(u.path, u.text, { mtimeMs: u.mtimeMs, size: Buffer.byteLength(u.text) });
+      this.index.resolveAll();
+    });
+    this.changed("note", destRel);
+    return { path: destRel, title: parsed.frontmatterError ? parsed.title : nextTitle, hash: after.hash, moved: destRel !== rel };
+  }
+
   /* ---------------- bases de datos ---------------- */
 
   /** Fila de la base: sus notas se leen siempre del índice, que es derivado (borrarlo y reindexar da lo mismo). */
@@ -367,17 +437,20 @@ export class Kioku {
   }
 
   /** `skip`: filas que quien consulta no debe ver (p. ej. carpetas excluidas del asistente); tampoco se cuentan. */
-  listDatabases(opts: { skip?: (path: string) => boolean } = {}): { path: string; title: string; rows: number; views: View[]; warnings: string[] }[] {
+  listDatabases(opts: { skip?: (path: string) => boolean } = {}): { path: string; title: string; icon?: string; rows: number; views: View[]; warnings: string[] }[] {
     const all = this.index.noteRows().filter((r) => !opts.skip?.(r.path) || r.type === "database");
     return all.filter((r) => r.type === "database").map((r) => {
       const def = parseDatabase(r);
-      return { path: def.path, title: def.title, rows: all.filter((x) => matchesSource(def, x)).length, views: def.views, warnings: def.warnings };
+      const icon = typeof r.fm.icon === "string" && r.fm.icon ? r.fm.icon : undefined;
+      return { path: def.path, title: def.title, ...(icon ? { icon } : {}), rows: all.filter((x) => matchesSource(def, x)).length, views: def.views, warnings: def.warnings };
     });
   }
 
   /** `view`: nombre de una vista guardada, o una vista ad hoc (filtros del momento sin guardar). Sin `view`, la primera. */
-  queryDatabase(rel: string, view?: string | View, opts: { skip?: (path: string) => boolean } = {}): QueryResult & { database: { path: string; title: string; views: View[]; warnings: string[]; available: Column[] } } {
+  queryDatabase(rel: string, view?: string | View, opts: { skip?: (path: string) => boolean } = {}): QueryResult & { database: { path: string; title: string; icon?: string; source: DbSource; views: View[]; warnings: string[]; available: Column[] } } {
     const def = this.databaseDef(rel);
+    const noteRow = this.index.getNote(rel)!;
+    const icon = typeof noteRow.fm.icon === "string" && noteRow.fm.icon ? noteRow.fm.icon : undefined;
     let v: View;
     if (view === undefined) v = def.views[0];
     else if (typeof view === "string") {
@@ -386,7 +459,28 @@ export class Kioku {
       v = found;
     } else v = this.validView(view);
     const rows = this.index.noteRows().filter((r) => !opts.skip?.(r.path) && matchesSource(def, r));
-    return { ...queryRows(def, v, rows), database: { path: def.path, title: def.title, views: def.views, warnings: def.warnings, available: availableColumns(def, rows) } };
+    return { ...queryRows(def, v, rows), database: { path: def.path, title: def.title, ...(icon ? { icon } : {}), source: def.source, views: def.views, warnings: def.warnings, available: availableColumns(def, rows) } };
+  }
+
+  /** Personaliza título, icono y origen de filas (`source`) de una base sin editar el Markdown a mano. */
+  async updateDatabaseMeta(
+    rel: string,
+    opts: { title?: string; icon?: string | null; source?: { folder?: unknown; type?: unknown; tags?: unknown } },
+  ): Promise<NoteRow> {
+    this.databaseDef(rel);
+    const run = async () => {
+      const cur = await this.vault.read(rel);
+      let nextText: string;
+      try { nextText = applyDatabaseMetaText(cur.text, rel, opts).text; }
+      catch (e) { throw e instanceof SchemaError ? new VaultError("invalid", e.message) : e; }
+      if (nextText !== cur.text) await this.vault.write(rel, nextText, cur.hash);
+      const note = await this.reindexPath(rel);
+      this.changed("note", rel);
+      return note;
+    };
+    const result = this.viewsQueue.then(run, run);
+    this.viewsQueue = result.catch(() => undefined);
+    return result;
   }
 
   /** Una vista llegada de fuera (API, asistente) se valida con el mismo parser tolerante: si algo se descartaría, se rechaza. */
@@ -547,9 +641,7 @@ export class Kioku {
   }
 
   private applyRowEdit(text: string, e: RowEdit): string {
-    if (e.kind === "rename-key") return renameFrontmatterKey(text, e.from, e.to);
-    if (e.kind === "delete-key") return setFrontmatter(text, { [e.key]: null });
-    return setFrontmatter(text, { [e.key]: e.value });
+    return applyRowEditToText(text, e);
   }
 
   /** Nueva fila: una nota normal en la carpeta/tipo de origen. `id`, `type` y `created` son del sistema y nunca se aceptan. */

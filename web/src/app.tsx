@@ -23,6 +23,7 @@ import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submi
 import type { TaskStatus } from "./offline/store.ts";
 import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
+import { extractFolders, isKnowledgeNote, listKnowledgeNotes, noteFolder } from "./notes-model.ts";
 import { priorityLabel } from "./priority.ts";
 import { OpView } from "./proposal-ops.tsx";
 import { currentState, disablePush, enablePush, type PushState } from "./push.ts";
@@ -209,17 +210,19 @@ function App() {
 
   const openContext = (path: string) => { setCtxPath(path); setOverlay("context"); };
 
-  const newNote = async (type: "note" | "project") => {
+  const newNote = async (type: "note" | "project" | "resource", folder?: string) => {
     const title = await askText(type === "project"
       ? { title: "Nuevo proyecto", placeholder: "Nombre del proyecto", confirm: "Crear" }
-      : { title: "Nueva nota", placeholder: "Título de la nota", confirm: "Crear" });
+      : type === "resource"
+        ? { title: "Nuevo recurso", placeholder: "Título del recurso", confirm: "Crear" }
+        : { title: "Nueva nota", placeholder: "Título de la nota", confirm: "Crear" });
     if (!title) return;
     await guard(async () => {
       if (type === "project") {
         const r = await api<{ path: string }>("POST", "/api/project/create", { title });
         setRoute(`/proyecto/${r.path}`);
       } else {
-        const r = await api<{ path: string }>("POST", "/api/note/create", { title, type: "note" });
+        const r = await api<{ path: string }>("POST", "/api/note/create", { title, type, ...(folder ? { folder } : {}) });
         setRoute(`/nota/${r.path}`);
       }
     });
@@ -247,7 +250,7 @@ function App() {
     case "proyecto": view = <ProjectView key={arg} path={arg} rev={rev} go={setRoute} say={say} guard={guard} focus={focus} onContext={openContext} />; break;
     case "tareas": view = <TasksView rev={rev} go={setRoute} guard={guard} today={counts?.date} />; break;
     case "calendario": view = <CalendarView rev={rev} guard={guard} say={say} />; break;
-    case "notas": view = <NotesView rev={rev} go={setRoute} onNew={() => newNote("note")} />; break;
+    case "notas": view = <NotesView rev={rev} go={setRoute} onNew={(tp, folder) => newNote(tp, folder)} />; break;
     case "bases": view = arg ? <DatabaseView key={arg} path={arg} rev={rev} go={setRoute} guard={guard} say={say} /> : <DatabasesList rev={rev} go={setRoute} guard={guard} />; break;
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
     case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : arg === "memoria" ? <AssistantMemory rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
@@ -675,30 +678,70 @@ function TasksView({ rev, go, guard, today }: { rev: number; go: Go; guard: Guar
 
 // ───────────────────────────── Notas ─────────────────────────────
 
-function NotesView({ rev, go, onNew }: { rev: number; go: Go; onNew(): void }) {
+function NotesView({ rev, go, onNew }: { rev: number; go: Go; onNew(type: "note" | "resource", folder?: string): void }) {
   const { data } = useApi<NoteListItem[]>("/api/notes", rev);
-  const [type, setType] = useState("all");
+  const [type, setType] = useState<"all" | "note" | "resource">("all");
+  const [folder, setFolder] = useState("all");
   const [q, setQ] = useState("");
-  const types = ["all", "note", "capture", "project", "task", "journal", "resource"];
-  const label: Record<string, string> = { all: "Todas", note: "Notas", capture: "Capturas", project: "Proyectos", task: "Tareas", journal: "Diario", resource: "Recursos" };
-  const list = (data ?? [])
-    .filter((n) => n.type !== "block" && n.type !== "event" && !n.path.startsWith("Calendario/")) // las actividades del calendario no son notas: viven en Calendario
-    .filter((n) => (type === "all" || n.type === type) && (!q || n.title.toLowerCase().includes(q.toLowerCase())))
-    .sort((a, b) => b.mtime - a.mtime);
+  const types: ("all" | "note" | "resource")[] = ["all", "note", "resource"];
+  const label: Record<string, string> = { all: "Todas", note: "Notas", resource: "Recursos" };
+  const knowledge = (data ?? []).filter(isKnowledgeNote);
+  const folders = extractFolders(knowledge);
+  const activeFolder = folder !== "all" && folders.some((f) => f.folder === folder) ? folder : "all";
+  const createFolder = activeFolder !== "all" && activeFolder !== "(Raíz)" ? activeFolder : undefined;
+  const list = listKnowledgeNotes(knowledge, { subType: type, folder: activeFolder, query: q });
+  const reset = () => { setType("all"); setFolder("all"); setQ(""); };
   return (
     <div class="page narrow">
-      <header class="page-head"><h1>Notas</h1><div class="row"><input class="search" placeholder="Filtrar por título…" value={q} onInput={(e) => setQ(e.currentTarget.value)} /><button class="primary" onClick={onNew}>Nueva nota</button></div></header>
-      <div class="chips">{types.map((tp) => <button key={tp} class={`chip btn ${type === tp ? "on" : ""}`} onClick={() => setType(tp)}>{label[tp]}</button>)}</div>
+      <header class="page-head">
+        <div>
+          <h1>Notas</h1>
+          <p class="muted small">Notas de conocimiento y recursos ({knowledge.length}). Tareas, proyectos, capturas y calendario tienen su propia sección.</p>
+        </div>
+        <div class="row">
+          <input class="search" placeholder="Filtrar por título, #etiqueta o ruta…" value={q} onInput={(e) => setQ(e.currentTarget.value)} />
+          <button class="ghost" onClick={() => onNew("resource", createFolder)}>Nuevo recurso</button>
+          <button class="primary" onClick={() => onNew("note", createFolder)}>Nueva nota</button>
+        </div>
+      </header>
+      <div class="notes-filters">
+        <div class="chips">{types.map((tp) => <button key={tp} class={`chip btn ${type === tp ? "on" : ""}`} onClick={() => setType(tp)}>{label[tp]}</button>)}</div>
+        {folders.length > 0 && (
+          <div class="chips">
+            <button class={`chip btn ${activeFolder === "all" ? "on" : ""}`} onClick={() => setFolder("all")}>Todas las carpetas ({knowledge.length})</button>
+            {folders.map((f) => (
+              <button key={f.folder} class={`chip btn folder-chip ${activeFolder === f.folder ? "on" : ""}`} onClick={() => setFolder(f.folder)}>
+                {f.folder} · {f.count}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <ul class="rows">
-        {list.slice(0, 400).map((n) => (
-          <li key={n.path}>
-            <a href={`#/nota/${enc(n.path)}`}>{n.title}</a>
-            <span class="chip">{label[n.type] ?? n.type}</span>
-            <span class="muted small path">{n.path}</span>
-          </li>
-        ))}
+        {list.slice(0, 400).map((n) => {
+          const fld = noteFolder(n.path);
+          return (
+            <li key={n.path}>
+              {n.icon && <span class="note-row-icon" aria-hidden="true">{n.icon}</span>}
+              <a href={`#/nota/${enc(n.path)}`}>{n.title}</a>
+              <span class="chip">{label[n.type] ?? n.type}</span>
+              <button type="button" class="chip btn folder-chip" onClick={() => setFolder(fld === activeFolder ? "all" : fld)} title="Filtrar por carpeta">{fld}</button>
+              <span class="tags-inline">
+                {(n.tags ?? []).slice(0, 3).map((t) => (
+                  <button key={t} type="button" class="chip btn" onClick={() => setQ(`#${t}`)}>{t}</button>
+                ))}
+              </span>
+              <span class="muted small path">{n.path}</span>
+            </li>
+          );
+        })}
       </ul>
-      {data && list.length === 0 && <div class="empty">Nada que mostrar.</div>}
+      {data && knowledge.length === 0 && <div class="empty">Todavía no hay notas ni recursos de conocimiento.</div>}
+      {data && knowledge.length > 0 && list.length === 0 && (
+        <div class="empty">
+          Nada coincide con el filtro actual. <button class="ghost" onClick={reset}>Ver todas</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1009,7 +1052,7 @@ function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
     ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
     ["g h · b · p · t · c · n · d · g · a · r · s", "Ir a Hoy · Bandeja · Proyectos · Tareas · Calendario · Notas · Bases · Grafo · Asistente · Propuestas · Conexiones"],
-    ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
+    ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["/ · Ctrl B · Ctrl I (editor)", "Menú de formato · negrita · cursiva"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (
     <Modal title="Atajos" onClose={onClose}>

@@ -12,7 +12,7 @@ export type Role = "full" | "mobile";
 
 /** Lo único que el móvil puede escribir: capturar, tareas (estado y formulario en línea), notas y el asistente (preguntar y deshacer). Borrar, escritorio y mantenimiento quedan fuera. */
 const WRITES = new Set([
-  "POST /api/capture", "POST /api/capture/convert", "POST /api/note/create", "PUT /api/note", "POST /api/note/props",
+  "POST /api/capture", "POST /api/capture/convert", "POST /api/note/create", "PUT /api/note", "POST /api/note/props", "POST /api/note/rename",
   "POST /api/task/status", "POST /api/task/create", "POST /api/task/update", "POST /api/journal", "POST /api/note/open", "POST /api/mobile/operation",
   "POST /api/database/query", // lectura que viaja por POST
   "POST /api/push/subscribe", "POST /api/push/unsubscribe", // avisos al móvil: cada móvil gestiona su propia suscripción
@@ -33,7 +33,7 @@ export function mobileAllowed(method: string, p: string): boolean {
 }
 
 /** Parámetros que nombran una nota: si alguno cae en una carpeta privada, la petición no se atiende. */
-const PATH_PARAMS = ["path", "focus", "project", "taskPath", "projectPath", "areaPath"];
+const PATH_PARAMS = ["path", "folder", "focus", "project", "taskPath", "projectPath", "areaPath"];
 
 /** Ruta sin trucos (`//`, `./`, `a/../b`, `\`) antes de compararla con las carpetas privadas. */
 const canonical = (p: string) => path.posix.normalize(p.replace(/\\/g, "/")).replace(/^(\.?\/)+/, "");
@@ -43,7 +43,12 @@ export const isPrivate = (p: string, exclude: string[]) => isExcludedPath(p, exc
 export function touchesPrivate(sources: (URLSearchParams | Record<string, unknown>)[], exclude: string[]): boolean {
   return sources.some((s) => PATH_PARAMS.some((k) => {
     const v = s instanceof URLSearchParams ? s.get(k) : s[k];
-    return typeof v === "string" && isPrivate(v, exclude);
+    if (typeof v !== "string") return false;
+    if (k === "folder") {
+      const clean = v.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+      return clean !== "" && (isPrivate(clean, exclude) || isPrivate(`${clean}/_`, exclude));
+    }
+    return isPrivate(v, exclude);
   }));
 }
 

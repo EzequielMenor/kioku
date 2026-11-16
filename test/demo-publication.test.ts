@@ -95,15 +95,19 @@ test("demo: los datos y las respuestas de ejemplo no prometen un servicio alojad
   assert.match(ask.answer, /Cloud[^.]*(planificad|idea)/i);
 });
 
-test("demo: editar el esquema de una base se rechaza de forma explícita en vez de fingir un éxito", async () => {
+test("demo: editar el esquema de una base actualiza la definición real en memoria y permite previsualizar", async () => {
   resetDemoState(new Date("2026-11-06T10:00:00"));
-  for (const route of ["/api/database/schema", "/api/database/schema/preview"]) {
-    await assert.rejects(
-      handleDemoApi("POST", route, { path: "Bases/Biblioteca técnica.md", op: { op: "add-property", name: "Prueba", type: "text" } }),
-      (e: Error & { status?: number }) => e.status === 400 && /demo/i.test(e.message),
-    );
-  }
-  // el resto de la base sigue consultable
+  const preview = await handleDemoApi<{ affected: number }>("POST", "/api/database/schema/preview", {
+    path: "Bases/Biblioteca técnica.md",
+    op: { op: "add-property", name: "Prueba", type: "text" },
+  });
+  assert.equal(preview.affected, 0);
+  await handleDemoApi("POST", "/api/database/schema", {
+    path: "Bases/Biblioteca técnica.md",
+    op: { op: "add-property", name: "Prueba", type: "text" },
+  });
+  const q = await handleDemoApi<{ database: { available: { key: string }[] } }>("POST", "/api/database/query", { path: "Bases/Biblioteca técnica.md" });
+  assert.ok(q.database.available.some((c) => c.key === "Prueba"));
   const dbs = await handleDemoApi<{ title: string }[]>("GET", "/api/databases");
   assert.ok(dbs.some((d) => d.title === "Biblioteca técnica"));
 });

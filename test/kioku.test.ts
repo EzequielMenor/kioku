@@ -288,3 +288,58 @@ test("IA real: respuesta no válida o fallo del modelo → error, sin propuestas
     j.close();
   } finally { cleanup(); }
 });
+
+test("renameNote: renombra título, archivo .md, carpeta y actualiza enlaces entrantes con baseHash", async () => {
+  const { root, cleanup } = tmpVault();
+  try {
+    const j = await Kioku.open({ root, now: clock("2026-10-26T09:00:00").now });
+    const a = await j.createNote({ title: "Borrador inicial", body: "# Borrador inicial\n\nContenido de prueba.\n" });
+    const ref = await j.createNote({
+      title: "Índice",
+      body: "Ver [[Borrador inicial]], [[Notas/Borrador inicial|ver más]] y [[Borrador inicial#Sección]].\nEn código: `[[Borrador inicial]]`\n",
+    });
+    const other = await j.createNote({ title: "Existente", body: "Otra\n" });
+
+    // Hash obsoleto → conflicto sin tocar archivos
+    await assert.rejects(j.renameNote(a.path, { title: "Otro" }, "hash-viejo"), /cambiado|conflicto|conflict/i);
+    assert.equal(j.vault.exists(a.path), true);
+
+    // Colisión con nota existente → error sin sobrescribir
+    const curA = await j.readNote(a.path);
+    await assert.rejects(j.renameNote(a.path, { title: "Existente" }, curA.hash), /existe|exists/i);
+    assert.equal(j.vault.exists(a.path), true);
+    assert.equal(j.vault.exists(other.path), true);
+
+    // Carpeta reservada → error inválido
+    await assert.rejects(j.renameNote(a.path, { folder: ".kioku/secret" }, curA.hash), /permitida|reservad|inválid/i);
+    await assert.rejects(j.renameNote(a.path, { folder: "Calendario" }, curA.hash), /Calendario|reservad|inválid/i);
+
+    // Renombrado real: título + archivo + subcarpeta
+    const res = await j.renameNote(a.path, { title: "Arquitectura final", folder: "Notas/Diseño" }, curA.hash);
+    assert.equal(res.path, "Notas/Diseño/Arquitectura final.md");
+    assert.equal(res.title, "Arquitectura final");
+    assert.equal(res.moved, true);
+    assert.equal(j.vault.exists(a.path), false);
+    assert.equal(j.vault.exists(res.path), true);
+
+    const renamed = await j.readNote(res.path);
+    assert.equal(renamed.note?.title, "Arquitectura final");
+    assert.match(renamed.text, /^# Arquitectura final$/m);
+
+    // Los enlaces entrantes se actualizaron (salvo código en línea) y el índice resuelve backlinks
+    const refAfter = await j.readNote(ref.path);
+    assert.match(refAfter.text, /\[\[Arquitectura final\]\]/);
+    assert.match(refAfter.text, /\[\[Notas\/Diseño\/Arquitectura final\|ver más\]\]/);
+    assert.match(refAfter.text, /\[\[Arquitectura final#Sección\]\]/);
+    assert.match(refAfter.text, /`\[\[Borrador inicial\]\]`/);
+    assert.deepEqual(j.index.backlinks(res.path).map((b) => b.path), [ref.path]);
+
+    // Cambiar solo el nombre del archivo manteniendo el título
+    const resFile = await j.renameNote(res.path, { fileName: "arq-v2" }, renamed.hash);
+    assert.equal(resFile.path, "Notas/Diseño/arq-v2.md");
+    assert.equal(resFile.title, "Arquitectura final");
+    assert.equal(j.vault.exists(resFile.path), true);
+
+    j.close();
+  } finally { cleanup(); }
+});

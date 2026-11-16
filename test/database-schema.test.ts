@@ -44,6 +44,31 @@ test("add-property sobre una base sin properties ni views", () => {
   assert.equal(plan.views, undefined);
 });
 
+test("add-property con opciones iniciales (p. ej. Prioridad con colores) guarda type + options y valida tipos/colores", () => {
+  const plan = planSchemaOp(raw(), rows, {
+    op: "add-property",
+    name: "Prioridad",
+    type: "select",
+    options: [
+      { name: "Alta", color: "red" },
+      { name: "Media", color: "yellow" },
+      { name: "alta", color: "blue" }, // duplicado case-insensitive -> se conserva el primero
+      { name: "Baja", color: "gray" },
+    ],
+  });
+  assert.deepEqual(plan.properties["Prioridad"], {
+    type: "select",
+    options: [
+      { name: "Alta", color: "red" },
+      { name: "Media", color: "yellow" },
+      { name: "Baja", color: "gray" },
+    ],
+  });
+  assert.throws(() => planSchemaOp({}, [], { op: "add-property", name: "X", type: "text", options: [{ name: "A" }] }), SchemaError);
+  assert.throws(() => planSchemaOp({}, [], { op: "add-property", name: "X", type: "select", options: [{ name: "  " }] }), SchemaError);
+  assert.throws(() => planSchemaOp({}, [], { op: "add-property", name: "X", type: "select", options: [{ name: "A", color: "neon" as never }] }), SchemaError);
+});
+
 test("add-property rechaza nombres vacíos, reservados y colisiones", () => {
   const add = (name: string) => () => planSchemaOp(raw(), rows, { op: "add-property", name, type: "text" });
   assert.throws(add("Title"), SchemaError);

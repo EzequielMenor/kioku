@@ -2,30 +2,61 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { pinchZoom } from "./graph-math.ts";
 import { useApi } from "./hooks.ts";
+import { extractFolders, noteFolder } from "./notes-model.ts";
 
-interface GNode { path: string; title: string; type: string; degree: number }
+interface GNode { path: string; title: string; type: string; degree: number; icon?: string }
 interface GraphData { nodes: GNode[]; edges: [number, number][]; total: number; isolated: number }
 interface SimNode { n: GNode; x: number; y: number; vx: number; vy: number; r: number; pinned: boolean }
 
-// Los colores por tipo son variables del tema (--t-*): en «papel» son más oscuros para que se lean sobre fondo claro.
+// Los colores por tipo y colección son variables del tema (--t-*, --g-*): se adaptan a modo oscuro y claro.
 const TYPE_LABEL: Record<string, string> = {
   project: "Proyectos", task: "Tareas", note: "Notas", capture: "Capturas", journal: "Diario", resource: "Recursos",
 };
+const COLLECTION_VARS = ["--g-0", "--g-1", "--g-2", "--g-3", "--g-4", "--g-5"];
 
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 
+function isNodeVisible(n: GNode, hiddenTypes: Set<string>, hiddenFolders: Set<string>, showIsolated: boolean, focus?: string) {
+  if (hiddenTypes.has(n.type)) return false;
+  if (hiddenFolders.has(noteFolder(n.path))) return false;
+  if (!showIsolated && n.degree === 0 && n.path !== focus) return false;
+  return true;
+}
+
+function drawDiamond(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  ctx.moveTo(x, y - r);
+  ctx.lineTo(x + r, y);
+  ctx.lineTo(x, y + r);
+  ctx.lineTo(x - r, y);
+  ctx.closePath();
+}
+
 export function GraphView({ rev, go, focus }: { rev: number; go(route: string): void; focus?: string }) {
   const [depth, setDepth] = useState(2);
-  const url = `/api/graph?${focus ? `focus=${encodeURIComponent(focus)}&depth=${depth}` : "max=400"}`;
+  const [showIsolated, setShowIsolated] = useState(false);
+  const url = `/api/graph?${focus ? `focus=${encodeURIComponent(focus)}&depth=${depth}` : `max=400${showIsolated ? "&isolated=1" : ""}`}`;
   const { data, error } = useApi<GraphData>(url, rev);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [hiddenFolders, setHiddenFolders] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const types = useMemo(() => [...new Set((data?.nodes ?? []).map((n) => n.type))].sort(), [data]);
+  const folders = useMemo(() => extractFolders(data?.nodes ?? []), [data]);
+  const folderVar = useMemo(() => {
+    const m = new Map<string, string>();
+    folders.forEach((f, idx) => m.set(f.folder, COLLECTION_VARS[idx % COLLECTION_VARS.length]));
+    return m;
+  }, [folders]);
+  const visibleCount = useMemo(
+    () => (data?.nodes ?? []).filter((n) => isNodeVisible(n, hidden, hiddenFolders, showIsolated, focus)).length,
+    [data, hidden, hiddenFolders, showIsolated, focus],
+  );
+  const toggleSet = (setter: typeof setHidden, key: string) =>
+    setter((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   return (
     <div class="graph-page">
       <header class="graph-bar">
-        <h1>{focus ? "Grafo local" : "Grafo"}</h1>
+        <h1>{focus ? "Grafo local" : "Grafo de conocimiento"}</h1>
         {focus && <button class="chip btn" onClick={() => go("/grafo")}>Ver todo</button>}
         {focus && (
           <span class="row" style="margin:0">
@@ -33,73 +64,158 @@ export function GraphView({ rev, go, focus }: { rev: number; go(route: string): 
           </span>
         )}
         <input class="search" placeholder="Resaltar por título…" value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+        {!focus && (
+          <label class="graph-check">
+            <input type="checkbox" checked={showIsolated} onChange={(e) => setShowIsolated(e.currentTarget.checked)} />
+            Incluir sueltas{data ? ` (${data.isolated})` : ""}
+          </label>
+        )}
         <span class="grow" />
-        {data && <span class="muted small">{data.nodes.length} de {data.total} notas · {data.isolated} sin enlaces</span>}
+        {data && <span class="muted small">{visibleCount} visibles · {data.total} notas de conocimiento</span>}
       </header>
       <div class="chips graph-types">
         {types.map((t) => (
-          <button key={t} class={`chip btn ${hidden.has(t) ? "" : "on"}`} style={hidden.has(t) ? "" : `background:var(--t-${t}, var(--muted));border-color:var(--t-${t}, var(--muted));color:var(--bg)`}
-            onClick={() => setHidden((h) => { const n = new Set(h); n.has(t) ? n.delete(t) : n.add(t); return n; })}>{TYPE_LABEL[t] ?? t}</button>
+          <button key={t} class={`chip btn ${hidden.has(t) ? "" : "on"}`}
+            onClick={() => toggleSet(setHidden, t)}>
+            {t === "resource" ? "◆ " : "● "}{TYPE_LABEL[t] ?? t}
+          </button>
         ))}
+        {folders.length > 0 && folders.map((f) => {
+          const v = folderVar.get(f.folder) ?? "--g-0";
+          const on = !hiddenFolders.has(f.folder);
+          return (
+            <button key={f.folder} class={`chip btn ${on ? "on" : ""}`} onClick={() => toggleSet(setHiddenFolders, f.folder)}>
+              <span class="graph-dot" style={`background:var(${v})`} />{f.folder} · {f.count}
+            </button>
+          );
+        })}
       </div>
       {error && <div class="empty">No se pudo cargar el grafo: {error}</div>}
-      {data && data.nodes.length === 0 && <div class="empty">Aún no hay enlaces. Escribe <code>[[Otra nota]]</code> en una nota para empezar a tejer el grafo.</div>}
-      {data && data.nodes.length > 0 && <Canvas data={data} hidden={hidden} query={query} focus={focus} go={go} />}
+      {data && data.nodes.length === 0 && (
+        <div class="graph-empty">
+          {data.isolated > 0 && !showIsolated && !focus ? (
+            <>
+              <div class="muted">Aún no hay enlaces entre notas, pero tenés {data.isolated} notas de conocimiento sin enlazar.</div>
+              <button class="primary" onClick={() => setShowIsolated(true)}>Mostrar {data.isolated} notas sueltas</button>
+            </>
+          ) : (
+            <div class="empty">Aún no hay enlaces entre notas de conocimiento. Escribe <code>[[Otra nota]]</code> en una nota para tejer el grafo.</div>
+          )}
+        </div>
+      )}
+      {data && data.nodes.length > 0 && (
+        <Canvas data={data} hidden={hidden} hiddenFolders={hiddenFolders} folderVar={folderVar} showIsolated={showIsolated} query={query} focus={focus} go={go} />
+      )}
     </div>
   );
 }
 
-function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: Set<string>; query: string; focus?: string; go(r: string): void }) {
+function Canvas({ data, hidden, hiddenFolders, folderVar, showIsolated, query, focus, go }: {
+  data: GraphData; hidden: Set<string>; hiddenFolders: Set<string>; folderVar: Map<string, string>; showIsolated: boolean; query: string; focus?: string; go(r: string): void;
+}) {
   const wrap = useRef<HTMLDivElement>(null);
   const cv = useRef<HTMLCanvasElement>(null);
-  const st = useRef({ nodes: [] as SimNode[], edges: data.edges, adj: [] as Set<number>[], alpha: 1, k: 1, tx: 0, ty: 0, w: 0, h: 0, hover: -1, raf: 0, fitted: false, touched: false, hidden, query, drag: null as null | { i: number; moved: boolean } | { pan: true; x: number; y: number; moved: boolean } });
+  const [hovered, setHovered] = useState<GNode | null>(null);
+  const st = useRef({
+    nodes: [] as SimNode[], edges: data.edges, adj: [] as Set<number>[], alpha: 1, k: 1, tx: 0, ty: 0, w: 0, h: 0,
+    hover: -1, raf: 0, fitted: false, touched: false, hidden, hiddenFolders, folderVar, showIsolated, query,
+    drag: null as null | { i: number; moved: boolean } | { pan: true; x: number; y: number; moved: boolean },
+  });
   st.current.hidden = hidden;
+  st.current.hiddenFolders = hiddenFolders;
+  st.current.folderVar = folderVar;
+  st.current.showIsolated = showIsolated;
   st.current.query = query;
+
+  const visNode = (nd: GNode) => isNodeVisible(nd, st.current.hidden, st.current.hiddenFolders, st.current.showIsolated, focus);
 
   const draw = () => {
     const s = st.current, c = cv.current!, ctx = c.getContext("2d")!;
     const dpr = devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, s.w, s.h);
-    const line = cssVar("--line2", "#444"), fg = cssVar("--fg", "#eee"), muted = cssVar("--muted", "#888"), accent = cssVar("--accent", "#7f9bd6");
+    const line = cssVar("--line2", "#444"), fg = cssVar("--fg", "#eee"), muted = cssVar("--muted", "#888");
+    const accent = cssVar("--accent", "#7f9bd6"), surface = cssVar("--surface", "#18181b");
     const tint: Record<string, string> = {};
-    const typeColor = (ty: string) => (tint[ty] ??= cssVar(`--t-${ty}`, muted));
+    const nodeColor = (nd: GNode) => {
+      const v = s.folderVar.get(noteFolder(nd.path)) ?? `--t-${nd.type}`;
+      return (tint[v] ??= cssVar(v, muted));
+    };
     const q = s.query.trim().toLowerCase();
     const hv = s.hover;
     const near = hv >= 0 ? s.adj[hv] : null;
-    const vis = (i: number) => !s.hidden.has(s.nodes[i].n.type);
+    const vis = (i: number) => visNode(s.nodes[i].n);
+    const visCount = s.nodes.filter((nd) => visNode(nd.n)).length;
     ctx.save();
     ctx.translate(s.tx, s.ty);
     ctx.scale(s.k, s.k);
-    ctx.lineWidth = 1 / s.k;
     for (const [a, b] of s.edges) {
       if (!vis(a) || !vis(b)) continue;
       const hot = hv >= 0 && (a === hv || b === hv);
       ctx.strokeStyle = hot ? accent : line;
-      ctx.globalAlpha = hv >= 0 ? (hot ? 0.95 : 0.12) : 0.55;
+      ctx.lineWidth = (hot ? 1.8 : 1) / s.k;
+      ctx.globalAlpha = hv >= 0 ? (hot ? 0.95 : 0.1) : 0.48;
       ctx.beginPath();
       ctx.moveTo(s.nodes[a].x, s.nodes[a].y);
       ctx.lineTo(s.nodes[b].x, s.nodes[b].y);
       ctx.stroke();
     }
+    ctx.lineWidth = 1 / s.k;
     ctx.font = `${12 / s.k}px system-ui, sans-serif`;
     ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     for (let i = 0; i < s.nodes.length; i++) {
       if (!vis(i)) continue;
       const nd = s.nodes[i];
       const match = !q || nd.n.title.toLowerCase().includes(q);
       const dim = (hv >= 0 && i !== hv && !near!.has(i)) || !match;
-      ctx.globalAlpha = dim ? 0.18 : 1;
-      ctx.fillStyle = typeColor(nd.n.type);
+      const color = nodeColor(nd.n);
+      const alpha = dim ? 0.16 : nd.n.degree === 0 ? 0.72 : 1;
+
+      if (nd.n.degree >= 3 && !dim) {
+        ctx.globalAlpha = alpha * 0.28;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5 / s.k;
+        ctx.beginPath();
+        if (nd.n.type === "resource") drawDiamond(ctx, nd.x, nd.y, (nd.r + 3.5 / s.k) * 1.25);
+        else ctx.arc(nd.x, nd.y, nd.r + 3.5 / s.k, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(nd.x, nd.y, nd.r, 0, Math.PI * 2);
+      if (nd.n.type === "resource") drawDiamond(ctx, nd.x, nd.y, nd.r * 1.25);
+      else ctx.arc(nd.x, nd.y, nd.r, 0, Math.PI * 2);
       ctx.fill();
-      if (nd.n.path === focus) { ctx.strokeStyle = fg; ctx.lineWidth = 2 / s.k; ctx.stroke(); ctx.lineWidth = 1 / s.k; }
-      const showLabel = i === hv || (near && near.has(i)) || (!dim && (nd.n.degree >= 4 || s.k > 1.5 || (q && match) || nd.n.path === focus || s.nodes.length <= 25));
+
+      if (nd.n.degree === 0) {
+        ctx.setLineDash([2.5 / s.k, 2.5 / s.k]);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1 / s.k;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (nd.n.path === focus || i === hv) {
+        ctx.strokeStyle = fg;
+        ctx.lineWidth = 2 / s.k;
+        ctx.stroke();
+        ctx.lineWidth = 1 / s.k;
+      }
+
+      const showLabel = i === hv || (near && near.has(i)) || (!dim && (nd.n.degree >= 3 || s.k > 1.35 || (q && match) || nd.n.path === focus || visCount <= 30));
       if (showLabel) {
-        ctx.globalAlpha = dim ? 0.3 : 0.92;
-        ctx.fillStyle = i === hv ? fg : muted;
-        ctx.fillText(nd.n.title.length > 28 ? nd.n.title.slice(0, 27) + "…" : nd.n.title, nd.x, nd.y + nd.r + 13 / s.k);
+        const rawTitle = nd.n.title.length > 26 ? nd.n.title.slice(0, 25) + "…" : nd.n.title;
+        const label = nd.n.icon ? `${nd.n.icon} ${rawTitle}` : rawTitle;
+        const ly = nd.y + nd.r + 12 / s.k;
+        const tw = ctx.measureText(label).width;
+        const padX = 4 / s.k, padY = 2.5 / s.k, lh = 13 / s.k;
+        ctx.globalAlpha = dim ? 0.35 : 0.88;
+        ctx.fillStyle = surface;
+        ctx.fillRect(nd.x - tw / 2 - padX, ly - lh / 2 - padY / 2, tw + padX * 2, lh + padY);
+        ctx.globalAlpha = dim ? 0.4 : 0.96;
+        ctx.fillStyle = i === hv ? fg : (near && near.has(i)) || nd.n.degree >= 3 ? fg : muted;
+        ctx.fillText(label, nd.x, ly);
       }
     }
     ctx.restore();
@@ -141,7 +257,7 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
   };
   /** Encuadra todo el grafo en la vista. */
   const fit = () => {
-    const s = st.current, N = s.nodes.filter((n) => !s.hidden.has(n.n.type));
+    const s = st.current, N = s.nodes.filter((n) => visNode(n.n));
     if (!N.length || !s.w) return;
     s.fitted = true;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -159,11 +275,14 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
   useEffect(() => {
     const s = st.current;
     s.edges = data.edges;
+    s.hover = -1;
+    setHovered(null);
     const old = new Map(s.nodes.map((n) => [n.n.path, n]));
     s.nodes = data.nodes.map((n, i) => {
       const prev = old.get(n.path);
       const ang = i * 2.399963, rad = 28 * Math.sqrt(i + 1);
-      return { n, x: prev?.x ?? Math.cos(ang) * rad, y: prev?.y ?? Math.sin(ang) * rad, vx: 0, vy: 0, r: 4 + Math.sqrt(n.degree) * 1.7, pinned: false };
+      const r = n.degree === 0 ? 4.5 : 4.5 + Math.sqrt(n.degree) * 2.1;
+      return { n, x: prev?.x ?? Math.cos(ang) * rad, y: prev?.y ?? Math.sin(ang) * rad, vx: 0, vy: 0, r, pinned: false };
     });
     s.adj = s.nodes.map(() => new Set<number>());
     for (const [a, b] of s.edges) { s.adj[a].add(b); s.adj[b].add(a); }
@@ -173,7 +292,7 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
     return () => { cancelAnimationFrame(s.raf); s.raf = 0; };
   }, [data]);
 
-  useEffect(() => { draw(); }, [hidden, query]);
+  useEffect(() => { draw(); }, [hidden, hiddenFolders, folderVar, showIsolated, query]);
 
   // Tamaño del canvas.
   useEffect(() => {
@@ -199,7 +318,7 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
   const hit = (e: PointerEvent) => {
     const s = st.current, p = toWorld(e);
     for (let i = s.nodes.length - 1; i >= 0; i--) {
-      if (s.hidden.has(s.nodes[i].n.type)) continue;
+      if (!visNode(s.nodes[i].n)) continue;
       const n = s.nodes[i], dx = n.x - p.x, dy = n.y - p.y, r = n.r + 4 / s.k;
       if (dx * dx + dy * dy <= r * r) return i;
     }
@@ -238,7 +357,7 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
       const p = toWorld(e); const n = s.nodes[d.i]; n.x = p.x; n.y = p.y; d.moved = true; wake(0.2);
     } else {
       const i = hit(e);
-      if (i !== s.hover) { s.hover = i; cv.current!.style.cursor = i >= 0 ? "pointer" : "grab"; draw(); }
+      if (i !== s.hover) { s.hover = i; setHovered(i >= 0 ? s.nodes[i].n : null); cv.current!.style.cursor = i >= 0 ? "pointer" : "grab"; draw(); }
     }
   };
   const up = (e: PointerEvent) => {
@@ -271,7 +390,18 @@ function Canvas({ data, hidden, query, focus, go }: { data: GraphData; hidden: S
   return (
     <div class="graph-wrap" ref={wrap}>
       <canvas ref={cv} style="width:100%;height:100%;cursor:grab" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
-        onPointerLeave={() => { if (!st.current.drag) { st.current.hover = -1; draw(); } }} aria-label="Grafo de notas y enlaces" />
+        onPointerLeave={() => { if (!st.current.drag) { st.current.hover = -1; setHovered(null); draw(); } }} aria-label="Grafo de notas y enlaces" />
+      {hovered && (
+        <div class="graph-hud">
+          <div class="graph-hud-title">{hovered.icon ? `${hovered.icon} ` : ""}{hovered.title}</div>
+          <div class="muted small">{TYPE_LABEL[hovered.type] ?? hovered.type} · {noteFolder(hovered.path)} · {hovered.degree} {hovered.degree === 1 ? "enlace" : "enlaces"}</div>
+        </div>
+      )}
+      <div class="graph-legend" aria-hidden="true">
+        <span>● Nota</span>
+        <span>◆ Recurso</span>
+        <span>◎ Central</span>
+      </div>
       <button class="mini graph-fit" onClick={() => { st.current.touched = false; fit(); draw(); }}>Encuadrar</button>
       <div class="graph-hint muted small">Arrastra para mover · rueda o pellizco para zoom · toca un nodo para abrirlo</div>
     </div>

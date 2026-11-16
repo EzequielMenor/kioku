@@ -25,8 +25,9 @@ test("demo engine: carga datos de prueba ricos para Hoy, Proyectos, Bases, Calen
   const query = await handleDemoApi<QueryResult>("POST", "/api/database/query", { path: "Bases/Biblioteca técnica.md" });
   assert.equal(query.rows.length, 4);
 
-  const graph = await handleDemoApi<{ nodes: unknown[]; edges: unknown[] }>("GET", "/api/graph?max=400");
+  const graph = await handleDemoApi<{ nodes: { type: string }[]; edges: unknown[] }>("GET", "/api/graph?max=400");
   assert.ok(graph.nodes.length >= 10, "grafo con nodos de ejemplo");
+  assert.ok(graph.nodes.every((n) => n.type === "note" || n.type === "resource"), "el grafo solo incluye notas de conocimiento");
   assert.ok(graph.edges.length >= 8, "grafo con enlaces entre notas");
 
   const cal = await handleDemoApi<CalendarResponse>("GET", "/api/calendar?from=2026-11-06&to=2026-11-06");
@@ -48,6 +49,18 @@ test("demo engine: permite capturar, editar notas, aplicar propuestas y restaura
     const note = await handleDemoApi<NoteInfo>("GET", `/api/note?path=${encodeURIComponent(cap.path)}`);
     assert.equal(note.note?.title, "Probar despliegue en Vercel");
 
+    // Renombrar una nota en modo demo actualiza ruta, título y wikilinks entrantes
+    const arch = await handleDemoApi<NoteInfo>("GET", `/api/note?path=${encodeURIComponent("Notas/Arquitectura de índices derivados.md")}`);
+    const renamed = await handleDemoApi<{ path: string; title: string; hash: string }>("POST", "/api/note/rename", {
+      path: arch.path,
+      title: "Arquitectura de índices SQLite",
+      folder: "Notas/Sistema",
+      hash: arch.hash,
+    });
+    assert.equal(renamed.path, "Notas/Sistema/Arquitectura de índices SQLite.md");
+    const philo = await handleDemoApi<NoteInfo>("GET", `/api/note?path=${encodeURIComponent("Notas/Filosofía Local-First.md")}`);
+    assert.match(philo.text, /\[\[Arquitectura de índices SQLite\]\]/);
+
     const props = await handleDemoApi<Proposal[]>("GET", "/api/proposals?status=pending");
     assert.equal(props.length, 1);
     const applied = await handleDemoApi<Proposal>("POST", `/api/proposals/${props[0].id}/apply`, {});
@@ -59,6 +72,29 @@ test("demo engine: permite capturar, editar notas, aplicar propuestas y restaura
     const ask = await handleDemoApi<{ answer: string; reads: string[] }>("POST", "/api/assistant/ask", { message: "¿Qué hago hoy?" });
     assert.match(ask.answer, /paso prioritario/);
     assert.ok(ask.reads.length >= 1);
+
+    // Bases: esquema (p. ej. añadir columna Prioridad con opciones y colores), Deshacer y metadatos en demo
+    const dbs = await handleDemoApi<{ path: string; title: string }[]>("GET", "/api/databases");
+    assert.ok(dbs.length >= 1);
+    const dbPath = dbs[0].path;
+    const prev = await handleDemoApi<{ affected: number; summary: string }>("POST", "/api/database/schema/preview", {
+      path: dbPath,
+      op: { op: "add-property", name: "Prioridad", type: "select", options: [{ name: "Alta", color: "red" }, { name: "Baja", color: "gray" }] },
+    });
+    assert.equal(prev.affected, 0);
+    const appliedSchema = await handleDemoApi<{ undoId: string; summary: string }>("POST", "/api/database/schema", {
+      path: dbPath,
+      op: { op: "add-property", name: "Prioridad", type: "select", options: [{ name: "Alta", color: "red" }, { name: "Baja", color: "gray" }] },
+    });
+    assert.ok(appliedSchema.undoId);
+    const qDb = await handleDemoApi<{ database: { available: { key: string; options?: { name: string; color?: string }[] }[] } }>("POST", "/api/database/query", { path: dbPath });
+    assert.ok(qDb.database.available.some((c) => c.key === "Prioridad" && c.options?.some((o) => o.name === "Alta" && o.color === "red")));
+    await handleDemoApi("POST", "/api/database/meta", { path: dbPath, icon: "📊" });
+    const qMeta = await handleDemoApi<{ database: { icon?: string } }>("POST", "/api/database/query", { path: dbPath });
+    assert.equal(qMeta.database.icon, "📊");
+    await handleDemoApi("POST", "/api/assistant/undo", { id: appliedSchema.undoId });
+    const qUndone = await handleDemoApi<{ database: { available: { key: string }[] } }>("POST", "/api/database/query", { path: dbPath });
+    assert.equal(qUndone.database.available.some((c) => c.key === "Prioridad"), false);
 
     // Restaurar devuelve la demo a su estado original
     resetDemoState(new Date("2026-11-06T10:00:00"));
