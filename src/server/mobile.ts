@@ -22,7 +22,7 @@ const WRITES = new Set([
 ]);
 
 /** Del asistente el móvil solo lee su estado y su actividad: ni memoria ni herramientas (esas son del escritorio y del puente). */
-const ASSISTANT_READS = new Set(["/api/assistant/status", "/api/assistant/actions"]);
+const ASSISTANT_READS = new Set(["/api/assistant/status", "/api/assistant/actions", "/api/assistant/engine"]);
 const PROPOSAL_ACTION = /^\/api\/proposals\/[0-9A-Z]{26}\/(?:apply|reject)$/;
 
 const under = (p: string, base: string) => p === base || p.startsWith(`${base}/`);

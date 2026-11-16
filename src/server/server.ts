@@ -378,6 +378,11 @@ export async function startServer(
           const engine = opts.assistant ? await opts.assistant.engine.describe?.().catch(() => null) ?? null : null;
           return send(res, 200, { ...(await hub.state()), engine });
         }
+        case "/api/assistant/engine": {
+          // Solo qué modelo y si corre en este equipo: lo justo para decidir si avisar de privacidad (también en el móvil).
+          const e = opts.assistant ? await opts.assistant.engine.describe?.().catch(() => null) ?? null : null;
+          return send(res, 200, e ? { model: e.model, local: e.local, origin: e.local ? null : e.origin } : { model: null, local: false, origin: null });
+        }
         case "/api/assistant/conversation": return send(res, 200, await hub.conversation(q.get("id") ?? undefined));
         case "/api/assistant/conversations": return send(res, 200, await hub.conversations.list());
         case "/api/assistant/companion": return send(res, 200, await hub.view());

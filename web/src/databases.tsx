@@ -12,6 +12,7 @@ import type { Result } from "./db-common.ts";
 import { CustomizePanel } from "./db-customize.tsx";
 import { ViewPanel } from "./db-panel.tsx";
 import { Board, List, Table } from "./db-views.tsx";
+import { Habits, Progress } from "./db-trackers.tsx";
 import type { Guard, Say } from "./db-schema.ts";
 import type { ResultRow, SchemaOp, View } from "./types.ts";
 
@@ -19,7 +20,7 @@ type Go = (route: string) => void;
 interface DbListItem { path: string; title: string; icon?: string; rows: number; views: View[]; warnings: string[] }
 
 const TEMPLATES: { id: string; label: string }[] = [
-  { id: "vacía", label: "Vacía" }, { id: "tareas", label: "Tareas" }, { id: "proyectos", label: "Proyectos" }, { id: "libros", label: "Libros" },
+  { id: "vacía", label: "Vacía" }, { id: "hábitos", label: "Hábitos" }, { id: "biblia", label: "Lectura de la Biblia" }, { id: "tareas", label: "Tareas" }, { id: "proyectos", label: "Proyectos" }, { id: "libros", label: "Libros" },
 ];
 
 /* ───────────────────────── lista de bases ───────────────────────── */
@@ -40,7 +41,7 @@ export function DatabasesList({ rev, go, guard }: { rev: number; go: Go; guard: 
   return (
     <div class="page narrow">
       <header class="page-head"><h1>Bases</h1></header>
-      <p class="muted">Una base es una nota que reúne otras notas como filas (por carpeta, tipo o etiqueta) con propiedades y vistas. Todo queda en ficheros Markdown.</p>
+      <p class="muted">Colecciones de notas con propiedades y vistas: hábitos, lecturas, libros, lo que quieras seguir. Todo queda en ficheros Markdown.</p>
       {!isMobile() && <form class="inline addbar" onSubmit={create}>
         <input placeholder="Nombre de la nueva base…" value={name} onInput={(e) => setName(e.currentTarget.value)} aria-label="Nombre de la base" />
         <select value={tpl} onChange={(e) => setTpl(e.currentTarget.value)} aria-label="Plantilla">
@@ -150,14 +151,15 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
     });
   };
   const menu = isMobile() ? null : { path, guard, say, edit, onSchema: afterSchema };
+  const tracker = kind === "habits" || kind === "progress";
 
   return (
     <div class="page wide">
       <header class="page-head">
         <h1>{db.icon && <span class="db-head-icon" aria-hidden="true">{db.icon}</span>}{db.title}</h1>
         <div class="row">
-          {!isMobile() && <button type="button" onClick={() => setCustom(!custom)} aria-expanded={custom}>Personalizar</button>}
-          <button type="button" onClick={() => setPanel(!panel)} aria-expanded={panel}>Filtros y orden{view.filter.length + view.sort.length ? ` · ${view.filter.length + view.sort.length}` : ""}</button>
+          {!isMobile() && !tracker && <button type="button" onClick={() => setCustom(!custom)} aria-expanded={custom}>Personalizar</button>}
+          {!tracker && <button type="button" onClick={() => setPanel(!panel)} aria-expanded={panel}>Filtros y orden{view.filter.length + view.sort.length ? ` · ${view.filter.length + view.sort.length}` : ""}</button>}
         </div>
       </header>
 
@@ -165,11 +167,11 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
         <div class="seg" role="tablist" aria-label="Vistas">
           {db.views.map((v) => <button key={v.name} role="tab" aria-selected={!draft && v.name === saved.name} class={!draft && v.name === saved.name ? "on" : ""} onClick={() => pick(v.name)}>{v.name}</button>)}
         </div>
-        <span class="muted small">Mostrar como</span>
-        <div class="seg" role="tablist" aria-label="Tipo de vista">
+        {!tracker && <span class="muted small">Mostrar como</span>}
+        {!tracker && <div class="seg" role="tablist" aria-label="Tipo de vista">
           {(["table", "board", "list"] as const).map((k) => <button key={k} role="tab" aria-selected={kind === k} class={kind === k ? "on" : ""} onClick={() => edit({ kind: k })}>{{ table: "Tabla", board: "Tablero", list: "Lista" }[k]}</button>)}
-        </div>
-        {menu && <AddPropertyButton ctx={menu} variant="btn" labelText="+ Columna" />}
+        </div>}
+        {menu && !tracker && <AddPropertyButton ctx={menu} variant="btn" labelText="+ Columna" />}
         {draft ? (
           <>
             <span class="chip accent">Cambios sin guardar</span>
@@ -183,7 +185,7 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
       {custom && menu && <CustomizePanel db={db} view={view} edit={edit} menu={menu} path={path} onClose={() => setCustom(false)} />}
       {panel && <ViewPanel view={view} available={db.available} edit={edit} />}
 
-      {isMobile()
+      {tracker ? null : isMobile()
         ? <div class="addbar"><span class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</span></div>
         : <form class="inline addbar" onSubmit={(e) => { e.preventDefault(); void addRow(); }}>
           <input placeholder="Nueva fila…  (título)" value={title} onInput={(e) => setTitle(e.currentTarget.value)} aria-label="Título de la nueva fila" />
@@ -193,6 +195,8 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
 
       {kind === "table" && <Table res={res} view={view} sortBy={sortBy} setCell={setCell} menu={menu} addRow={addRow} />}
       {kind === "list" && <List res={res} setCell={setCell} menu={menu} addRow={addRow} />}
+      {kind === "habits" && <Habits res={res} view={view} setCell={setCell} addRow={isMobile() ? null : (t) => addRow(t)} />}
+      {kind === "progress" && <Progress res={res} view={view} setCell={setCell} />}
       {kind === "board" && <Board res={res} view={view} available={db.available} edit={edit} setCell={setCell} menu={menu} addRow={addRow} />}
     </div>
   );

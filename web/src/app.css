@@ -717,3 +717,37 @@ button.small { padding: 4px 9px; font-size: 12px; min-height: 0; }
 @media (max-width: 720px) { .kio-box textarea { font-size: 16px; } }
 .kio-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .kio-head h1 { margin: 0; }
+
+/* ── Seguimientos: hábitos y lectura ── */
+.habits { max-width: 640px; }
+.habits-row { display: grid; grid-template-columns: minmax(90px, 1fr) repeat(7, 36px) 52px; align-items: center; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.habits-head { border-bottom: 0; color: var(--muted); font-size: 11px; text-align: center; }
+.habits-head span { display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.habits-head small { font-size: 11px; color: var(--fg2); }
+.habits-head .is-today, .habits-head .is-today small { color: var(--accent); font-weight: 650; }
+.habit-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.habit-day { width: 30px; height: 30px; margin: 0 auto; padding: 0; border-radius: 50%; border: 1.5px solid var(--line); background: none; }
+.habit-day.is-today { border-color: var(--accent); }
+.habit-day.on { background: var(--accent); border-color: var(--accent); }
+.habit-day:hover { border-color: var(--accent); }
+.habit-streak { text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tracker-add { display: flex; gap: 8px; margin-top: 14px; max-width: 420px; }
+.tracker-add input { flex: 1; }
+.reading .bar { height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+.reading .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .2s; }
+.reading-total { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; margin-bottom: 8px; }
+.reading-total b { font-size: 26px; }
+.reading-total .bar { height: 10px; margin-top: 10px; }
+.books { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.book { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.book a { color: var(--fg); font-weight: 500; font-size: 13.5px; }
+.book.done { border-color: var(--accent); }
+.book.done a::after { content: " ✓"; color: var(--accent); }
+.book:not(.started):not(.done) { opacity: .75; }
+.book-ctl { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.book-ctl button { width: 28px; height: 26px; padding: 0; border-radius: 6px; line-height: 1; }
+@media (max-width: 720px) {
+  .habits-row { grid-template-columns: minmax(70px, 1fr) repeat(7, 30px) 38px; gap: 2px; }
+  .habit-day { width: 26px; height: 26px; }
+  .books { grid-template-columns: repeat(2, 1fr); }
+}

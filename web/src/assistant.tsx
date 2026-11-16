@@ -89,7 +89,7 @@ export function AssistantView({ rev, say, go }: { rev: number; say: Say; go(r: s
   const offline = mobile && !online; // el asistente es solo en línea: sin conexión no se pregunta ni se encola nada
   const statusRequest = useApi<{ ok: boolean; reason?: string }>("/api/assistant/status", rev);
   const status = statusRequest.data;
-  const engine = useApi<{ engine: { local: boolean; origin: string | null } | null }>("/api/assistant/state", 0).data?.engine;
+  const engine = useApi<{ model: string | null; local: boolean; origin: string | null }>("/api/assistant/engine", 0).data;
   // Con el modelo en tu ordenador no hace falta aviso: las notas no salen de él. Si es remoto, se avisa una vez.
   const remote = engine ? !engine.local : true; // sin saber dónde corre, se trata como remoto: se avisa antes de enviar nada
   const ack = acked || remote === false;

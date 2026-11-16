@@ -6,11 +6,11 @@ import type { Frontmatter } from "./markdown.ts";
 
 export type PropType = "text" | "number" | "date" | "checkbox" | "select" | "multi" | "url" | "relation";
 export type FilterOp = "is" | "is_not" | "contains" | "empty" | "not_empty" | "gt" | "lt" | "before" | "after" | "checked";
-export type ViewKind = "table" | "board" | "list";
+export type ViewKind = "table" | "board" | "list" | "habits" | "progress";
 
 export const PROP_TYPES: readonly PropType[] = ["text", "number", "date", "checkbox", "select", "multi", "url", "relation"];
 export const FILTER_OPS: readonly FilterOp[] = ["is", "is_not", "contains", "empty", "not_empty", "gt", "lt", "before", "after", "checked"];
-export const VIEW_KINDS: readonly ViewKind[] = ["table", "board", "list"];
+export const VIEW_KINDS: readonly ViewKind[] = ["table", "board", "list", "habits", "progress"];
 const NOTE_TYPES: readonly string[] = ["note", "task", "project", "journal", "resource", "capture", "database"];
 export const DB_SOURCE_TYPES: readonly NoteType[] = ["note", "task", "project", "journal", "resource", "capture"];
 
@@ -71,7 +71,11 @@ export interface PropOption { name: string; color?: OptionColor }
 export interface PropSchema { type?: PropType; options?: PropOption[] }
 export interface Filter { prop: string; op: FilterOp; value?: unknown }
 export interface Sort { prop: string; dir: "asc" | "desc" }
-export interface View { name: string; kind: ViewKind; columns: string[]; filter: Filter[]; sort: Sort[]; group: string | null }
+/**
+ * Vista guardada. `habits` (rejilla de días) y `progress` (barras) usan `track`: la propiedad que se sigue (lista de
+ * días hechos, o número leído) y, en `progress`, `total` (el máximo de cada fila).
+ */
+export interface View { name: string; kind: ViewKind; columns: string[]; filter: Filter[]; sort: Sort[]; group: string | null; track?: string; total?: string }
 export interface DbSource { folder: string | null; type: NoteType | null; tags: string[] }
 export interface DatabaseDef {
   path: string;
@@ -197,8 +201,11 @@ export function parseDatabase(note: { path: string; title: string; fm: Frontmatt
       for (const [i, raw] of fm.views.entries()) {
         if (!isObj(raw)) { warnings.push(`Vista ${i + 1}: debe ser un objeto`); continue; }
         if (typeof raw.name !== "string" || !raw.name.trim()) { warnings.push(`Vista ${i + 1}: falta «name»`); continue; }
-        if (!VIEW_KINDS.includes(raw.kind as ViewKind)) { warnings.push(`Vista «${raw.name}»: «kind» debe ser table, board o list`); continue; }
+        if (!VIEW_KINDS.includes(raw.kind as ViewKind)) { warnings.push(`Vista «${raw.name}»: «kind» debe ser table, board, list, habits o progress`); continue; }
         const v: View = { name: raw.name.trim(), kind: raw.kind as ViewKind, columns: strArr(raw.columns), filter: [], sort: [], group: typeof raw.group === "string" && raw.group ? raw.group : null };
+        const text = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : undefined);
+        if (v.kind === "habits") v.track = text(raw.track) ?? "Hechos";
+        if (v.kind === "progress") { v.track = text(raw.track) ?? "Leídos"; v.total = text(raw.total) ?? "Capítulos"; }
         for (const f of Array.isArray(raw.filter) ? raw.filter : []) {
           if (isObj(f) && typeof f.prop === "string" && f.prop && FILTER_OPS.includes(f.op as FilterOp)) v.filter.push(f.value === undefined ? { prop: f.prop, op: f.op as FilterOp } : { prop: f.prop, op: f.op as FilterOp, value: f.value });
           else warnings.push(`Vista «${v.name}»: filtro inválido`);

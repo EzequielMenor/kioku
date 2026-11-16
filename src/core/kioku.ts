@@ -16,6 +16,7 @@ import { Calendar } from "./calendar-store.ts";
 import { appendToSection, createRenameLinkMapper, normKey, parseNote, planNoteRename, renameFrontmatterKey, RenamePlanError, renderNote, replaceLeadingHeading, rewriteWikilinks, sectionItems, setFrontmatter, splitFrontmatter, type RenameOpts } from "./markdown.ts";
 import { ProposalStore, type Op, type Proposal, type ProposalDraft } from "./proposals.ts";
 import { sanitizeFileName, Vault, VaultError } from "./vault.ts";
+import { BIBLE_BOOKS } from "./bible.ts";
 
 export const FOLDERS: Record<NoteType, string> = {
   capture: "Bandeja", task: "Tareas", project: "Proyectos", note: "Notas", journal: "Diario", resource: "Recursos", database: "Bases", block: "Calendario", area: "Areas",
@@ -155,6 +156,9 @@ function compareSuggestions(a: Suggestion, b: Suggestion): number {
     a.task.title.localeCompare(b.task.title)
   );
 }
+
+export const DATABASE_TEMPLATES = ["vacía", "tareas", "proyectos", "libros", "hábitos", "biblia"] as const;
+export type DatabaseTemplate = typeof DATABASE_TEMPLATES[number];
 
 export interface CaptureConversion { title?: string; tags?: string[]; due?: string | null }
 
@@ -524,13 +528,15 @@ export class Kioku {
     return probe.views[0];
   }
 
-  async createDatabase(opts: { name: string; template?: "vacía" | "tareas" | "proyectos" | "libros" }): Promise<NoteRow> {
+  async createDatabase(opts: { name: string; template?: DatabaseTemplate }): Promise<NoteRow> {
     const name = opts.name.trim();
     if (!name) throw new VaultError("invalid", "Ponle un nombre a la base");
     const t = opts.template ?? "vacía";
-    if (!["vacía", "tareas", "proyectos", "libros"].includes(t)) throw new VaultError("invalid", `Plantilla desconocida: ${String(t)}`);
-    const table = (columns: string[]) => ({ name: "Tabla", kind: "table", columns, filter: [], sort: [], group: null });
+    if (!DATABASE_TEMPLATES.includes(t)) throw new VaultError("invalid", `Plantilla desconocida: ${String(t)}`);
+    if (t === "biblia" && this.index.listNotes({ prefix: "Biblia/", limit: 1 }).length) throw new VaultError("conflict", "Ya tienes los libros de la Biblia en «Biblia/»: abre esa base en vez de crear otra");
+    const table = (columns: string[], sort: unknown[] = []) => ({ name: "Tabla", kind: "table", columns, filter: [], sort, group: null });
     const board = (name: string, group: string, columns: string[]) => ({ name, kind: "board", columns, filter: [], sort: [], group });
+    const byOrder = [{ prop: "Orden", dir: "asc" }];
     const spec: Record<string, unknown> =
       t === "tareas" ? {
         source: { type: "task" },
@@ -544,12 +550,32 @@ export class Kioku {
         source: { folder: "Libros/" },
         properties: { Estado: { type: "select", options: ["Quiero leer", "Leyendo", "Leído"] }, Autor: { type: "text" }, Nota: { type: "number" } },
         views: [table(["title", "Estado", "Autor", "Nota"]), board("Por estado", "Estado", ["title", "Autor"])],
+      } : t === "hábitos" ? {
+        source: { folder: "Hábitos/" },
+        properties: { Hechos: { type: "multi" } },
+        views: [{ name: "Semana", kind: "habits", columns: [], filter: [], sort: [], group: null, track: "Hechos" }, table(["title", "Hechos"])],
+      } : t === "biblia" ? {
+        source: { folder: "Biblia/" },
+        properties: { Testamento: { type: "select", options: ["Antiguo", "Nuevo"] }, Capítulos: { type: "number" }, Leídos: { type: "number" }, Orden: { type: "number" } },
+        views: [
+          { name: "Progreso", kind: "progress", columns: [], filter: [], sort: byOrder, group: "Testamento", track: "Leídos", total: "Capítulos" },
+          table(["title", "Testamento", "Leídos", "Capítulos"], byOrder),
+        ],
       } : {
         source: { folder: `${sanitizeFileName(name)}/` },
         properties: {},
         views: [table(["title"])],
       };
-    return this.createNote({ title: name, type: "database", fm: spec, body: `# ${name}\n\nBase de datos: las filas son notas Markdown; las vistas se guardan en las propiedades de este fichero.\n` });
+    const body = t === "hábitos"
+      ? `# ${name}\n\nCada hábito es una nota en «Hábitos/». Marca los días tocándolos, o díselo a Kio («hoy hice ejercicio»).\n`
+      : t === "biblia"
+        ? `# ${name}\n\nUn libro por nota en «Biblia/». Apunta los capítulos leídos tocando el libro, o díselo a Kio («he leído Juan 3»).\n`
+        : `# ${name}\n\nBase de datos: las filas son notas Markdown; las vistas se guardan en las propiedades de este fichero.\n`;
+    const db = await this.createNote({ title: name, type: "database", fm: spec, body });
+    if (t === "biblia") {
+      for (const [i, b] of BIBLE_BOOKS.entries()) await this.createRow(db.path, { title: b.name, props: { Testamento: b.testament, Capítulos: b.chapters, Leídos: 0, Orden: i + 1 } });
+    }
+    return db;
   }
 
   /** Añade o reemplaza (por nombre) una vista. Lo demás del frontmatter —incluidas vistas escritas a mano— se conserva tal cual. */

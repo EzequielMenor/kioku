@@ -215,6 +215,9 @@ interface WritePlan {
   apply(): Promise<{ out: unknown; created?: string[] }>;
 }
 
+/** Comparación tolerante de nombres: sin mayúsculas ni tildes. */
+const fold = (x: string) => x.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+
 const hashOf = async (c: ToolCtx, rel: string): Promise<string> => (await c.j.vault.read(rel)).hash;
 
 function existingNote(c: ToolCtx, raw: unknown): string {
@@ -355,6 +358,39 @@ const WRITE_DEFS: Def[] = [
         summary: `Crear nota «${opts.title}»`, touches: [], creates: [rel],
         ops: async () => { const b = c.j.buildNote(opts); return [{ op: "create", path: b.rel, text: b.text }]; },
         apply: async () => { const n = await c.j.createNote(opts); return { out: { path: n.path }, created: [n.path] }; },
+      };
+    },
+  ),
+  writeDef(
+    {
+      name: "log_habit",
+      description: "Marca un hábito como hecho un día (por defecto hoy), o lo desmarca con done:false. habit: el nombre del hábito (una fila de una base con vista de hábitos). Úsalo cuando el usuario diga que ha hecho algo que sigue como hábito.",
+      inputSchema: obj({ habit: S, date: S, done: { type: "boolean" } }, ["habit"]),
+    },
+    async (c, a) => {
+      const want = fold(argStr(a, "habit"));
+      const boards = c.j.listDatabases({ skip: (x) => isExcluded(x, c.exclude) }).filter((d) => d.views.some((v) => v.kind === "habits"));
+      if (!boards.length) throw new AssistantError("invalid", "No hay ninguna base de hábitos: se crea en Bases con la plantilla «Hábitos»");
+      const found: { path: string; title: string; track: string }[] = [];
+      for (const d of boards) {
+        const track = d.views.find((v) => v.kind === "habits")!.track ?? "Hechos";
+        for (const r of c.j.queryDatabase(d.path, undefined, { skip: (x) => isExcluded(x, c.exclude) }).rows) found.push({ path: r.path, title: r.title, track });
+      }
+      const hit = found.find((r) => fold(r.title) === want) ?? found.find((r) => fold(r.title).startsWith(want) || want.startsWith(fold(r.title)));
+      if (!hit) throw new AssistantError("invalid", `No encuentro el hábito «${argStr(a, "habit")}». Hábitos: ${found.map((r) => r.title).join(", ") || "ninguno todavía"}`);
+      const path = checkAssistantPath(hit.path, c.exclude);
+      const date = typeof a.date === "string" && a.date ? a.date : (await c.j.today()).date as string;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new AssistantError("invalid", "«date» debe ser AAAA-MM-DD");
+      const done = a.done !== false;
+      const cur = c.j.index.getNote(path)?.fm[hit.track];
+      const days = new Set(Array.isArray(cur) ? cur.filter((x): x is string => typeof x === "string") : []);
+      if (done) days.add(date); else days.delete(date);
+      const next = [...days].sort();
+      const props = { [hit.track]: next.length ? next : null };
+      return {
+        summary: `${done ? "Hecho" : "Desmarcado"}: «${hit.title}» el ${date}`, touches: [path],
+        ops: async () => [{ op: "setProp", path, before: await hashOf(c, path), props }],
+        apply: async () => { await c.j.setProps(path, props); return { out: { path, habit: hit.title, date, done } }; },
       };
     },
   ),
