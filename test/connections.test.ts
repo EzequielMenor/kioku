@@ -126,15 +126,13 @@ test("ConnectionsView: usa useOffline/formatAgo existentes, sondea /api/health s
   assert.doesNotMatch(src("connections-model.ts"), /location\.(href|search)|localStorage|document\.cookie/);
 });
 
-test("navigation exposes connections on desktop and More while retaining existing destinations", () => {
+test("navigation: Conexiones vive dentro de Ajustes (escritorio y «Más») y la ruta antigua lleva allí", () => {
   const app = src("app.tsx");
-  assert.match(app, /route: "\/conexiones", label: "Conexiones y sincronización"/);
-  assert.match(app, /case "conexiones": view = <ConnectionsView/);
+  assert.match(app, /case "conexiones": case "ajustes": view = <SettingsView/);
+  assert.match(app, /<ConnectionsView mobile=\{mobile\} demo=\{demo\}/);
   assert.match(app, /mobile && <OfflineSection off=\{off\}/);
-  for (const route of ["hoy", "bandeja", "proyectos", "tareas", "calendario", "notas", "bases", "grafo", "asistente", "propuestas"]) assert.ok(app.includes(`route: "/${route}"`), route);
   assert.match(app, /const rest = visibleNav\(\)\.filter/);
-  assert.ok(/const MORE_ROUTES = \[[^\n]*"\/conexiones"/.test(app), "connections marks More active");
-  assert.ok(app.includes("g h · b · p · t · c · n · d · g · a · r · s"), "help includes the new shortcut");
+  assert.ok(/const MORE_ROUTES = \[[^\n]*"\/ajustes"/.test(app), "Ajustes marca «Más» como activo");
 });
 
 test("ConnectionsView: la demo no sondea la red y el panel de cola solo aparece en el móvil real", () => {

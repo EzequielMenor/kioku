@@ -4,7 +4,7 @@ import "./app.css";
 import { UNAUTHORIZED_EVENT, api, lsGet, lsSet, setDemoTransport } from "./api.ts";
 import { AssistantActivity, AssistantMemory, AssistantView } from "./assistant.tsx";
 import { AssistantManagement } from "./assistant-management.tsx";
-import { Companion, CompanionModeButton } from "./companion.tsx";
+import { Companion, CompanionModeButton, KioFace } from "./companion.tsx";
 import { ConnectionsView } from "./connections.tsx";
 import { UpdateBanner } from "./update-panel.tsx";
 import { DeviceEnrollment } from "./device-access.tsx";
@@ -56,17 +56,18 @@ const Icon = ({ name }: { name: string }) => <svg viewBox="0 0 24 24" aria-hidde
 
 const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/hoy", label: "Hoy", key: "h", icon: "hoy" },
-  { route: "/bandeja", label: "Bandeja", key: "b", icon: "bandeja" },
-  { route: "/proyectos", label: "Proyectos", key: "p", icon: "proyectos" },
+  { route: "/asistente", label: "Kio", key: "a", icon: "asistente" },
+  { route: "/notas", label: "Notas", key: "n", icon: "notas" },
   { route: "/tareas", label: "Tareas", key: "t", icon: "tareas" },
   { route: "/calendario", label: "Calendario", key: "c", icon: "calendario" },
-  { route: "/notas", label: "Notas", key: "n", icon: "notas" },
   { route: "/bases", label: "Bases", key: "d", icon: "bases" },
-  { route: "/grafo", label: "Grafo", key: "g", icon: "grafo" },
-  { route: "/asistente", label: "Asistente", key: "a", icon: "asistente" },
-  { route: "/propuestas", label: "Propuestas", key: "r", icon: "propuestas" },
-  { route: "/conexiones", label: "Conexiones y sincronización", key: "s", icon: "grafo" },
 ];
+/** Pantallas que viven dentro de una sección: siguen teniendo ruta y atajo «g …», pero no ocupan sitio en el menú. */
+const SECONDARY: { route: string; key: string }[] = [
+  { route: "/bandeja", key: "b" }, { route: "/proyectos", key: "p" }, { route: "/grafo", key: "g" }, { route: "/propuestas", key: "r" }, { route: "/ajustes", key: "s" },
+];
+/** Sección del menú que se ilumina para cada ruta. */
+const SECTION_OF: Record<string, string> = { bandeja: "/notas", nota: "/notas", grafo: "/notas", proyectos: "/tareas", proyecto: "/tareas", propuestas: "/asistente", conexiones: "/ajustes" };
 
 /** Entradas de navegación que ve quien usa la interfaz (`MOBILE_HIDDEN` lista las que el móvil no tiene). */
 const visibleNav = () => NAV.filter((n) => !(isMobile() && MOBILE_HIDDEN.has(n.route)));
@@ -184,7 +185,7 @@ function App() {
       if (e.key === "Escape" && overlay) { setOverlay(null); return; }
       if (typing || e.ctrlKey || e.metaKey || e.altKey || overlay) return;
       if (g && Date.now() - g < 1200) {
-        const hit = visibleNav().find((n) => n.key === e.key);
+        const hit = [...visibleNav(), ...SECONDARY].find((n) => n.key === e.key);
         g = 0;
         if (hit) { e.preventDefault(); setRoute(hit.route); }
         return;
@@ -250,16 +251,23 @@ function App() {
     case "proyecto": view = <ProjectView key={arg} path={arg} rev={rev} go={setRoute} say={say} guard={guard} focus={focus} onContext={openContext} />; break;
     case "tareas": view = <TasksView rev={rev} go={setRoute} guard={guard} today={counts?.date} />; break;
     case "calendario": view = <CalendarView rev={rev} guard={guard} say={say} />; break;
-    case "notas": view = <NotesView rev={rev} go={setRoute} onNew={(tp, folder) => newNote(tp, folder)} />; break;
+    case "notas": view = <NotesView rev={rev} go={setRoute} onNew={(tp, folder) => newNote(tp, folder)} onJournal={() => void openJournal()} />; break;
     case "bases": view = arg ? <DatabaseView key={arg} path={arg} rev={rev} go={setRoute} guard={guard} say={say} /> : <DatabasesList rev={rev} go={setRoute} guard={guard} />; break;
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
     case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : arg === "memoria" ? <AssistantMemory rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
-    case "conexiones": view = <ConnectionsView mobile={mobile} demo={demo}>{mobile && <OfflineSection off={off} />}</ConnectionsView>; break;
+    case "conexiones": case "ajustes": view = <SettingsView mobile={mobile} demo={demo} theme={theme} setTheme={setTheme} onManageKio={() => setOverlay("assistant-management")}><ConnectionsView mobile={mobile} demo={demo}>{mobile && <OfflineSection off={off} />}</ConnectionsView></SettingsView>; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
     default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} onCapture={() => setOverlay("capture")} />;
   }
-  const activeRoute = head ? `/${head === "proyecto" ? "proyectos" : head}` : "/hoy";
+  const activeRoute = head ? SECTION_OF[head] ?? `/${head}` : "/hoy";
+  const inbox = counts?.inbox.count ?? 0;
+  const subRoute = head === "nota" ? null : head === "proyecto" ? "/proyectos" : head === "asistente" && arg === "actividad" ? "/asistente/actividad" : `/${head ?? "hoy"}`;
+  const tabs = subRoute && ({
+    "/notas": [["/notas", "Notas"], ["/bandeja", inbox ? `Sin organizar · ${inbox}` : "Sin organizar"], ["/grafo", "Grafo"]],
+    "/tareas": [["/tareas", "Tareas"], ["/proyectos", "Proyectos"]],
+    "/asistente": [["/asistente", "Conversación"], ["/propuestas", counts?.proposals ? `Propuestas · ${counts.proposals}` : "Propuestas"], ["/asistente/actividad", "Actividad"]],
+  } as Record<string, [string, string][]>)[activeRoute];
 
   return (
     <div class="shell">
@@ -268,29 +276,24 @@ function App() {
         {visibleNav().map((n) => (
           <a key={n.route} href={`#${n.route}`} class={activeRoute === n.route ? "active" : ""}>
             <Icon name={n.icon} /><span>{n.label}</span>
-            {n.route === "/bandeja" && counts && counts.inbox.count > 0 && <b class="badge">{counts.inbox.count}</b>}
-            {n.route === "/propuestas" && counts && counts.proposals > 0 && <b class="badge">{counts.proposals}</b>}
+            {n.route === "/notas" && counts && counts.inbox.count > 0 && <b class="badge" title="Sin organizar">{counts.inbox.count}</b>}
+            {n.route === "/asistente" && counts && counts.proposals > 0 && <b class="badge" title="Propuestas por revisar">{counts.proposals}</b>}
           </a>
         ))}
-        <a href="#/diario" onClick={(e) => { e.preventDefault(); void openJournal(); }}><Icon name="diario" /><span>Diario</span></a>
         <div class="spacer" />
         <button class="side-btn" onClick={() => setOverlay("capture")}>Capturar <kbd>c</kbd></button>
         <button class="side-btn" onClick={() => setOverlay("palette")}>Buscar <kbd>Ctrl K</kbd></button>
-        <button class="side-btn subtle" onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>
-          Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}
-        </button>
-        {!mobile && !demo && <CompanionModeButton />}
-        <button class="side-btn subtle" onClick={() => setOverlay("help")}>Atajos <kbd>?</kbd></button>
+        <a href="#/ajustes" class={`side-link ${activeRoute === "/ajustes" ? "active" : ""}`}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg><span>Ajustes</span></a>
       </nav>
       <div class="content">
         {demo && <DemoBar onReset={() => { resetDemoState(); say("Datos de prueba restaurados."); }} onLanding={() => setRoute("/inicio")} />}
         {!mobile && !demo && !isLanding && <UpdateBanner go={setRoute} />}
         {focus?.active && !mobile && <FocusBar focus={focus} onEnd={() => setOverlay("endfocus")} go={setRoute} />}
-        <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{view}</main>
+        <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{tabs && <SectionTabs tabs={tabs} active={subRoute!} />}{view}</main>
       </div>
 
-      <BottomNav active={activeRoute} pending={off.pending + off.failed + off.mutations} onCapture={() => setOverlay("capture")} onMore={() => setOverlay("more")} />
-      {overlay === "more" && <MoreSheet off={off} counts={counts} theme={theme} setTheme={setTheme} onClose={() => setOverlay(null)} onSearch={() => setOverlay("palette")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
+      <BottomNav active={activeRoute} pending={off.pending + off.failed + off.mutations} proposals={counts?.proposals ?? 0} onMore={() => setOverlay("more")} />
+      {overlay === "more" && <MoreSheet onClose={() => setOverlay(null)} onSearch={() => setOverlay("palette")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
       {overlay === "palette" && <Palette go={(r) => { setOverlay(null); setRoute(r); }} onClose={() => setOverlay(null)} newNote={() => { setOverlay(null); void newNote("note"); }}
         newProject={() => { setOverlay(null); void newNote("project"); }} journal={() => { setOverlay(null); void openJournal(); }} toggleFocus={() => { setOverlay(null); void toggleFocus(); }}
         focusActive={!!focus?.active} manageAssistant={() => setOverlay("assistant-management")} />}
@@ -302,6 +305,15 @@ function App() {
       {!mobile && !demo && <Companion route={route} go={setRoute} say={say} />}
       {toast && <div class={`toast ${toast.error ? "err" : ""}`} role="status"><span>{toast.text}</span>{toast.action && <button onClick={() => { const a = toast.action!; setToast(null); a.run(); }}>{toast.action.label}</button>}</div>}
     </div>
+  );
+}
+
+/** Subpantallas de una sección (Notas · Sin organizar · Grafo…): una fila discreta encima de la página. */
+function SectionTabs({ tabs, active }: { tabs: [string, string][]; active: string }) {
+  return (
+    <nav class="section-tabs" aria-label="Secciones">
+      {tabs.map(([route, label]) => <a key={route} href={`#${route}`} class={route === active ? "on" : ""} aria-current={route === active ? "page" : undefined}>{label}</a>)}
+    </nav>
   );
 }
 
@@ -678,12 +690,11 @@ function TasksView({ rev, go, guard, today }: { rev: number; go: Go; guard: Guar
 
 // ───────────────────────────── Notas ─────────────────────────────
 
-function NotesView({ rev, go, onNew }: { rev: number; go: Go; onNew(type: "note" | "resource", folder?: string): void }) {
+function NotesView({ rev, go, onNew, onJournal }: { rev: number; go: Go; onNew(type: "note" | "resource", folder?: string): void; onJournal(): void }) {
   const { data } = useApi<NoteListItem[]>("/api/notes", rev);
   const [type, setType] = useState<"all" | "note" | "resource">("all");
   const [folder, setFolder] = useState("all");
   const [q, setQ] = useState("");
-  const types: ("all" | "note" | "resource")[] = ["all", "note", "resource"];
   const label: Record<string, string> = { all: "Todas", note: "Notas", resource: "Recursos" };
   const knowledge = (data ?? []).filter(isKnowledgeNote);
   const folders = extractFolders(knowledge);
@@ -694,18 +705,14 @@ function NotesView({ rev, go, onNew }: { rev: number; go: Go; onNew(type: "note"
   return (
     <div class="page narrow">
       <header class="page-head">
-        <div>
-          <h1>Notas</h1>
-          <p class="muted small">Notas de conocimiento y recursos ({knowledge.length}). Tareas, proyectos, capturas y calendario tienen su propia sección.</p>
-        </div>
+        <h1>Notas</h1>
         <div class="row">
           <input class="search" placeholder="Filtrar por título, #etiqueta o ruta…" value={q} onInput={(e) => setQ(e.currentTarget.value)} />
-          <button class="ghost" onClick={() => onNew("resource", createFolder)}>Nuevo recurso</button>
+          <button class="ghost" onClick={onJournal}>Diario de hoy</button>
           <button class="primary" onClick={() => onNew("note", createFolder)}>Nueva nota</button>
         </div>
       </header>
       <div class="notes-filters">
-        <div class="chips">{types.map((tp) => <button key={tp} class={`chip btn ${type === tp ? "on" : ""}`} onClick={() => setType(tp)}>{label[tp]}</button>)}</div>
         {folders.length > 0 && (
           <div class="chips">
             <button class={`chip btn ${activeFolder === "all" ? "on" : ""}`} onClick={() => setFolder("all")}>Todas las carpetas ({knowledge.length})</button>
@@ -724,7 +731,7 @@ function NotesView({ rev, go, onNew }: { rev: number; go: Go; onNew(type: "note"
             <li key={n.path}>
               {n.icon && <span class="note-row-icon" aria-hidden="true">{n.icon}</span>}
               <a href={`#/nota/${enc(n.path)}`}>{n.title}</a>
-              <span class="chip">{label[n.type] ?? n.type}</span>
+              {n.type === "resource" && <span class="chip">{label[n.type]}</span>}
               <button type="button" class="chip btn folder-chip" onClick={() => setFolder(fld === activeFolder ? "all" : fld)} title="Filtrar por carpeta">{fld}</button>
               <span class="tags-inline">
                 {(n.tags ?? []).slice(0, 3).map((t) => (
@@ -851,16 +858,15 @@ function LockedScreen() {
 }
 
 /** Pantallas que en el móvil viven dentro de «Más»: con una de ellas abierta, ese botón es el activo. */
-const MORE_ROUTES = ["/bandeja", "/proyectos", "/notas", "/bases", "/grafo", "/diario", "/conexiones"];
+const MORE_ROUTES = ["/calendario", "/bases", "/ajustes"];
 
-/** Barra inferior (solo se ve en pantallas estrechas): lo más usado a un pulgar. */
-function BottomNav({ active, pending, onCapture, onMore }: { active: string; pending: number; onCapture(): void; onMore(): void }) {
-  const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/tareas", "Tareas", "tareas"], ["/calendario", "Calendario", "calendario"]];
+function BottomNav({ active, pending, proposals, onMore }: { active: string; pending: number; proposals: number; onMore(): void }) {
+  const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/notas", "Notas", "notas"], ["/tareas", "Tareas", "tareas"]];
   const link = ([route, label, icon]: [string, string, string]) => <a key={route} href={`#${route}`} class={active === route ? "active" : ""}><Icon name={icon} /><span>{label}</span></a>;
   return (
     <nav class="bottomnav" aria-label="Navegación">
       {items.slice(0, 2).map(link)}
-      <button class="nav-add" aria-label="Capturar" onClick={onCapture}><span aria-hidden="true">+</span></button>
+      <a href="#/asistente" class={`nav-kio ${active === "/asistente" ? "active" : ""}`} aria-label="Kio"><KioFace state="idle" size={34} />{proposals > 0 && <b class="nav-badge" aria-label={`${proposals} propuestas`}>{proposals}</b>}</a>
       {items.slice(2).map(link)}
       <button class={MORE_ROUTES.includes(active) ? "active" : ""} onClick={onMore}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg><span>Más</span>{pending > 0 && <b class="nav-badge" aria-label={`${pending} cambios pendientes`}>{pending}</b>}</button>
     </nav>
@@ -868,41 +874,81 @@ function BottomNav({ active, pending, onCapture, onMore }: { active: string; pen
 }
 
 /** «Más»: el resto de pantallas en el móvil. */
-function MoreSheet({ off, counts, theme, setTheme, onClose, onSearch, onJournal }: { off: OfflineState; counts: TodayView | null; theme: string; setTheme(t: string): void; onClose(): void; onSearch(): void; onJournal(): void }) {
-  const rest = visibleNav().filter((n) => !["/hoy", "/calendario", "/tareas"].includes(n.route));
-  const [push, setPush] = useState<PushState>("unsupported");
-  const [pushBusy, setPushBusy] = useState(true);
-  const [pushError, setPushError] = useState("");
-  useEffect(() => { void currentState().then(setPush).catch((e) => setPushError(errText(e))).finally(() => setPushBusy(false)); }, []);
-  const togglePush = async () => {
-    setPushBusy(true); setPushError("");
-    try { if (push === "on") await disablePush(); else await enablePush(); }
-    catch (e) { setPushError(errText(e)); }
-    try { setPush(await currentState()); } catch (e) { setPushError(errText(e)); }
-    setPushBusy(false);
-  };
-  const pushLabel = { on: "Avisos: activados", off: "Activar avisos", denied: "Bloqueados en Ajustes de iOS", unsupported: "No disponibles: instala la app en la pantalla de inicio" }[push];
+function MoreSheet({ onClose, onSearch, onJournal }: { onClose(): void; onSearch(): void; onJournal(): void }) {
+  const rest = visibleNav().filter((n) => !["/hoy", "/notas", "/tareas", "/asistente"].includes(n.route));
   return (
     <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div class="modal sheet" role="dialog" aria-label="Más">
         <ul class="sheet-list">
           <li><button onClick={onSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg><span>Buscar</span></button></li>
-          {rest.map((n) => (
-            <li key={n.route}>
-              <a href={`#${n.route}`} onClick={onClose}><Icon name={n.icon} /><span>{n.label}</span>
-                {n.route === "/bandeja" && counts && counts.inbox.count > 0 && <b class="badge">{counts.inbox.count}</b>}
-                {n.route === "/propuestas" && counts && counts.proposals > 0 && <b class="badge">{counts.proposals}</b>}
-              </a>
-            </li>
-          ))}
+          {rest.map((n) => <li key={n.route}><a href={`#${n.route}`} onClick={onClose}><Icon name={n.icon} /><span>{n.label}</span></a></li>)}
           <li><a href="#/diario" onClick={(e) => { e.preventDefault(); onJournal(); }}><Icon name="diario" /><span>Diario de hoy</span></a></li>
-          <li class="sheet-sep"><button onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "auto" : "dark")}>Tema: {theme === "auto" ? "sistema" : theme === "dark" ? "oscuro" : "claro"}</button></li>
-          <li><button disabled={pushBusy || push === "unsupported" || push === "denied"} onClick={() => void togglePush()}>{pushLabel}</button></li>
+          <li class="sheet-sep"><a href="#/ajustes" onClick={onClose}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></svg><span>Ajustes</span></a></li>
         </ul>
-        {pushError && <p class="bad-text" role="alert">{pushError}</p>}
-        <OfflineSection off={off} />
       </div>
     </div>
+  );
+}
+
+/** Ajustes: Kio, conexión y dispositivos, apariencia y avisos, en una sola pantalla. */
+function SettingsView({ mobile, demo, theme, setTheme, onManageKio, children }: { mobile: boolean; demo: boolean; theme: string; setTheme(t: string): void; onManageKio(): void; children: preact.ComponentChildren }) {
+  return (
+    <div class="page narrow settings">
+      <h1>Ajustes</h1>
+      {!demo && <KioSettings mobile={mobile} onManage={onManageKio} />}
+      <section class="card">
+        <div class="eyebrow">Apariencia</div>
+        <div class="seg" role="radiogroup" aria-label="Tema">
+          {([["auto", "Sistema"], ["light", "Claro"], ["dark", "Oscuro"]] as const).map(([v, l]) => <button key={v} role="radio" aria-checked={theme === v} class={theme === v ? "on" : ""} onClick={() => setTheme(v)}>{l}</button>)}
+        </div>
+        {!mobile && !demo && <div class="row"><CompanionModeButton /></div>}
+      </section>
+      {mobile && !demo && <PushSetting />}
+      {children}
+    </div>
+  );
+}
+
+type EngineInfo = { engine: string; provider: string | null; model: string | null; origin: string | null; local: boolean };
+
+/** Kio en una línea: qué modelo usa, dónde corre y si responde. Lo avanzado (proveedores, endpoints) queda detrás de un botón. */
+function KioSettings({ mobile, onManage }: { mobile: boolean; onManage(): void }) {
+  const state = useApi<{ engine: EngineInfo | null }>("/api/assistant/state", 0).data;
+  const status = useApi<{ ok: boolean; reason?: string }>("/api/assistant/status", 0);
+  const e = state?.engine;
+  const where = e?.local ? "en tu ordenador" : e?.origin ? `en ${e.origin.replace(/^https?:\/\//, "")}` : "";
+  return (
+    <section class="card">
+      <div class="eyebrow">Kio</div>
+      <h2 class={status.data && !status.data.ok ? "bad-text" : ""}>
+        {status.data ? (status.data.ok ? "✓ " : "✕ ") : ""}{e?.model ?? "Modelo sin configurar"}{where && <span class="muted"> · {where}</span>}
+      </h2>
+      <p class="muted">{!status.data ? "Comprobando…" : status.data.ok ? (e?.local ? "Responde. Tus notas no salen de tu ordenador." : "Responde. Las notas que lee se envían a ese servidor.") : status.data.reason ?? "No responde."}</p>
+      <p class="muted small">Kioku funciona igual sin Kio: puedes escribir, buscar y organizar a mano. Lo que escribas mientras no responde se guarda en «Sin organizar».</p>
+      {!mobile && <div class="row"><button onClick={onManage}>Cambiar modelo…</button><a class="pill" href="#/asistente/actividad">Lo que ha hecho Kio</a></div>}
+    </section>
+  );
+}
+
+function PushSetting() {
+  const [push, setPush] = useState<PushState>("unsupported");
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => { void currentState().then(setPush).catch((e) => setError(errText(e))).finally(() => setBusy(false)); }, []);
+  const toggle = async () => {
+    setBusy(true); setError("");
+    try { if (push === "on") await disablePush(); else await enablePush(); }
+    catch (e) { setError(errText(e)); }
+    try { setPush(await currentState()); } catch (e) { setError(errText(e)); }
+    setBusy(false);
+  };
+  const label = { on: "Avisos: activados", off: "Activar avisos", denied: "Bloqueados en Ajustes de iOS", unsupported: "No disponibles: instala la app en la pantalla de inicio" }[push];
+  return (
+    <section class="card">
+      <div class="eyebrow">Avisos</div>
+      <button disabled={busy || push === "unsupported" || push === "denied"} onClick={() => void toggle()}>{label}</button>
+      {error && <p class="bad-text" role="alert">{error}</p>}
+    </section>
   );
 }
 
@@ -1051,7 +1097,7 @@ function snippetHtml(s: string): string {
 function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
     ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
-    ["g h · b · p · t · c · n · d · g · a · r · s", "Ir a Hoy · Bandeja · Proyectos · Tareas · Calendario · Notas · Bases · Grafo · Asistente · Propuestas · Conexiones"],
+    ["g h · a · n · t · c · d  ·  b bandeja · p proyectos · g grafo · r propuestas · s ajustes", "Ir a Hoy · Kio · Notas · Tareas · Calendario · Bases (y a Sin organizar, Proyectos, Grafo, Propuestas o Ajustes)"],
     ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["/ · Ctrl B · Ctrl I (editor)", "Menú de formato · negrita · cursiva"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (

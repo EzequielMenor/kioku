@@ -45,25 +45,24 @@ const app = readFileSync(path.join(import.meta.dirname, "..", "web", "src", "app
 const appCss = readFileSync(path.join(import.meta.dirname, "..", "web", "src", "app.css"), "utf8");
 const nav = [...app.matchAll(/{ route: "(\/[a-z]+)", label: "([^"]+)", key: "(.)", icon: "([a-z]+)" }/g)].map((m) => ({ route: m[1], label: m[2], key: m[3], icon: m[4] }));
 
-test("navegación: las pantallas de antes siguen en su orden con sus atajos y el calendario tiene el suyo, único", () => {
-  const before = ["/hoy:h", "/bandeja:b", "/proyectos:p", "/tareas:t", "/notas:n", "/bases:d", "/grafo:g", "/asistente:a", "/propuestas:r", "/conexiones:s"];
-  assert.deepEqual(nav.filter((n) => n.route !== "/calendario").map((n) => `${n.route}:${n.key}`), before);
-  const cal = nav.find((n) => n.route === "/calendario");
-  assert.deepEqual(cal && [cal.label, cal.key, cal.icon], ["Calendario", "c", "calendario"]);
+test("navegación: seis entradas (Hoy · Kio · Notas · Tareas · Calendario · Bases) y Ajustes abajo; las rutas antiguas siguen vivas", () => {
+  assert.deepEqual(nav.map((n) => `${n.route}:${n.label}:${n.key}`), ["/hoy:Hoy:h", "/asistente:Kio:a", "/notas:Notas:n", "/tareas:Tareas:t", "/calendario:Calendario:c", "/bases:Bases:d"]);
   assert.equal(new Set(nav.map((n) => n.key)).size, nav.length, "ningún atajo «g …» se repite");
-  assert.ok(!MOBILE_HIDDEN.has("/calendario"), "el móvil sí tiene calendario");
-  assert.deepEqual([...MOBILE_HIDDEN], [], "el asistente y las propuestas ya no se esconden en el móvil: el daemon impone su privacidad");
-  assert.match(app, /case "calendario": view = <CalendarView/);
-  assert.match(app, /\["g h · b · p · t · c · n · d · g · a · r · s"/, "la ayuda mantiene «g c» y añade «g s»");
+  assert.deepEqual([...MOBILE_HIDDEN], [], "el móvil tiene las mismas pantallas: el daemon impone su privacidad");
+  for (const r of ["bandeja", "proyectos", "proyecto", "grafo", "propuestas", "conexiones", "ajustes", "calendario", "nota"]) assert.match(app, new RegExp(`case "${r}":`), `la ruta /${r} sigue funcionando`);
+  // Cada ruta secundaria ilumina la sección que la contiene.
+  assert.match(app, /SECTION_OF: Record<string, string> = {[^}]*bandeja: "\/notas"[^}]*grafo: "\/notas"[^}]*proyectos: "\/tareas"[^}]*propuestas: "\/asistente"[^}]*conexiones: "\/ajustes"/);
+  assert.match(app, /href="#\/ajustes"/, "Ajustes abajo en la barra lateral");
+  assert.match(app, /\["g h · a · n · t · c · d  ·  b bandeja · p proyectos · g grafo · r propuestas · s ajustes"/);
 });
 
-test("móvil: la barra inferior es Hoy · Tareas · «+» central · Calendario · Más (sin duplicarse en «Más») y sus etiquetas no desbordan", () => {
+test("móvil: la barra inferior es Hoy · Notas · Kio (centro) · Tareas · Más, y «Más» no repite lo de abajo", () => {
   const bottom = app.match(/const items: \[string, string, string\]\[\] = \[(.*)\];/)?.[1] ?? "";
-  assert.deepEqual([...bottom.matchAll(/\["(\/[a-z]+)"/g)].map((m) => m[1]), ["/hoy", "/tareas", "/calendario"]);
-  assert.match(app, /class="nav-add" aria-label="Capturar"/, "la captura es el botón central de la barra, ya no un FAB aparte");
+  assert.deepEqual([...bottom.matchAll(/\["(\/[a-z]+)"/g)].map((m) => m[1]), ["/hoy", "/notas", "/tareas"]);
+  assert.match(app, /class=\{`nav-kio/, "Kio es el botón central de la barra");
   assert.doesNotMatch(app, /class="fab"/);
-  assert.match(app, /\["\/hoy", "\/calendario", "\/tareas"\]\.includes\(n\.route\)/, "«Más» no repite lo que ya está abajo");
-  assert.match(appCss, /\.bottomnav span\s*{[^}]*text-overflow:\s*ellipsis/, "con seis botones, «Calendario» se recorta en lugar de ensanchar la barra");
+  assert.match(app, /\["\/hoy", "\/notas", "\/tareas", "\/asistente"\]\.includes\(n\.route\)/, "«Más» no repite lo que ya está abajo");
+  assert.match(appCss, /\.bottomnav span\s*{[^}]*text-overflow:\s*ellipsis/);
 });
 
 // ───────── Asistente y propuestas en el móvil: la vista de siempre, solo en línea y sin atajos peligrosos ─────────

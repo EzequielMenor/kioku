@@ -33,7 +33,7 @@ export function ConnectionsView({ demo = false, mobile = isMobile(), children }:
   const origin = safeOrigin(location);
   return (
     <div class="connections">
-      <h1>Conexiones y sincronización</h1>
+      <h2 class="settings-title">Conexión y dispositivos</h2>
       {demo && <p class="card" role="note"><b>{DEMO_NOTICE}</b></p>}
       <section class="card" aria-live="polite">
         <div class="eyebrow">{demo ? "Estado (simulado)" : "Estado"}</div>

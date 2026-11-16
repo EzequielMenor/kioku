@@ -106,7 +106,7 @@ export function DeviceEnrollment() {
         <button type="submit" class="primary" disabled={busy || !name.trim()}>{busy ? "Conectando…" : "Conectar este dispositivo"}</button>
       </form>
       {error && <p role="alert" class="bad-text">{error}</p>}
-      <p class="muted small">Si el enlace caducó o ya se usó, genera otro en Conexiones y sincronización. Para instalar Kioku: Safari → Compartir → Añadir a pantalla de inicio, o el menú de instalación de Chrome. Si el icono pide acceso de nuevo, abre allí un enlace nuevo del ordenador.</p>
+      <p class="muted small">Si el enlace caducó o ya se usó, genera otro en Ajustes → Conexión y dispositivos. Para instalar Kioku: Safari → Compartir → Añadir a pantalla de inicio, o el menú de instalación de Chrome. Si el icono pide acceso de nuevo, abre allí un enlace nuevo del ordenador.</p>
     </section>
   </main>;
 }

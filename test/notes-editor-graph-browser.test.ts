@@ -30,7 +30,7 @@ async function openDesktop(route: string) {
   return { root, p, j, done: async () => { await p.close(); await srv.close(); j.close(); cleanup(); } };
 }
 
-test("navegador · /notas separa notas de conocimiento y filtra por carpeta y subtipo", { skip: browserSkip, timeout: 60_000 }, async () => {
+test("navegador · /notas separa notas de conocimiento, filtra por carpeta y agrupa Sin organizar y Grafo", { skip: browserSkip, timeout: 60_000 }, async () => {
   const t = await openDesktop("/notas");
   try {
     await until(() => t.p.ev<boolean>(`document.querySelectorAll(".rows li").length >= 3`), "lista de notas");
@@ -45,11 +45,13 @@ test("navegador · /notas separa notas de conocimiento y filtra por carpeta y su
     await until(() => t.p.ev<boolean>(`document.querySelectorAll(".rows li").length === 1`), "filtro por subcarpeta");
     assert.equal(await t.p.ev<string>(`document.querySelector(".rows a")?.textContent`), "Subnota");
 
-    // Vuelve a todas y filtra a Recursos
+    // Vuelve a todas: sin filtro de subtipo (simplificación), el recurso se distingue por su etiqueta
     await t.p.ev(`(() => { const b = [...document.querySelectorAll(".notes-filters button")].find((x) => x.textContent.startsWith("Todas las carpetas")); b.click(); })()`);
-    await t.p.ev(`(() => { const b = [...document.querySelectorAll(".notes-filters button")].find((x) => x.textContent.trim() === "Recursos"); b.click(); })()`);
-    await until(() => t.p.ev<boolean>(`document.querySelectorAll(".rows li").length === 1`), "filtro a recursos");
-    assert.equal(await t.p.ev<string>(`document.querySelector(".rows a")?.textContent`), "Recurso Enlazado");
+    await until(() => t.p.ev<boolean>(`document.querySelectorAll(".rows li").length >= 3`), "todas las carpetas");
+    const chips = await t.p.ev<string[]>(`[...document.querySelectorAll(".rows li")].filter((li) => li.querySelector("a")?.textContent === "Recurso Enlazado").map((li) => li.textContent ?? "")`);
+    assert.match(chips[0] ?? "", /Recursos/);
+    assert.ok(await t.p.ev<boolean>(`[...document.querySelectorAll(".page-head button")].some((b) => b.textContent === "Diario de hoy")`), "el diario vive en Notas");
+    assert.ok(await t.p.ev<boolean>(`[...document.querySelectorAll(".section-tabs a")].map((a) => a.textContent).join("|").match(/^Notas\|Sin organizar( · \d+)?\|Grafo$/) !== null`), "Notas · Sin organizar · Grafo");
   } finally { await t.done(); }
 });
 

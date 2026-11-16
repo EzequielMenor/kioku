@@ -673,3 +673,27 @@ button.small { padding: 4px 9px; font-size: 12px; min-height: 0; }
   .proposal-actions { gap: 10px; }
   .proposal-actions button { flex: 1 1 0; min-height: 44px; }
 }
+
+/* ── Cierre: navegación de seis secciones, subpantallas y Ajustes ── */
+.sidebar a.side-link { margin-top: 2px; }
+.section-tabs { display: flex; gap: 4px; padding: 14px 44px 0; max-width: 1040px; margin: 0 auto; overflow-x: auto; scrollbar-width: none; }
+.section-tabs a { padding: 5px 12px; border-radius: 999px; color: var(--muted); font-size: 13px; white-space: nowrap; border: 1px solid transparent; }
+.section-tabs a:hover { color: var(--fg); background: var(--hover); }
+.section-tabs a.on { color: var(--fg); background: var(--sel); border-color: var(--line); font-weight: 550; }
+.section-tabs + .page { padding-top: 22px; }
+.section-tabs:has(+ .page.narrow) { max-width: 720px; box-sizing: content-box; }
+.section-tabs:has(+ .page.wide) { max-width: 1240px; }
+.settings-title { font-size: 20px; margin: 34px 0 6px; }
+.settings .seg { margin-top: 6px; }
+@media (max-width: 720px) {
+  .section-tabs { padding: 10px 16px 0; }
+  .section-tabs + .page { padding-top: 14px; }
+  .bottomnav .nav-kio { flex: 0 0 64px; position: relative; }
+  .bottomnav .nav-kio .kio-face { margin-top: -12px; border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); padding: 4px; }
+  .bottomnav .nav-kio.active .kio-face { outline: 2px solid var(--accent); }
+}
+@media (max-width: 720px) {
+  .page-head:has(.search) { flex-wrap: wrap; }
+  .page-head .row:has(.search) { width: 100%; margin-top: 4px; }
+  .page-head .row .search { flex: 1 1 100%; }
+}
