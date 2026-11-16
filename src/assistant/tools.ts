@@ -402,21 +402,32 @@ const WRITE_DEFS: Def[] = [
     },
   ),
   writeDef(
-    { name: "convert_capture", description: "Convierte una captura de la Bandeja en tarea (task) o nota (note) y la mueve a su carpeta.", inputSchema: obj({ path: S, kind: S }, ["path", "kind"]) },
+    {
+      name: "convert_capture",
+      description: "Convierte una captura de «Sin organizar» (Bandeja) en tarea (task) o nota (note) y la mueve a su carpeta. Pon un title corto y claro (será el nombre de la nota), tags útiles y, si es una tarea con día, due (AAAA-MM-DD). El texto del usuario se conserva tal cual.",
+      inputSchema: obj({ path: S, kind: S, title: S, tags: { type: "array", items: S }, due: S }, ["path", "kind"]),
+    },
     async (c, a) => {
       const path = existingNote(c, a.path);
       const kind = argStr(a, "kind");
       if (kind !== "task" && kind !== "note") throw new AssistantError("invalid", "«kind» debe ser task o note");
       if (c.j.index.getNote(path)?.type !== "capture") throw new AssistantError("invalid", `«${path}» no es una captura de la Bandeja`);
-      const to = c.j.vault.uniquePath(`${FOLDERS[kind]}/${path.slice(path.lastIndexOf("/") + 1)}`);
+      const opts = {
+        title: typeof a.title === "string" ? a.title.slice(0, 120) : undefined,
+        tags: Array.isArray(a.tags) ? a.tags.filter((t): t is string => typeof t === "string").map((t) => t.slice(0, 60)) : undefined,
+        due: typeof a.due === "string" ? a.due : undefined,
+      };
+      let plan: ReturnType<typeof c.j.planCaptureConversion>;
+      try { plan = c.j.planCaptureConversion(path, kind, opts); }
+      catch (e) { throw new AssistantError("invalid", e instanceof Error ? e.message : String(e)); }
+      const to = plan.to;
       return {
-        summary: `Convertir la captura «${path}» en ${kind === "task" ? "tarea" : "nota"}`, touches: [path], creates: [to],
+        summary: `Convertir la captura «${path}» en ${kind === "task" ? "tarea" : "nota"} «${to}»`, touches: [path], creates: [to],
         ops: async () => {
           const cur = await c.j.vault.read(path);
-          const text = setFrontmatter(cur.text, kind === "task" ? { type: "task", status: "todo" } : { type: "note" });
-          return [{ op: "update", path, before: cur.hash, text }, { op: "move", from: path, to, before: cur.hash }];
+          return [{ op: "update", path, before: cur.hash, text: plan.rewrite(cur.text) }, { op: "move", from: path, to, before: cur.hash }];
         },
-        apply: async () => { const n = await c.j.convertCapture(path, kind); return { out: { path: n.path }, created: [n.path] }; },
+        apply: async () => { const n = await c.j.convertCapture(path, kind, opts); return { out: { path: n.path }, created: [n.path] }; },
       };
     },
   ),

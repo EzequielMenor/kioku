@@ -396,3 +396,28 @@ test("calendario: list_events no revela proyectos ni tareas de carpetas excluida
     j.close();
   } finally { cleanup(); }
 });
+
+test("escritura: convert_capture acepta título, etiquetas y fecha (Kio ordena «Sin organizar» con nombres claros) y se deshace entero", async () => {
+  const { j, call, cleanup } = await setup();
+  try {
+    const cap = await j.capture("llamar al dentista el jueves para la revisión");
+    const c = await call("convert_capture", { path: cap.path, kind: "task", title: "Llamar al dentista", tags: ["salud"], due: "2026-11-19" });
+    assert.ok(!c.isError, c.text);
+    assert.equal(c.json.path, "Tareas/Llamar al dentista.md");
+    const t = j.index.getNote("Tareas/Llamar al dentista.md")!;
+    assert.equal(t.type, "task");
+    assert.deepEqual(t.tags, ["salud"]);
+    assert.match((await j.readNote(t.path)).text, /due: 2026-11-19/);
+    assert.match((await j.readNote(t.path)).text, /llamar al dentista el jueves/, "el texto del usuario se conserva tal cual");
+    await new UndoStore(j).undo(c.undoId!);
+    assert.equal(j.vault.exists(cap.path), true);
+    assert.equal(j.vault.exists("Tareas/Llamar al dentista.md"), false);
+
+    const idea = await j.capture("las ideas buenas llegan caminando");
+    const n = await call("convert_capture", { path: idea.path, kind: "note", title: "Caminar para pensar", tags: ["ideas", "hábitos"] });
+    assert.equal(n.json.path, "Notas/Caminar para pensar.md");
+    assert.deepEqual(j.index.getNote(n.json.path)!.tags, ["ideas", "hábitos"]);
+    assert.ok((await call("convert_capture", { path: (await j.capture("x")).path, kind: "note", due: "mañana" })).isError, "fecha inválida");
+    j.close();
+  } finally { cleanup(); }
+});

@@ -156,6 +156,8 @@ function compareSuggestions(a: Suggestion, b: Suggestion): number {
   );
 }
 
+export interface CaptureConversion { title?: string; tags?: string[]; due?: string | null }
+
 export class Kioku {
   readonly vault: Vault;
   readonly index: Index;
@@ -311,18 +313,50 @@ export class Kioku {
     return note;
   }
 
-  /** Acción directa del usuario sobre una captura de la Bandeja: la convierte en tarea o nota y la mueve a su carpeta. */
-  async convertCapture(rel: string, kind: "task" | "note"): Promise<NoteRow> {
+  /**
+   * Convierte una captura de la Bandeja en tarea o nota y la mueve a su carpeta. Opcional: un título claro (nombre del
+   * fichero), etiquetas que se suman a las que tenga y, en tareas, fecha (AAAA-MM-DD). El texto del usuario no se toca.
+   */
+  async convertCapture(rel: string, kind: "task" | "note", opts: CaptureConversion = {}): Promise<NoteRow> {
     const n = this.index.getNote(rel);
     if (!n || n.type !== "capture") throw new VaultError("invalid", "Solo se pueden convertir capturas de la Bandeja");
-    await this.setProps(rel, kind === "task" ? { type: "task", status: "todo" } : { type: "note" });
-    const to = this.vault.uniquePath(`${FOLDERS[kind]}/${path.posix.basename(rel)}`);
-    await this.vault.move(rel, to);
+    const plan = this.planCaptureConversion(rel, kind, opts);
+    const cur = await this.vault.read(rel);
+    await this.vault.write(rel, plan.rewrite(cur.text), cur.hash);
+    await this.vault.move(rel, plan.to);
     this.index.tx(() => { this.index.removeNote(rel); });
-    const moved = await this.reindexPath(to);
-    await this.log.record("capture.convert", to, { from: rel, kind });
-    this.changed("note", to);
+    const moved = await this.reindexPath(plan.to);
+    await this.log.record("capture.convert", plan.to, { from: rel, kind });
+    this.changed("note", plan.to);
     return moved;
+  }
+
+  /** Destino y propiedades de una conversión, sin tocar nada (lo usan la acción y su versión como propuesta). */
+  planCaptureConversion(rel: string, kind: "task" | "note", opts: CaptureConversion = {}): { to: string; props: Record<string, unknown>; rewrite(text: string): string } {
+    const n = this.index.getNote(rel);
+    const props: Record<string, unknown> = kind === "task" ? { type: "task", status: "todo" } : { type: "note" };
+    if (opts.due !== undefined && opts.due !== null && opts.due !== "") {
+      if (kind !== "task") throw new VaultError("invalid", "Solo las tareas llevan fecha");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.due) || Number.isNaN(Date.parse(opts.due))) throw new VaultError("invalid", "La fecha debe ser AAAA-MM-DD");
+      props.due = opts.due;
+    }
+    const tags = (opts.tags ?? []).map((t) => t.trim().replace(/^#+/, "")).filter(Boolean).slice(0, 10);
+    if (tags.length) {
+      const seen = new Set<string>();
+      props.tags = [...(n?.tags ?? []), ...tags].filter((t) => { const k = t.normalize("NFC").toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+    }
+    const base = opts.title?.trim() ? `${sanitizeFileName(opts.title.trim())}.md` : path.posix.basename(rel);
+    // Una captura corta vive solo en el nombre del fichero: si el título cambia, ese texto pasa al cuerpo para no perderlo.
+    const original = n?.title ?? path.posix.basename(rel, ".md");
+    const renamed = base !== path.posix.basename(rel);
+    const rewrite = (text: string) => {
+      const next = setFrontmatter(text, props);
+      const { body } = splitFrontmatter(next);
+      if (!renamed || body.includes(original)) return next;
+      const head = next.slice(0, next.length - body.length);
+      return `${head}${original}\n${body.trim() ? `\n${body.replace(/^\n+/, "")}` : ""}`;
+    };
+    return { to: this.vault.uniquePath(`${FOLDERS[kind]}/${base}`), props, rewrite };
   }
 
   /** Restaura ficheros a un estado anterior (Deshacer del asistente). `text: null` = el fichero no debe existir. */
