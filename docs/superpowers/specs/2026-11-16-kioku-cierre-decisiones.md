@@ -90,3 +90,22 @@ medidos con consultas reales en español, mejoran la recuperación de forma clar
 
 Nuevas pantallas, sincronización propia más allá de la actual, plugins, colaboración multiusuario, publicación en
 Internet y cambios de proveedor de IA remoto.
+
+## Estado al cierre (2026-11-17)
+
+| Etapa | Estado | Verificado con |
+|---|---|---|
+| 1 Base | Hecha: ramas unidas, fix del 8443, [guía de puesta en marcha](../../puesta-en-marcha.md) | Tests, typecheck y build |
+| 2 Navegación | Hecha (D3, D9) | Capturas a 1440×900 y 390×844; rutas antiguas redirigen |
+| 3 Kio central | D4 y D5 hechas. **D6 pendiente** | Motor falso. **Falta qwen3.5:9b real** |
+| 4 Búsqueda | **Sin empezar**: necesita Ollama del Mac mini accesible desde aquí | — |
+| 5 Seguimientos | Hecha (D8): hábitos y Biblia a mano, desde Hoy y vía Kio (`log_habit`) | Motor falso y capturas en móvil |
+| 6 Puesta en marcha | Guía escrita; la ejecutas tú | Checklist manual de la guía |
+
+**D6 aplazada a propósito.** El móvil sigue con su propia conversación. Compartir la del escritorio expone en el
+iPhone lo que Kio haya citado de carpetas privadas. Solo es seguro sin carpetas privadas, y hacerlo bien toca el
+aislamiento del móvil, que hoy falla cerrado. Mejor no improvisarlo al cierre. Notas, tareas, bases y la actividad de
+Kio sí se comparten.
+
+**Fix adicional.** `index.sync` podía borrar del índice una nota recién escrita si coincidía con el vigilante de
+archivos. Se veía al crear muchas filas seguidas. Está corregido y tiene test.
