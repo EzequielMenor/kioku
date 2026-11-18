@@ -100,6 +100,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
 
 const v = <T>(x: T | undefined): T | null => (x === undefined ? null : x);
 
+/** Palabras vacías del español (y de pregunta) que no sirven para buscar: «¿qué medicamento…?» busca «medicamento». */
+const STOPWORDS = new Set(("a al algo algún alguna algunas algunos ante como cómo con cual cuál cuales cuáles cuando cuándo cuanto cuánto cuanta cuánta " +
+  "cuantos cuántos cuantas cuántas de del desde donde dónde e el él ella ellas ellos en entre era es esa ese eso esta está este esto estos estas " +
+  "fue ha han hay la las le les lo los me mi mí mis muy nos o os para pero por que qué quien quién se sea ser si sí sin sobre soy su sus " +
+  "también te tengo tiene tienen tu tú tus un una uno unos unas y ya yo").split(" "));
+
 function asString(x: unknown): string | null {
   if (x === null || x === undefined) return null;
   if (x instanceof Date) return x.toISOString().slice(0, 10);
@@ -460,10 +466,19 @@ export class Index {
         out.set(t.path, { path: t.path, title: t.title, type: t.type, snippet: body.replace(/\s+/g, " ").trim(), kind: "title", score: 1000 + s });
       }
     }
-    const toks = q.match(/[\p{L}\p{N}_]+/gu) ?? [];
+    const all = q.match(/[\p{L}\p{N}_]+/gu) ?? [];
+    const meaningful = all.filter((t) => !STOPWORDS.has(t.toLowerCase()));
+    const toks = meaningful.length ? meaningful : all;
     if (toks.length) {
       const match = toks.map((t) => `"${t}"*`).join(" ");
       for (const h of this.ftsQuery(match, limit)) if (!out.has(h.path)) out.set(h.path, h);
+    }
+    // Si no todas las palabras aparecen («fontanero cocina precio»), se completa con las notas que tienen alguna,
+    // por relevancia (bm25 premia las que tienen más), siempre por debajo de las que las tienen todas.
+    if (meaningful.length > 1 && out.size < limit) {
+      for (const h of this.ftsQuery(meaningful.map((t) => `"${t}"*`).join(" OR "), limit)) {
+        if (!out.has(h.path)) out.set(h.path, { ...h, score: h.score - 1000 });
+      }
     }
     return [...out.values()].sort((a, b) => b.score - a.score).slice(0, limit);
   }

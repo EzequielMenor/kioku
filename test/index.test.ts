@@ -118,3 +118,26 @@ test("graph: nodos conectados, vecindario con focus, ignora enlaces rotos", asyn
     assert.ok(!knowledge.nodes.some((n) => n.path === "Proyectos/Kioku.md" || n.path === "Tareas/Cablear watcher.md"));
   } finally { cleanup(); }
 });
+
+test("búsqueda: si no todas las palabras aparecen, completa con las notas que tienen más de ellas (sin palabras vacías)", async () => {
+  const { root, cleanup } = tmpVault({
+    "Notas/Presupuesto cocina.md": "Fontanero Ramón: 1.850 € por mover la toma de agua. Encimera de cuarzo: 2.300 €.\n",
+    "Notas/Médico.md": "Dra. Lucía Pardo. Alergia a la amoxicilina.\n",
+    "Notas/Receta.md": "Croquetas: bechamel con leche y harina.\n",
+    "Notas/Ambas.md": "El fontanero vino a la cocina.\n",
+  });
+  try {
+    const ix = new Index(":memory:");
+    await ix.sync(new Vault(root));
+    // Antes: «precio» no está en la nota y el AND de FTS5 no devolvía nada.
+    const hits = ix.search("fontanero cocina precio").map((h) => h.path);
+    assert.ok(hits.includes("Notas/Presupuesto cocina.md"), JSON.stringify(hits));
+    assert.ok(!hits.includes("Notas/Receta.md"));
+    // Una pregunta entera: las palabras vacías («a», «qué», «soy») no cuentan.
+    assert.equal(ix.search("¿A qué medicamento soy alérgico? alergia")[0]?.path, "Notas/Médico.md");
+    // Lo que contiene todas las palabras sigue saliendo primero.
+    assert.equal(ix.search("fontanero vino")[0].path, "Notas/Ambas.md");
+    assert.ok(ix.search("fontanero vino").some((h) => h.path === "Notas/Presupuesto cocina.md"), "y después las que tienen alguna");
+    assert.deepEqual(ix.search("¿qué es?"), [], "solo palabras vacías: nada");
+  } finally { cleanup(); }
+});
