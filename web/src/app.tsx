@@ -25,7 +25,7 @@ import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
 import { KioBox, KioRecent } from "./kio-box.tsx";
 import { HabitsToday } from "./db-trackers.tsx";
-import { extractFolders, isKnowledgeNote, listKnowledgeNotes, noteFolder } from "./notes-model.ts";
+import { extractFolders, isKnowledgeNote, listKnowledgeNotes, noteFolder, splitBaseRows } from "./notes-model.ts";
 import { priorityLabel } from "./priority.ts";
 import { OpView } from "./proposal-ops.tsx";
 import { currentState, disablePush, enablePush, type PushState } from "./push.ts";
@@ -417,7 +417,7 @@ function TodayScreen({ rev, go, guard, say }: { rev: number; go: Go; guard: Guar
   const mobile = isMobile();
   return (
     <div class="page narrow">
-      <h1>Hoy <span class="muted date">{t.date}</span></h1>
+      <h1>Hoy <span class="muted date"><time dateTime={t.date}>{humanDay(t.date)}</time></span></h1>
       <KioBox rev={rev} say={say} />
       {t.suggestion ? (
         <section class="card next">
@@ -689,6 +689,13 @@ function TasksView({ rev, go, guard, today }: { rev: number; go: Go; guard: Guar
   );
 }
 
+/** «miércoles, 18 de noviembre» a partir de AAAA-MM-DD (como lo diría una persona, no una base de datos). */
+function humanDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+}
+
 // ───────────────────────────── Notas ─────────────────────────────
 
 function NotesView({ rev, go, onNew, onJournal }: { rev: number; go: Go; onNew(type: "note" | "resource", folder?: string): void; onJournal(): void }) {
@@ -697,7 +704,10 @@ function NotesView({ rev, go, onNew, onJournal }: { rev: number; go: Go; onNew(t
   const [folder, setFolder] = useState("all");
   const [q, setQ] = useState("");
   const label: Record<string, string> = { all: "Todas", note: "Notas", resource: "Recursos" };
-  const knowledge = (data ?? []).filter(isKnowledgeNote);
+  const { data: bases } = useApi<{ path: string; title: string; source?: { folder: string | null } }[]>("/api/databases", rev);
+  // Las filas de una base con carpeta propia (los 66 libros de «Biblia/», cada hábito…) se ven en Bases, no aquí.
+  const split = splitBaseRows((data ?? []).filter(isKnowledgeNote), bases ?? []);
+  const knowledge = split.notes;
   const folders = extractFolders(knowledge);
   const activeFolder = folder !== "all" && folders.some((f) => f.folder === folder) ? folder : "all";
   const createFolder = activeFolder !== "all" && activeFolder !== "(Raíz)" ? activeFolder : undefined;
@@ -714,7 +724,7 @@ function NotesView({ rev, go, onNew, onJournal }: { rev: number; go: Go; onNew(t
         </div>
       </header>
       <div class="notes-filters">
-        {folders.length > 0 && (
+        {folders.length > 1 && (
           <div class="chips">
             <button class={`chip btn ${activeFolder === "all" ? "on" : ""}`} onClick={() => setFolder("all")}>Todas las carpetas ({knowledge.length})</button>
             {folders.map((f) => (
@@ -725,6 +735,11 @@ function NotesView({ rev, go, onNew, onJournal }: { rev: number; go: Go; onNew(t
           </div>
         )}
       </div>
+      {split.bases.length > 0 && (
+        <p class="muted small base-rows-hint">
+          Las filas de tus bases están en <a href="#/bases">Bases</a>: {split.bases.map((b, i) => <span key={b.path}>{i ? " · " : ""}<a href={`#/bases/${enc(b.path)}`}>{b.title}</a> ({b.count})</span>)}.
+        </p>
+      )}
       <ul class="rows">
         {list.slice(0, 400).map((n) => {
           const fld = noteFolder(n.path);
@@ -733,7 +748,7 @@ function NotesView({ rev, go, onNew, onJournal }: { rev: number; go: Go; onNew(t
               {n.icon && <span class="note-row-icon" aria-hidden="true">{n.icon}</span>}
               <a href={`#/nota/${enc(n.path)}`}>{n.title}</a>
               {n.type === "resource" && <span class="chip">{label[n.type]}</span>}
-              <button type="button" class="chip btn folder-chip" onClick={() => setFolder(fld === activeFolder ? "all" : fld)} title="Filtrar por carpeta">{fld}</button>
+              {folders.length > 1 && <button type="button" class="chip btn folder-chip" onClick={() => setFolder(fld === activeFolder ? "all" : fld)} title="Filtrar por carpeta">{fld}</button>}
               <span class="tags-inline">
                 {(n.tags ?? []).slice(0, 3).map((t) => (
                   <button key={t} type="button" class="chip btn" onClick={() => setQ(`#${t}`)}>{t}</button>

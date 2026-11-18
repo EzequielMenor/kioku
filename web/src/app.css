@@ -754,3 +754,8 @@ button.small { padding: 4px 9px; font-size: 12px; min-height: 0; }
 .habit-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .habit-chip { border-radius: 999px; padding: 8px 14px; border: 1.5px solid var(--line); background: var(--surface); }
 .habit-chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+
+/* Línea de Notas que lleva a las filas de las bases: enlaces visibles sin restar protagonismo a la lista. */
+.base-rows-hint { margin: 4px 0 10px; }
+.base-rows-hint a { color: var(--accent); }
+.base-rows-hint a:hover { text-decoration: underline; }

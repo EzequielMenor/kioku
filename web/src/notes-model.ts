@@ -59,3 +59,31 @@ export function listKnowledgeNotes<T extends { path: string; title: string; type
     })
     .sort((a, b) => b.mtime - a.mtime);
 }
+
+/**
+ * Aparta las filas de las bases que viven en una carpeta propia (p. ej. los 66 libros de «Biblia/»): son elementos de
+ * una colección y se ven en Bases; en Notas solo inundarían la lista. Devuelve las notas restantes y el recuento por base.
+ */
+export function splitBaseRows<T extends { path: string }>(
+  items: readonly T[], bases: readonly { path: string; title: string; source?: { folder: string | null } | null }[],
+): { notes: T[]; bases: { path: string; title: string; count: number }[] } {
+  const withFolder = bases
+    .filter((b) => b.source?.folder)
+    .map((b) => ({ path: b.path, title: b.title, prefix: `${b.source!.folder!.replace(/\/+$/, "")}/`, count: 0 }));
+  if (!withFolder.length) return { notes: [...items], bases: [] };
+  const notes: T[] = [];
+  for (const n of items) {
+    const base = withFolder.find((b) => n.path.startsWith(b.prefix));
+    if (base) base.count++; else notes.push(n);
+  }
+  return { notes, bases: withFolder.filter((b) => b.count > 0).map(({ path, title, count }) => ({ path, title, count })) };
+}
+
+/** ¿Hay que enseñar el título encima del texto? Sí, salvo que la nota ya empiece por `# <ese título>` (como en Apple Notes, el título siempre se ve). */
+export function needsTitleHeading(text: string, title: string): boolean {
+  const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, "");
+  const first = body.split(/\r?\n/).find((l) => l.trim() !== "") ?? "";
+  const m = /^#\s+(.+?)\s*#*\s*$/.exec(first.trim());
+  const norm = (s: string) => s.normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+  return !m || norm(m[1]) !== norm(title);
+}

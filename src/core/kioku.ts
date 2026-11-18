@@ -475,12 +475,12 @@ export class Kioku {
   }
 
   /** `skip`: filas que quien consulta no debe ver (p. ej. carpetas excluidas del asistente); tampoco se cuentan. */
-  listDatabases(opts: { skip?: (path: string) => boolean } = {}): { path: string; title: string; icon?: string; rows: number; views: View[]; warnings: string[] }[] {
+  listDatabases(opts: { skip?: (path: string) => boolean } = {}): { path: string; title: string; icon?: string; source: DbSource; rows: number; views: View[]; warnings: string[] }[] {
     const all = this.index.noteRows().filter((r) => !opts.skip?.(r.path) || r.type === "database");
     return all.filter((r) => r.type === "database").map((r) => {
       const def = parseDatabase(r);
       const icon = typeof r.fm.icon === "string" && r.fm.icon ? r.fm.icon : undefined;
-      return { path: def.path, title: def.title, ...(icon ? { icon } : {}), rows: all.filter((x) => matchesSource(def, x)).length, views: def.views, warnings: def.warnings };
+      return { path: def.path, title: def.title, ...(icon ? { icon } : {}), source: def.source, rows: all.filter((x) => matchesSource(def, x)).length, views: def.views, warnings: def.warnings };
     });
   }
 

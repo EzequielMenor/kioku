@@ -13,6 +13,7 @@ import { loadMutations, persistDraft, readDraft, setTaskStatus, submitMutation }
 import { parseNote } from "../../src/core/markdown.ts";
 import { materializeTask, reconcileTaskAcknowledgement } from "./offline/mobile-editing.ts";
 import type { TaskStatus } from "./offline/store.ts";
+import { needsTitleHeading } from "./notes-model.ts";
 
 type SaveState = "saved" | "dirty" | "saving" | "conflict" | "error";
 
@@ -330,7 +331,7 @@ function MobileNoteView({ path, go, embedded }: { path: string; rev: number; go(
     {renaming && n && <RenameModal path={path} title={n.title} type={n.type} onClose={() => setRenaming(false)} onSubmit={handleMobileRename} />}
     {message && <div class="banner warn" role="alert">{message}</div>}
     {label === "Conflicto" && <div class="banner warn">El original se conservó. Revisa la copia y resuelve el conflicto en Más.</div>}
-    {n && (n.type === "task" || n.type === "capture") && <h1 class="note-title">{n.title}</h1>}
+    {n && (n.type === "task" || n.type === "capture" || needsTitleHeading(info?.text ?? "", n.title)) && <h1 class="note-title">{n.title}</h1>}
     {n?.type === "task" && <label class="note-status">Estado <select value={status} onChange={e => host.current?.dispatchEvent(new CustomEvent("kioku-task-status", { detail: e.currentTarget.value }))}>{TASK_STATUS.map(x => <option key={x} value={x}>{STATUS_LABEL[x]}</option>)}</select></label>}
     <div class="editor" ref={host} /></div></div>;
 }
@@ -496,6 +497,7 @@ function DesktopNoteView({ path, rev, go, embedded }: { path: string; rev: numbe
           </div>
           <div class={`save save-${state}`} title={msg}>{SAVE_LABEL[state]}</div>
         </header>
+        {n && needsTitleHeading(info?.text ?? "", n.title) && <h1 class="note-title">{n.title}</h1>}
         {renaming && n && <RenameModal path={path} title={n.title} type={n.type} onClose={() => setRenaming(false)} onSubmit={handleRename} />}
         {state === "conflict" && (
           <div class="banner warn" role="alert">
