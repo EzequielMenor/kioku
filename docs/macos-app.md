@@ -59,6 +59,10 @@ Abre `Kioku.app`. Inicia el servidor local y abre **Conexiones y sincronización
 
 El servidor sigue activo tras cerrar la pestaña. No se añade un servicio de inicio de sesión ni se cambian preferencias de suspensión. El acceso desde fuera necesita Mac encendido y Tailscale conectado; nunca abras puertos del router ni uses Funnel. La guía de acceso privado está en [Conexiones](connections.md).
 
+### Gestionar dispositivos y comprobar actualizaciones
+
+En la barra de menús de Kioku, elige **Dispositivos y actualizaciones…** para abrir **Conexión y dispositivos** dentro de la app. Desde el panel puedes ver los dispositivos vinculados, añadir uno nuevo o revocar su acceso. En **Actualizaciones** puedes consultar la versión instalada y pulsar **Buscar actualizaciones**. El acceso al panel no instala ni actualiza nada por sí solo.
+
 ## Validación automática en macOS (GitHub Actions)
 
 El workflow `.github/workflows/macos-validation.yml` comprueba la app en un runner de Apple Silicon (`macos-15`, arm64) y otro Intel (`macos-15-intel`, x64). Se dispara con un `push` a `feat/JARV-38-private-setup-ui` que cambie el propio workflow, `test/macos-ci.test.ts`, `src/cli/desktop.ts` (arranque del daemon), `test/desktop-startup.test.ts` o el instalador (`Instalar Kioku.command`, `scripts/install-macos.command`, `test/macos-installer.test.ts`); no corre con cambios de seguimiento ni en otras ramas. Solo lee el repositorio: sin secretos, publicación, firma ni artefactos.

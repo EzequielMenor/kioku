@@ -220,6 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         add(menu, s.companion.mode == "hidden" ? "Mostrar a Kio" : "Ocultar a Kio", #selector(menuToggleHidden), "")
         add(menu, "Modo concentración", #selector(menuToggleFocus), "").state = s.companion.mode == "focus" ? .on : .off
         menu.addItem(.separator())
+        add(menu, "Dispositivos y actualizaciones…", #selector(menuConnections), "")
         add(menu, "Abrir en el navegador", #selector(menuOpenBrowser), "")
         add(menu, "Estado y configuración…", #selector(menuSetup), ",")
         add(menu, "Iniciar con macOS", #selector(menuToggleLogin), "").state = setup.daemonAgent.loaded && setup.appAgent.installed ? .on : .off
@@ -237,6 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func menuOpenKioku() { showWorkspace(route: nil) }
+    @objc private func menuConnections() { showWorkspace(route: "/conexiones") }
     @objc private func menuTogglePanel() { togglePanel() }
     @objc private func menuToggleHidden() { model.store.setMode(model.store.companion.mode == "hidden" ? "active" : "hidden") }
     @objc private func menuToggleFocus() { model.store.setMode(model.store.companion.mode == "focus" ? "active" : "focus") }
