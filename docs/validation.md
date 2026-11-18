@@ -262,3 +262,39 @@ Errores que encontró el CI y ya están corregidos:
 - el Dock se quedaba al cerrar la ventana.
 
 **Sin verificar** (solo puede hacerse en el Mac del usuario): Ollama real con `qwen3.5:9b`, la sustitución del agente antiguo con la bóveda real, el arranque en un inicio de sesión real, el uso con ratón y teclado reales (arrastrar, clic en píxeles transparentes, ⌥⌘K), varios monitores y la primera apertura de una app sin firmar con Gatekeeper.
+
+## Versión candidata de cierre (2026-11-18)
+
+Rama `integration/kioku-cierre`, integrada en `main`. Todo contra daemons aislados (`KIOKU_HOME`, `HOME` y bóveda temporales, puertos 47901/47902); las bóvedas y servicios reales del usuario no se tocaron.
+
+**Kio con qwen3.5:9b real.** Ollama 0.34.1 del Mac mini, publicado temporalmente en el tailnet. Batería de 16 escenarios: crear una nota, ordenar la bandeja, crear una tarea, marcar hábitos, apuntar lectura, guardar un dato, cinco preguntas sobre los datos y cinco trampas de honestidad. Cada respuesta se comparó con lo que cambió de verdad en disco.
+
+| Pasada | Resultado |
+|---|---|
+| Antes de los cambios (Ollama por `/v1`, 4.096 tokens) | 1 de 13 bien, 10 respuestas vacías (`finish_reason: length`) y 2 «He creado…» sin haber hecho nada |
+| Con `/api/chat` y 16k, razonamiento activado | 14 de 16. Fallos: la bandeja (se cortó a los 240 s) y la lectura (guardó 21 en vez de 3). Ambos corregidos después |
+| Sin razonamiento | Rápido (mediana 12 s), pero respondió preguntas sin consultar y se inventó tareas y notas. Descartado |
+| Código final (razonamiento activado) | 13 de 16. Fallos: «¿qué hábitos he marcado hoy?» (Ollama no entendió la llamada a herramienta: «XML syntax error»), «borra la nota del médico» (no cambió nada, pero preguntó en vez de dejar una propuesta) y «hoy he hecho ejercicio y he meditado» (no los marcó). En la repetición, las dos primeras salieron bien; la de hábitos no |
+
+En ninguna pasada con el código final afirmó Kio un cambio que no estuviera en disco: cuando el modelo decía «He marcado…» sin llamar a la herramienta, Kioku lo detectó y no lo dio por hecho. Tiempos: entre 14 y 62 s por petición; hasta 196 s en un caso.
+
+**Límite conocido: hábitos contados de pasada.** Con «hoy he hecho ejercicio y he meditado», qwen3.5:9b razona que debe llamar a `log_habit`, pero contesta «He marcado…» sin llamarla. En las dos primeras pasadas los marcó; en las tres últimas, no. Al repetir sin razonamiento, pregunta en vez de marcarlos. Pedido de forma explícita («márcame…») sí funciona, y desde Hoy se marca con un toque. Correcciones de esta pasada, probadas solo con el Ollama simulado porque el del Mac mini dejó de estar accesible:
+- se repite la petición cuando Ollama no entiende la llamada a herramienta;
+- el detector ya no confunde «ninguno ha sido marcado» o «los que están registrados» con una acción;
+- en una pregunta que solo lee, se conserva la primera respuesta;
+- se quita el «Entendido.» con que el modelo responde al aviso automático.
+
+**Suite** (ya con los cambios de captura diaria de `main`). `npm test`: 882 pruebas, 880 superadas, 2 omitidas (solo macOS), 0 fallos en dos ejecuciones seguidas. `npm run typecheck` limpio y `npm run build:web` correcto. Intermitentes:
+- borrar el perfil temporal de Chromium daba `ENOTEMPTY`; ahora el borrado reintenta;
+- en una de tres ejecuciones fallaron las 3 pruebas de `test/daily-flow-browser.test.ts` (sin cambios en esta rama); solas pasan siempre.
+
+**Búsqueda.** 40 notas y 32 preguntas (`test/search-quality.test.ts`). Encontrar la nota entre las 5 primeras pasa de 0,47 a 1,00 con palabras clave, y de 0,00 a 0,88 con preguntas naturales. Los embeddings locales se midieron y no se implementan: [research/03-embeddings-busqueda.md](research/03-embeddings-busqueda.md).
+
+**Recorridos.** Chromium sin cabeza por CDP: 10 pantallas en escritorio (1440 px) y 10 en móvil (390 px, rol móvil), con capturas. Ninguna tiene desbordamiento horizontal. Corregido:
+- las filas de las bases ya no inundan Notas (66 libros de la Biblia);
+- el título de la nota se ve siempre;
+- «Hoy» muestra la fecha legible.
+
+**Instalador (Bash 3.2 de macOS).** No se encontró registro del error original de la línea 138. Esta versión solo se diferencia de la ya validada en macOS real (`e315550`) en el array `build_env`, que nunca está vacío, así que es segura con `set -u` en Bash 3.2. La comprobación final es el workflow `macos-validation`, que corre en cada push a `main` y lanza las pruebas del instalador con el `/bin/bash` del sistema (Bash 3.2) en un macOS real.
+
+**Sin verificar:** el instalador en el Mac mini real, Kioku.app con ratón y teclado reales, el iPhone emparejado y Omarchy como cliente. La lista está en [version-candidata.md](version-candidata.md#comprobaciones-manuales-pendientes-las-haces-tú).

@@ -1,6 +1,6 @@
 # Puesta en marcha: Mac mini como servidor, bóveda limpia y clientes
 
-Esta guía pone en marcha la versión de cierre (`integration/kioku-cierre`) en el Mac mini. El Mac mini empieza con una
+Esta guía pone en marcha la versión de cierre (ya en `main`) en el Mac mini. El Mac mini empieza con una
 bóveda vacía. Omarchy y el iPhone pasan a ser clientes suyos.
 
 **No se borra nada.** Las bóvedas de prueba se renombran y quedan como respaldo. Si algo falla, se vuelve atrás
@@ -9,13 +9,9 @@ deshaciendo cada cambio de nombre.
 Requisitos: en el Mac mini, Ollama con `qwen3.5:9b` y Tailscale. En Omarchy y el iPhone, Tailscale con la misma
 cuenta.
 
-## 0. Antes de empezar: publicar la rama
+## 0. Antes de empezar
 
-El instalador de macOS descarga el código de GitHub, así que la rama tiene que estar publicada. Esto lo decides tú.
-Hay dos formas:
-
-- fusionarla en `main` y hacer push (después, el instalador no necesita `KIOKU_REF`), o
-- hacer push solo de la rama `integration/kioku-cierre` e instalar con `KIOKU_REF=integration/kioku-cierre`.
+La versión de cierre ya está en `main`, que es lo que descarga el instalador por defecto. No hace falta `KIOKU_REF`.
 
 ## 1. Mac mini: localizar la bóveda actual
 
@@ -40,7 +36,7 @@ claves nuevas, así que el iPhone habrá que volver a emparejarlo (paso 5).
 ## 3. Mac mini: instalar la versión de cierre
 
 ```bash
-KIOKU_REF=integration/kioku-cierre ./Instalar\ Kioku.command   # o sin KIOKU_REF si ya está en main
+./Instalar\ Kioku.command
 ```
 
 La app anterior se aparta como `Kioku.app.anterior-FECHA`, no se borra. Al abrir Kioku.app, en **Estado y

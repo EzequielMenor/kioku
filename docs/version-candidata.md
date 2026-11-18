@@ -1,6 +1,6 @@
 # Kioku — versión candidata de cierre
 
-Rama: `integration/kioku-cierre` (sin fusionar con `main`). Fecha: 2026-11-18.
+Publicada en `main` (desde la rama `integration/kioku-cierre`). Fecha: 2026-11-18.
 
 Kioku es tu segundo cerebro local: escribes como en Apple Notes, lo tienes ordenado como en Notion, todo queda en
 ficheros Markdown como en Obsidian, y **Kio** (el asistente, con qwen3.5:9b en tu Mac mini) organiza, apunta y
@@ -11,9 +11,9 @@ antes.
 
 Antes: Ollama con `qwen3.5:9b` y Tailscale en el Mac mini.
 
-1. **Instala la app** en el Mac mini. Descarga el ZIP de la rama, descomprímelo y abre Terminal en esa carpeta:
+1. **Instala la app** en el Mac mini. Descarga el ZIP de `main`, descomprímelo y abre Terminal en esa carpeta:
    ```bash
-   KIOKU_REF=integration/kioku-cierre ./Instalar\ Kioku.command
+   ./Instalar\ Kioku.command
    ```
    No necesita Node ni Docker ni permisos de administrador. Si ya tenías Kioku.app, la anterior se aparta como
    `Kioku.app.anterior-FECHA`; no se borra.
@@ -45,4 +45,6 @@ Ver [validation.md → Versión candidata de cierre](validation.md#versión-cand
       hasta 4 minutos al ordenar varias capturas de golpe.
 - [ ] iPhone: emparejar, capturar sin conexión y ver que se sincroniza al volver.
 - [ ] Omarchy como cliente del Mac mini (la PWA por `https://<mac>.ts.net`).
+- [ ] Decir a Kio «hoy he hecho ejercicio» y comprobar si lo marca. Con el modelo real falló en 3 de 5 pasadas: ver
+      [validation.md](validation.md#versión-candidata-de-cierre-2026-11-18). Si falla, márcalo en Hoy o pídeselo («márcame ejercicio»).
 - [ ] Las seis comprobaciones de [puesta-en-marcha.md § 6](puesta-en-marcha.md#6-comprobación-la-haces-tú-a-mano).
