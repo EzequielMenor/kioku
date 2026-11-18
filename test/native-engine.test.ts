@@ -256,7 +256,7 @@ test("tailnet: http solo hacia localhost o hacia equipos de Tailscale (100.64/10
   assert.ok(!isTailnetHost("evil-ts.net.example.com"));
 });
 
-type OllamaReply = { content?: string; thinking?: string; tool_calls?: { name: string; args: unknown }[]; done_reason?: string; hang?: boolean };
+type OllamaReply = { content?: string; thinking?: string; tool_calls?: { name: string; args: unknown }[]; done_reason?: string; hang?: boolean; error?: string };
 
 /** Ollama de mentira por su API nativa (`/api/chat`, NDJSON): la que respeta `options.num_ctx`. */
 async function fakeOllama(script: OllamaReply[]) {
@@ -271,6 +271,7 @@ async function fakeOllama(script: OllamaReply[]) {
     if (r.hang) return; // nunca responde
     res.writeHead(200, { "content-type": "application/x-ndjson" });
     const line = (o: object) => res.write(JSON.stringify({ model: "qwen3.5:9b", ...o }) + "\n");
+    if (r.error) { line({ error: r.error }); return res.end(); }
     if (r.thinking) line({ message: { role: "assistant", content: "", thinking: r.thinking }, done: false });
     for (const piece of (r.content ?? "").match(/.{1,6}/gs) ?? []) line({ message: { role: "assistant", content: piece }, done: false });
     if (r.tool_calls) line({ message: { role: "assistant", content: "", tool_calls: r.tool_calls.map((t) => ({ function: { name: t.name, arguments: t.args } })) }, done: false });
@@ -299,6 +300,20 @@ async function setupOllama(script: OllamaReply[], engineOpts: object = {}) {
   };
   return { j, srv, model, ask, done: async () => { await srv.close(); await model.close(); j.close(); cleanup(); } };
 }
+
+test("Ollama: si no entiende la llamada a herramienta que generó el modelo, repite la petición en vez de fallar", async () => {
+  const s = await setupOllama([
+    { error: "XML syntax error on line 3: element <function> closed by </parameter>" },
+    { tool_calls: [{ name: "create_task", args: { title: "Renovar el DNI" } }] },
+    { content: "Hecho." },
+  ]);
+  try {
+    const r = await s.ask("Recuérdame renovar el DNI");
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.ok(s.j.index.listNotes({ limit: 50 }).some((n) => n.title === "Renovar el DNI"));
+    assert.equal(s.model.requests.filter((q) => q.url === "/api/chat").length, 3);
+  } finally { await s.done(); }
+});
 
 test("Ollama: usa su API nativa con contexto amplio (num_ctx), entiende sus llamadas a herramientas y oculta el razonamiento", async () => {
   const s = await setupOllama([

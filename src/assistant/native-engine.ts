@@ -177,7 +177,12 @@ export async function readOllamaStream(
     if (!line) return;
     let j: any;
     try { j = JSON.parse(line); } catch { return; }
-    if (j?.error) throw new Fatal(typeof j.error === "string" ? j.error : String(j.error?.message ?? "El modelo devolvió un error"));
+    if (j?.error) {
+      // Un error a mitad de la generación suele ser que Ollama no entendió la llamada a herramienta que escribió el
+      // modelo (p. ej. «XML syntax error»). Cada generación es distinta, así que se repite la petición.
+      const raw = typeof j.error === "string" ? j.error : String(j.error?.message ?? "El modelo devolvió un error");
+      throw new Transient(/syntax error|parse|unexpected|invalid character/i.test(raw) ? `El modelo escribió mal una llamada a herramienta (${raw}).` : raw);
+    }
     const m = j?.message ?? {};
     if (typeof m.content === "string" && m.content) { content += m.content; visible(m.content); }
     if (typeof m.thinking === "string") reasoning += m.thinking;
