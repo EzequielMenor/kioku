@@ -295,6 +295,6 @@ En ninguna pasada con el código final afirmó Kio un cambio que no estuviera en
 - el título de la nota se ve siempre;
 - «Hoy» muestra la fecha legible.
 
-**Instalador (Bash 3.2 de macOS).** No se encontró registro del error original de la línea 138. Esta versión solo se diferencia de la ya validada en macOS real (`e315550`) en el array `build_env`, que nunca está vacío, así que es segura con `set -u` en Bash 3.2. La comprobación final es el workflow `macos-validation`, que corre en cada push a `main` y lanza las pruebas del instalador con el `/bin/bash` del sistema (Bash 3.2) en un macOS real.
+**Instalador (Bash 3.2 de macOS).** No se encontró registro del error original de la línea 138. Esta versión solo se diferencia de la ya validada en macOS real (`e315550`) en el array `build_env`, que nunca está vacío, así que es segura con `set -u` en Bash 3.2. La comprobación final es el workflow `macos-validation`, que lanza las pruebas del instalador con el `/bin/bash` del sistema (Bash 3.2) en un macOS real. Al juntarlo todo en `main` falló una cosa: instalaba y arrancaba bien, pero la compilación de Swift dejaba restos en el TMPDIR de quien lo llama. Ahora la compilación usa un TMPDIR propio dentro de la carpeta de trabajo, que se borra al terminar.
 
 **Sin verificar:** el instalador en el Mac mini real, Kioku.app con ratón y teclado reales, el iPhone emparejado y Omarchy como cliente. La lista está en [version-candidata.md](version-candidata.md#comprobaciones-manuales-pendientes-las-haces-tú).

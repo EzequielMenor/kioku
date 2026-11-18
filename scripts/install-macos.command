@@ -141,8 +141,10 @@ curl -fsSL --proto '=https' --tlsv1.2 "$index/$file" -o "$work/node.tar.gz" || f
 mkdir "$work/node" && tar -xzf "$work/node.tar.gz" -C "$work/node" --strip-components=1 || fail "no pude extraer Node."
 # Entorno solo para los subprocesos de construcción (nada de esto llega a la app que se abre al final).
 # Las cachés de npm y de compilación de Node se quedan en la carpeta temporal, no en tu usuario ni en TMPDIR.
+# Swift y npm también dejan restos en TMPDIR (TemporaryDirectory.*, locks): usan uno propio que se borra con el trabajo.
+mkdir "$work/tmp" || fail "no pude crear una carpeta temporal en $work."
 private_env() {
-  env PATH="$work/node/bin:$PATH" npm_config_cache="$work/npm-cache" npm_config_update_notifier=false \
+  env PATH="$work/node/bin:$PATH" TMPDIR="$work/tmp" npm_config_cache="$work/npm-cache" npm_config_update_notifier=false \
     npm_config_fund=false npm_config_audit=false NODE_COMPILE_CACHE="$work/node-compile-cache" "$@"
 }
 node_version="$(private_env node --version)" || fail "el Node descargado no se ejecuta en este Mac."

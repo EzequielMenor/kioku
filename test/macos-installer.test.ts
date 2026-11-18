@@ -50,7 +50,7 @@ exit 0
 // Lo que "descarga" el instalador: un Node falso con licencia y npm, y un código fuente con un builder mínimo.
 const FAKE_NODE = sh('[ "$1" = --version ] && { echo "${FAKE_NODE_VERSION:-v24.1.0}"; exit 0; }\nexec "$FAKE_REAL_NODE" "$@"\n');
 // Como el npm real, activa la caché de compilación de Node (en TMPDIR salvo que NODE_COMPILE_CACHE la redirija).
-const FAKE_NPM = sh('echo "npm $* cache=$npm_config_cache cwd=$(basename "$(pwd)")" >> "$FAKE_LOG"\n[ "$1" = ci ] && "$FAKE_REAL_NODE" -e \'require("node:module").enableCompileCache()\'\n[ "$FAKE_NPM_FAIL" != "$1" ]\n');
+const FAKE_NPM = sh('echo "npm $* cache=$npm_config_cache cwd=$(basename "$(pwd)")" >> "$FAKE_LOG"\necho "$TMPDIR" > "$FAKE_LOG.npmtmp"\n[ "$1" = ci ] && "$FAKE_REAL_NODE" -e \'require("node:module").enableCompileCache()\'\n[ "$FAKE_NPM_FAIL" != "$1" ]\n');
 const FAKE_BUILDER = `import { chmodSync, copyFileSync, existsSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
 const [, runtime, , out] = process.argv.slice(2);
 appendFileSync(process.env.FAKE_LOG, "builder out=" + out + "\\n");
@@ -208,6 +208,8 @@ test("el trabajo temporal usa el TMPDIR del llamador (con espacios y barra final
   assert.equal(r.status, 0, r.stderr);
   const cache = /npm ci --silent cache=(.+)\/npm-cache cwd=src\n/.exec(f.calls())?.[1];
   assert.ok(cache?.startsWith(spacedTmp + path.sep), String(cache));
+  // Swift y npm dejan restos en TMPDIR (TemporaryDirectory.*, locks): la construcción usa uno propio dentro del trabajo.
+  assert.equal(readFileSync(f.log + ".npmtmp", "utf8").trim(), `${cache}/tmp`, "la construcción usa un TMPDIR propio");
   assert.deepEqual(readdirSync(spacedTmp), [], "se limpia solo lo creado por el instalador");
   assert.deepEqual(readdirSync(f.implicitTmp), []);
   assert.equal(existsSync(callerCache), false, "la caché del llamador no se usa ni se escribe");
