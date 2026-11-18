@@ -42,6 +42,16 @@ Si `open` falla tras instalar, el instalador lo cuenta y la instalación sigue s
 
 **Limitaciones:** la app y el instalador no están firmados ni notarizados con certificado de Apple Developer. El checksum prueba que la descarga coincide con lo publicado en `nodejs.org`, no la firma GPG de Node.
 
+## Crear una imagen para Finder (pruebas locales)
+
+Si ya tienes `dist/Kioku.app` construida en el Mac, empaquétala así:
+
+```bash
+node scripts/build-macos-dmg.mjs dist/Kioku.app dist/Kioku.dmg
+```
+
+El destino debe ser nuevo. Abre `Kioku.dmg` en Finder y arrastra **Kioku** a **Aplicaciones**. Quien instala la app desde la imagen no necesita Terminal. Crear la imagen no instala Kioku, no reemplaza una copia existente y no firma ni notariza la app. Antes de distribuirla hace falta verificar una copia firmada y notarizada; la imagen local no sustituye ese paso.
+
 ## Preparar la aplicación a mano
 
 Pasos para quien construye el paquete manualmente (el instalador de arriba ya los hace):
