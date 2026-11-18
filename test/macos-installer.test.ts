@@ -421,7 +421,9 @@ test("el instalador público instala la app fijada en un HOME desechable y la ap
     const before = { ...snapshot(path.join(home, "Documents")), ...snapshot(path.join(home, ".hermes")) };
 
     // Entrada raíz real, sin OPEN (no escribe en el HOME real del runner) y con la versión fijada por defecto.
-    const installed = spawnSync("/bin/bash", [rootInstaller], { encoding: "utf8", input: "", env: { ...env, KIOKU_INSTALL_NO_OPEN: "1" }, timeout: 840_000 });
+    // Variante sin Swift (la de los Mac sin herramientas de Xcode): es la que arranca su daemon en el Workspace al abrirse.
+    // La app nativa (Kio + launchd) la construye y la recorre entera el workflow macos-native (scripts/macos-smoke.mjs).
+    const installed = spawnSync("/bin/bash", [rootInstaller], { encoding: "utf8", input: "", env: { ...env, KIOKU_INSTALL_NO_OPEN: "1", KIOKU_NATIVE: "0" }, timeout: 840_000 });
     assert.equal(installed.status, 0, installed.stdout + installed.stderr);
     assert.match(installed.stdout, /Listo: /);
     assert.deepEqual(readdirSync(path.join(home, "Applications")), ["Kioku.app"]);

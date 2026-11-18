@@ -214,7 +214,10 @@ try {
   if (app && app.exitCode === null) app.kill("SIGKILL");
   mock?.kill();
   const un = cli("service", "uninstall");
-  check("kioku service uninstall retira los agentes", un.status === 0 && !existsSync(path.join(HOME, "Library/LaunchAgents/local.kioku.daemon.plist")) && launchd("local.kioku.daemon").status !== 0, un.stdout.trim());
+  // launchd retira el servicio de forma asíncrona: se le dan unos segundos antes de darlo por fallido.
+  let gone = false;
+  for (let n = 0; n < 20 && !(gone = launchd("local.kioku.daemon").status !== 0); n++) await sleep(250);
+  check("kioku service uninstall retira los agentes", un.status === 0 && !existsSync(path.join(HOME, "Library/LaunchAgents/local.kioku.daemon.plist")) && gone, un.stdout.trim());
   writeFileSync(path.join(OUT, "results.json"), JSON.stringify({ failed, results }, null, 2));
   console.log(`\n${results.length - failed}/${results.length} comprobaciones correctas`);
   process.exit(failed ? 1 : 0);
