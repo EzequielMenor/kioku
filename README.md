@@ -131,7 +131,7 @@ El ordenador debe permanecer encendido; no hay sincronización garantizada en se
    kioku companion
    ```
    En macOS, GNOME o X11, Kio vive integrado dentro de Kioku ([guía del compañero](docs/companion.md)).
-3. **Modelo local con Ollama (sin Hermes ni Docker):** instala [Ollama](https://ollama.com), descarga un modelo que admita herramientas (por ejemplo `ollama pull qwen3:8b`), abre en Kioku la paleta de comandos (`Ctrl+K` → «Modelo de Hermes») y selecciona **Ollama (local)**. Si Ollama corre en otro equipo de tu red privada, conéctalo por Tailscale con [la guía de modelo local](docs/assistant-local.md) y compruébalo con `kioku assistant status`.
+3. **Modelo local con Ollama (sin Hermes ni Docker):** instala [Ollama](https://ollama.com), descarga un modelo que admita herramientas (recomendado y probado: `ollama pull qwen3.5:9b`), abre en Kioku la paleta de comandos (`Ctrl+K` → «Modelo de Kio») y selecciona **Ollama (local)**. Kioku pide a Ollama 16.384 tokens de contexto por su cuenta (el valor por defecto de Ollama, 4.096, no da ni para las herramientas de Kio); qwen3.5:9b ocupa así unos 6,6 GB. Si Ollama corre en otro equipo de tu red privada, conéctalo por Tailscale con [la guía de modelo local](docs/assistant-local.md) y compruébalo con `kioku assistant status`.
 4. **Codex u otras APIs remotas (opcional):** usa [Hermes Agent](docs/assistant-models.md) (`bwrap` en Linux o [Docker Desktop en Mac](docs/assistant-macos.md)).
 
 ### Dónde se guardan tus datos

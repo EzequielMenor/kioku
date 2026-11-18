@@ -96,7 +96,7 @@ const READ_DEFS: Def[] = [
     spec: { name: "list_databases", level: "read", description: "Bases de datos (tablas) de la bóveda: ruta, título, nº de filas y vistas guardadas.", inputSchema: obj({}) },
     async run(c) {
       const skip = (p: string) => isExcluded(p, c.exclude);
-      return c.j.listDatabases({ skip }).filter((d) => !skip(d.path)).map((d) => ({ path: d.path, title: d.title, rows: d.rows, views: d.views.map((v) => ({ name: v.name, kind: v.kind })) }));
+      return c.j.listDatabases({ skip }).filter((d) => !skip(d.path)).map((d) => ({ path: d.path, title: d.title, rows: d.rows, views: d.views.map((v) => ({ name: v.name, kind: v.kind, ...(v.track ? { track: v.track } : {}), ...(v.total ? { total: v.total } : {}) })) }));
     },
   },
   {
@@ -391,6 +391,39 @@ const WRITE_DEFS: Def[] = [
         summary: `${done ? "Hecho" : "Desmarcado"}: «${hit.title}» el ${date}`, touches: [path],
         ops: async () => [{ op: "setProp", path, before: await hashOf(c, path), props }],
         apply: async () => { await c.j.setProps(path, props); return { out: { path, habit: hit.title, date, done } }; },
+      };
+    },
+  ),
+  writeDef(
+    {
+      name: "log_progress",
+      description: "Apunta el avance de una fila en una base de progreso (p. ej. la lectura de la Biblia: «he leído Juan 3» → item «Juan», value 3). Guarda el mayor entre lo que había y value (releer no hace retroceder); exact: true lo fija tal cual para corregir. item: el nombre de la fila (el libro).",
+      inputSchema: obj({ item: S, value: { type: "number" }, exact: { type: "boolean" } }, ["item", "value"]),
+    },
+    async (c, a) => {
+      const want = fold(argStr(a, "item"));
+      const value = typeof a.value === "number" ? a.value : Number(a.value);
+      if (!Number.isFinite(value) || value < 0) throw new AssistantError("invalid", "«value» debe ser un número (p. ej. el capítulo leído)");
+      const boards = c.j.listDatabases({ skip: (x) => isExcluded(x, c.exclude) }).filter((d) => d.views.some((v) => v.kind === "progress" && v.track));
+      if (!boards.length) throw new AssistantError("invalid", "No hay ninguna base de progreso: se crea en Bases con la plantilla «Lectura de la Biblia»");
+      const found: { path: string; title: string; track: string; total?: string; cells: Record<string, unknown> }[] = [];
+      for (const d of boards) {
+        const v = d.views.find((x) => x.kind === "progress" && x.track)!;
+        for (const r of c.j.queryDatabase(d.path, undefined, { skip: (x) => isExcluded(x, c.exclude) }).rows) found.push({ path: r.path, title: r.title, track: v.track!, total: v.total, cells: c.j.index.getNote(r.path)?.fm ?? {} });
+      }
+      // Coincidencia exacta primero: «Juan» es Juan, no «1 Juan».
+      const hit = found.find((r) => fold(r.title) === want) ?? (found.filter((r) => fold(r.title).startsWith(want)).length === 1 ? found.find((r) => fold(r.title).startsWith(want)) : undefined);
+      if (!hit) throw new AssistantError("invalid", `No encuentro «${argStr(a, "item")}» en tus bases de progreso. Usa el nombre exacto de la fila (p. ej. «Juan», «1 Juan», «Génesis»).`);
+      const path = checkAssistantPath(hit.path, c.exclude);
+      const cur = Number(hit.cells[hit.track]);
+      const total = hit.total !== undefined ? Number(hit.cells[hit.total]) : NaN;
+      let next = a.exact === true ? value : Math.max(Number.isFinite(cur) ? cur : 0, value);
+      if (Number.isFinite(total) && total > 0) next = Math.min(next, total);
+      const props = { [hit.track]: next };
+      return {
+        summary: `${hit.title}: ${hit.track} ${next}${Number.isFinite(total) && total > 0 ? ` de ${total}` : ""}`, touches: [path],
+        ops: async () => [{ op: "setProp", path, before: await hashOf(c, path), props }],
+        apply: async () => { await c.j.setProps(path, props); return { out: { path, item: hit.title, [hit.track]: next, ...(Number.isFinite(total) && total > 0 ? { total } : {}) } }; },
       };
     },
   ),

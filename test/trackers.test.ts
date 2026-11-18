@@ -100,3 +100,28 @@ test("índice: una resincronización que coincide con una escritura no quita del
     assert.ok(j.index.getNote(created), "sigue en el índice: el fichero existe");
   } finally { j.close(); cleanup(); }
 });
+
+test("Kio: log_progress apunta lectura por libro («he leído Juan 3» → Juan: 3), sin confundir Juan con 1 Juan, sin retroceder y con Deshacer", async () => {
+  const { root, cleanup } = tmpVault();
+  const j = await Kioku.open({ root });
+  try {
+    await j.createDatabase({ name: "Lectura de la Biblia", template: "biblia" });
+    const tools = new AssistantTools(j, new UndoStore(j), { exclude: [] });
+    const s = new SessionRegistry().open();
+    const call = async (args: unknown) => { const r = await tools.call(s, "log_progress", args); return { ...r, json: r.isError ? null : JSON.parse(r.text) }; };
+    const leidos = (book: string) => j.index.getNote(`Biblia/${book}.md`)!.fm["Leídos"];
+    const a = await call({ item: "juan", value: 3 });
+    assert.ok(!a.isError, a.text);
+    assert.equal(leidos("Juan"), 3);
+    assert.equal(leidos("1 Juan"), 0, "no toca 1 Juan");
+    await call({ item: "Juan", value: 2 });
+    assert.equal(leidos("Juan"), 3, "releer un capítulo anterior no hace retroceder");
+    const set = await call({ item: "Juan", value: 1, exact: true });
+    assert.equal(leidos("Juan"), 1, "exact: corregir a mano");
+    await new UndoStore(j).undo(set.undoId!);
+    assert.equal(leidos("Juan"), 3);
+    await call({ item: "Juan", value: 99 });
+    assert.equal(leidos("Juan"), 21, "nunca más que el total de capítulos");
+    assert.match((await call({ item: "Juanito", value: 1 })).text, /No encuentro «Juanito»/);
+  } finally { j.close(); cleanup(); }
+});

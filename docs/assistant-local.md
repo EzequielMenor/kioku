@@ -84,6 +84,10 @@ Usa la IP de Tailscale y no `0.0.0.0`: así Ollama no queda abierto a la red loc
 
 ## Tiempos y límites
 
+- **Contexto: 16.384 tokens.** Con Ollama, Kioku usa su API nativa (`/api/chat`) y le pide `num_ctx` 16384. Por la vía «chat completions» (`/v1`), Ollama ignora ese ajuste y se queda en 4.096 tokens. El prompt de Kio con sus herramientas ya ocupa unos 4.000, así que las respuestas llegaban vacías o cortadas. Se cambia con `KIOKU_OLLAMA_NUM_CTX`. qwen3.5:9b ocupa así unos 6,6 GB (5,6 GB con 4.096). Si otra aplicación usa el mismo modelo con otro contexto, Ollama lo recarga al alternar; para evitarlo, `OLLAMA_CONTEXT_LENGTH=16384` en el equipo de Ollama.
+- **Honestidad:** si el modelo dice haber hecho algo («he creado…», «Creada la tarea…») sin haber usado ninguna herramienta, Kioku se lo hace notar una vez. Si insiste, la respuesta dice que no se ha cambiado nada. Si termina sin texto, Kioku resume lo que de verdad se hizo. Si la consulta se corta, el error dice lo que ya había cambiado.
+- **Razonamiento (`think`) activado, como trae el modelo.** Medido con qwen3.5:9b real: sin razonamiento es más rápido y encadena mejor varias acciones, pero responde preguntas sobre tus datos **sin consultarlas** (se inventó tareas y notas). Con razonamiento consulta siempre, aunque a veces anuncia una acción y se para sin hacerla. En ese caso, si ya leyó datos y aún no cambió nada, Kioku repite esa vuelta sin razonamiento. `KIOKU_OLLAMA_THINK=0|1` lo fuerza (no recomendado).
+- **Tu espacio en el prompt:** las bases, los hábitos por su nombre, la propiedad que lleva el progreso y los próximos 7 días con su nombre. Así un modelo pequeño marca el hábito con `log_habit`, apunta la lectura con `log_progress` y no calcula «el viernes» a ojo.
 - Hasta **4 minutos** por consulta en total; **2 minutos** de espera al primer fragmento (cubre la carga en frío del modelo) y **1 minuto** de silencio máximo entre fragmentos.
 - Hasta **2 reintentos** si el modelo se cae o se reinicia antes de haber hecho nada (una llamada al modelo no tiene efectos en Kioku; las herramientas ya ejecutadas no se repiten).
 - Hasta **12 vueltas** de herramientas por consulta. Cada resultado de herramienta se recorta a 24 000 caracteres.
@@ -112,4 +116,4 @@ Usa la IP de Tailscale y no `0.0.0.0`: así Ollama no queda abierto a la red loc
 
 ## Estado de la validación
 
-Comprobado con un servidor «chat completions» simulado (streaming, herramientas, reintentos, tiempos de espera, cancelación, enrutado) y con el daemon real: `test/native-engine.test.ts`, `test/assistant-status.test.ts`. **Pendiente:** una conversación real contra Ollama; en el equipo de desarrollo no hay Ollama y el del Mac mini aún no escucha en el tailnet. Ver [validation.md](validation.md).
+Comprobado con un servidor simulado (streaming de «chat completions» y de la API nativa de Ollama, herramientas, reintentos, tiempos de espera, cancelación, enrutado, guardia de honestidad) en `test/native-engine.test.ts`. **Y con qwen3.5:9b real** en el Ollama del Mac mini, por Tailscale, sobre una bóveda temporal: 16 escenarios, cada respuesta comparada con lo que cambió en disco. Resultados en [validation.md](validation.md#versión-candidata-de-cierre-2026-11-18).

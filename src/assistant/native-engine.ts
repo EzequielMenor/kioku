@@ -35,6 +35,10 @@ export interface NativeOptions {
   retries?: number;
   retryDelayMs?: number[];
   maxTurns?: number;
+  /** Contexto que se pide a Ollama (`options.num_ctx`). Su valor por defecto (4096) no da ni para el prompt de Kio con sus herramientas. */
+  numCtx?: number;
+  /** Razonamiento de Ollama (`think`): sin fijar, lo decide el modelo. También `KIOKU_OLLAMA_THINK=0|1`. */
+  think?: boolean;
   now?: () => Date;
 }
 
@@ -43,9 +47,11 @@ interface ChatMessage {
   content: string | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  /** Nombre de la herramienta en un mensaje `tool` (lo usa la API nativa de Ollama; no se envía por «chat completions»). */
+  name?: string;
 }
 interface ToolCall { id: string; type: "function"; function: { name: string; arguments: string } }
-interface ToolSpecDto { name: string; description: string; inputSchema: object }
+interface ToolSpecDto { name: string; description: string; inputSchema: object; level?: string }
 
 /** Fallo que merece reintento: el modelo no llegó a hacer nada (una llamada al modelo no tiene efectos en Kioku). */
 class Transient extends Error {}
@@ -57,6 +63,8 @@ const HISTORY_CHARS = 4000;
 const MEMORY_CHARS = 4000;
 const MEMORY_FILE = "KIOKU.md";
 const TOOL_RESULT_CHARS = 24_000;
+/** Contexto por defecto para Ollama: el prompt de Kio con sus herramientas ronda los 4.000 tokens y cada resultado suma. */
+export const OLLAMA_NUM_CTX = 16_384;
 
 const REMEMBER_TOOL: ToolSpecDto = {
   name: "remember",
@@ -82,19 +90,10 @@ export function inlineToolCalls(text: string): ToolCall[] {
   return out;
 }
 
-/**
- * Lee una respuesta en streaming (SSE de «chat completions») y la acumula. `onText` recibe solo texto visible
- * (el razonamiento no se enseña); `onActivity` avisa de cualquier fragmento, para el reloj de inactividad.
- */
-export async function readCompletionStream(
-  body: AsyncIterable<Uint8Array>, on: { text?: (t: string) => void; activity?: () => void } = {},
-): Promise<{ content: string; toolCalls: ToolCall[]; finish: string | null }> {
-  const dec = new TextDecoder();
-  let buf = "", content = "", finish: string | null = null;
-  const calls: ToolCall[] = [];
+/** Emite solo el texto visible, ocultando lo que va entre <think> y </think> aunque la etiqueta llegue partida. */
+function thinkFilter(emit?: (t: string) => void): (piece: string) => void {
   let inThink = false, pending = "";
-  /** Emite texto visible ocultando lo que va entre <think> y </think>, aunque la etiqueta llegue partida. */
-  const visible = (piece: string) => {
+  return (piece: string) => {
     pending += piece;
     let out = "";
     for (;;) {
@@ -113,8 +112,21 @@ export async function readCompletionStream(
       pending = pending.slice(pending.length - keep);
       break;
     }
-    if (out) on.text?.(out);
+    if (out) emit?.(out);
   };
+}
+
+/**
+ * Lee una respuesta en streaming (SSE de «chat completions») y la acumula. `onText` recibe solo texto visible
+ * (el razonamiento no se enseña); `onActivity` avisa de cualquier fragmento, para el reloj de inactividad.
+ */
+export async function readCompletionStream(
+  body: AsyncIterable<Uint8Array>, on: { text?: (t: string) => void; activity?: () => void } = {},
+): Promise<{ content: string; toolCalls: ToolCall[]; finish: string | null }> {
+  const dec = new TextDecoder();
+  let buf = "", content = "", finish: string | null = null;
+  const calls: ToolCall[] = [];
+  const visible = thinkFilter(on.text);
   const handle = (line: string) => {
     if (!line.startsWith("data:")) return;
     const data = line.slice(5).trim();
@@ -148,6 +160,105 @@ export async function readCompletionStream(
   }
   if (buf.trim()) handle(buf.trim());
   return { content, toolCalls: calls.filter(Boolean).filter((c) => c.function.name).map((c, i) => ({ ...c, id: c.id || `call-${i}` })), finish };
+}
+
+/**
+ * Lee una respuesta en streaming de la API nativa de Ollama (`/api/chat`, una línea JSON por fragmento). El razonamiento
+ * llega aparte (`thinking`) y no se enseña; las llamadas a herramientas llegan completas, con los argumentos como objeto.
+ */
+export async function readOllamaStream(
+  body: AsyncIterable<Uint8Array>, on: { text?: (t: string) => void; activity?: () => void } = {},
+): Promise<{ content: string; toolCalls: ToolCall[]; finish: string | null; reasoning: string }> {
+  const dec = new TextDecoder();
+  const visible = thinkFilter(on.text);
+  let buf = "", content = "", reasoning = "", finish: string | null = null;
+  const calls: ToolCall[] = [];
+  const handle = (line: string) => {
+    if (!line) return;
+    let j: any;
+    try { j = JSON.parse(line); } catch { return; }
+    if (j?.error) throw new Fatal(typeof j.error === "string" ? j.error : String(j.error?.message ?? "El modelo devolvió un error"));
+    const m = j?.message ?? {};
+    if (typeof m.content === "string" && m.content) { content += m.content; visible(m.content); }
+    if (typeof m.thinking === "string") reasoning += m.thinking;
+    for (const tc of Array.isArray(m.tool_calls) ? m.tool_calls : []) {
+      const name = tc?.function?.name;
+      if (typeof name !== "string" || !name) continue;
+      const a = tc.function.arguments;
+      calls.push({ id: typeof tc.id === "string" && tc.id ? tc.id : `call-${calls.length}`, type: "function", function: { name, arguments: typeof a === "string" ? a : JSON.stringify(a ?? {}) } });
+    }
+    if (j?.done && typeof j.done_reason === "string") finish = j.done_reason;
+  };
+  for await (const chunk of body) {
+    on.activity?.();
+    buf += dec.decode(chunk, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      handle(buf.slice(0, nl).trim());
+      buf = buf.slice(nl + 1);
+    }
+  }
+  handle(buf.trim());
+  return { content, toolCalls: calls, finish, reasoning };
+}
+
+/** Mensajes en el formato de `/api/chat` de Ollama: argumentos como objeto y el nombre de la herramienta en cada resultado. */
+function toOllamaMessages(messages: ChatMessage[]): object[] {
+  return messages.map((m) => {
+    const out: Record<string, unknown> = { role: m.role, content: m.content ?? "" };
+    if (m.tool_calls?.length) {
+      out.tool_calls = m.tool_calls.map((c) => {
+        let args: unknown = {};
+        try { args = c.function.arguments.trim() ? JSON.parse(c.function.arguments) : {}; } catch { args = {}; }
+        return { function: { name: c.function.name, arguments: args } };
+      });
+    }
+    if (m.role === "tool" && m.name) out.tool_name = m.name;
+    return out;
+  });
+}
+
+/** Participios de «hacer algo» en el espacio (masculino/femenino, singular/plural). */
+const DONE_VERBS = "(?:cread|guardad|apuntad|añadid|anotad|marcad|registrad|actualizad|convertid|borrad|eliminad|movid|enviad|cambiad|programad|organizad|completad|archivad|renombrad)[oa]s?";
+/** Formas de afirmar un cambio: «he creado», «creada la tarea», «ya está apuntado», «ha sido actualizada», «Listo:», «Hecho,». */
+const CLAIM_RES = [
+  new RegExp(`\\b(?:he|hemos)\\s+(?:\\p{L}+\\s+)?${DONE_VERBS}\\b`, "giu"),
+  new RegExp(`(?:^|[.!:;\\n]\\s*)${DONE_VERBS}\\b`, "giu"),
+  new RegExp(`\\b(?:está|están|queda|quedan|quedó|quedaron|ha sido|han sido)\\s+(?:ya\\s+)?${DONE_VERBS}\\b`, "giu"),
+  /(?:^|[.!\n]\s*)(?:listo|hecho)\s*[:,.!]/giu,
+];
+/** Lo que el modelo dice haber hecho, sin contar negaciones («no he creado…», «no está creada»). */
+export function claimsAction(text: string): boolean {
+  for (const re of CLAIM_RES) {
+    for (const m of text.matchAll(re)) {
+      const before = text.slice(Math.max(0, m.index - 24), m.index + (m[0].length - m[0].trimStart().length)).toLowerCase();
+      if (!/\b(?:no|nunca|todavía no|aún no)\s+(?:\p{L}+\s+)?$/u.test(before)) return true;
+    }
+  }
+  return false;
+}
+
+const NO_ACTION_NUDGE = "[Aviso automático de Kioku] En esta petición no has ejecutado ninguna herramienta que cambie algo, así que no has hecho ningún cambio. " +
+  "Si el usuario pidió guardar o cambiar algo, llama ahora a la herramienta adecuada. Si no puedes hacerlo (no hay herramienta para eso o falta un dato), dilo con claridad sin afirmar que lo hiciste.";
+const EMPTY_NUDGE = "[Aviso automático de Kioku] Tu respuesta llegó vacía. Si falta algún paso, llama a la herramienta; si no, responde al usuario en una o dos frases.";
+
+/** Etiqueta humana de cada cambio, para resumir lo hecho cuando el modelo no lo cuenta. */
+const DONE_LABEL: Record<string, string> = {
+  create_note: "Nota creada", create_task: "Tarea creada", create_event: "Evento creado", create_row: "Fila añadida",
+  log_habit: "Hábito marcado", log_progress: "Avance apuntado", set_props: "Propiedades cambiadas", set_task_status: "Estado de tarea cambiado",
+  convert_capture: "Captura convertida", append_to_note: "Texto añadido",
+  remember: "Preferencia guardada",
+};
+
+/** «mañana jueves 2026-11-19, viernes 2026-11-20, …»: los 7 días siguientes con su nombre, en hora local. */
+export function nextDays(now: Date): string {
+  const out: string[] = [];
+  for (let k = 1; k <= 7; k++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + k);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    out.push(`${k === 1 ? "mañana " : ""}${d.toLocaleDateString("es-ES", { weekday: "long" })} ${iso}`);
+  }
+  return out.join(", ");
 }
 
 export class NativeEngine implements AssistantEngine {
@@ -275,7 +386,7 @@ export class NativeEngine implements AssistantEngine {
     const now = (this.o.now ?? (() => new Date()))();
     const system = [
       soulText({ memory: "native" }),
-      `## Ahora\n- Fecha y hora local del usuario: ${now.toLocaleString("sv")} (${now.toLocaleDateString("es-ES", { weekday: "long" })}).`,
+      `## Ahora\n- Fecha y hora local del usuario: ${now.toLocaleString("sv")} (${now.toLocaleDateString("es-ES", { weekday: "long" })}).\n- Próximos días (úsalos tal cual para «mañana», «el viernes», «la semana que viene»): ${nextDays(now)}.`,
       memory ? `## Lo que recuerdas del usuario\n${memory}` : "",
     ].filter(Boolean).join("\n");
     const messages: ChatMessage[] = [
@@ -294,25 +405,98 @@ export class NativeEngine implements AssistantEngine {
       return j;
     };
     const specs = [...((await daemon("GET", "/api/assistant/tools/list")) as ToolSpecDto[]), ...(full ? [REMEMBER_TOOL] : [])];
+    const space = await this.spaceSummary(daemon);
+    if (space) messages[0].content += `\n${space}`;
     const known = new Set(specs.map((s) => s.name));
+    const level = new Map(specs.map((s) => [s.name, s.level ?? "write"]));
+    const writeTools = new Set(specs.filter((s) => (s.level ?? "write") !== "read").map((s) => s.name));
     const tools = specs.map((s) => ({ type: "function", function: { name: s.name, description: s.description, parameters: s.inputSchema } }));
 
     const deadline = Date.now() + (this.o.totalMs ?? 240_000);
     const maxTurns = this.o.maxTurns ?? 12;
     let answer = "";
+    /** Cambios que de verdad se aplicaron en esta consulta (o propuestas creadas): la base para no aceptar afirmaciones vacías. */
+    const done: string[] = [];
+    /** Propuestas creadas: no son cambios hechos, esperan la aprobación del usuario. */
+    const proposed: string[] = [];
+    const summary = () => [
+      done.length ? `Hecho:\n${done.map((d) => `- ${d}`).join("\n")}` : "",
+      proposed.length ? `Pendiente de tu aprobación (no se ha cambiado nada todavía; revísalo en Propuestas):\n${proposed.map((d) => `- ${d}`).join("\n")}` : "",
+    ].filter(Boolean).join("\n\n");
+    let nudged = false;
+    /** Se usó alguna herramienta (también de lectura): el modelo ya tiene datos delante. */
+    let toolsRan = false;
+    /** Ya se repitió una vuelta vacía sin razonamiento. */
+    let retriedPlain = false;
+    let plainNext = false;
+    try {
     for (let turn = 0; ; turn++) {
       if (i.signal?.aborted) throw new Error("Consulta cancelada.");
       i.onEvent?.({ type: "thinking" });
       // En la última vuelta ya no se ofrecen herramientas: el modelo debe contestar con lo que tiene.
       const last = turn >= maxTurns - 1;
-      const res = await this.complete(cfg, messages, last ? undefined : tools, deadline, i);
+      const res = await this.complete(cfg, messages, last ? undefined : tools, deadline, i, plainNext ? false : undefined);
+      plainNext = false;
       const calls = res.toolCalls.length ? res.toolCalls : last ? [] : inlineToolCalls(res.content);
-      if (!calls.length) { answer = stripThinking(res.content); break; }
+      if (!calls.length) {
+        answer = stripThinking(res.content).replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "").trim();
+        const cut = res.finish === "length";
+        // Un modelo pequeño a veces dice «he creado…» sin haber llamado a nada, o se queda sin decir nada: se le avisa una vez.
+        const acted = done.length + proposed.length;
+        // «Voy a usar create_note…» en el razonamiento y ninguna llamada: lo anunció y no lo hizo. Se repite sin razonamiento.
+        const announced = "reasoning" in res && typeof res.reasoning === "string"
+          ? [...writeTools].find((t) => new RegExp(`\\b${t}\\b`).test(res.reasoning as string)) : undefined;
+        if (announced && !acted && !cut && !last && !retriedPlain) {
+          retriedPlain = true;
+          plainNext = true;
+          messages.push({ role: "assistant", content: answer || null }, { role: "user", content: `[Aviso automático de Kioku] Has dicho que ibas a usar ${announced}, pero no lo has llamado, así que no se ha hecho nada. Si el usuario lo pidió, llámalo ahora; si no, responde sin afirmar que está hecho.` });
+          continue;
+        }
+        // qwen3.5 con razonamiento a veces anuncia la acción («Voy a convertirlas…») y se para sin llamar a nada. Si ya leyó
+        // datos y aún no cambió nada, se repite esa vuelta sin razonamiento: actúa con lo que tiene delante. Sin datos no:
+        // sin razonar se inventa. Si ya cambió algo, basta con el resumen de lo hecho.
+        if (!answer && !cut && !last && toolsRan && !acted && !retriedPlain && cfg.settings.provider === "ollama") {
+          retriedPlain = true;
+          plainNext = true;
+          messages.push({ role: "user", content: EMPTY_NUDGE });
+          continue;
+        }
+        if (!nudged && !last && !cut && ((!done.length && claimsAction(answer)) || (!answer && !acted))) {
+          nudged = true;
+          messages.push({ role: "assistant", content: answer || null }, { role: "user", content: answer ? NO_ACTION_NUDGE : EMPTY_NUDGE });
+          continue;
+        }
+        if (!done.length && claimsAction(answer) && !proposed.length) {
+          answer = "No se ha hecho ningún cambio: el asistente dijo haberlo hecho, pero no llegó a usar ninguna herramienta (o no hay una para eso). Revisa la petición o hazlo tú desde Kioku.";
+        } else if (!done.length && proposed.length && (!answer || claimsAction(answer))) {
+          answer = summary();
+        } else if (!answer && acted) {
+          answer = summary();
+        } else if (cut) {
+          const why = "La respuesta del modelo se cortó porque se quedó sin contexto (memoria de trabajo). Prueba con una petición más corta o empieza una conversación nueva.";
+          answer = answer ? `${answer}\n\n(${why})` : why;
+          if (acted) answer += `\n\n${summary()}`;
+        }
+        break;
+      }
       messages.push({ role: "assistant", content: stripThinking(res.content).replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "").trim() || null, tool_calls: calls });
       for (const c of calls) {
         if (i.signal?.aborted) throw new Error("Consulta cancelada.");
-        messages.push({ role: "tool", tool_call_id: c.id, content: await this.runTool(c, known, daemon) });
+        const r = await this.runTool(c, known, daemon);
+        toolsRan = true;
+        if (r.ok && level.get(c.function.name) !== "read") {
+          if (c.function.name === "propose") proposed.push(this.describeProposal(c));
+          // Kioku puede convertir un cambio en propuesta (límite de notas por consulta, carpeta protegida): no está hecho.
+          else if (/"escalated"\s*:\s*true/.test(r.text)) proposed.push(`${this.describeDone(c, r.text).replace(/^[^:]+/, (l) => l.replace(/ (creada|creado|añadida|marcado|apuntado|convertida|cambiadas|cambiado|añadido)$/, ""))}`);
+          else done.push(this.describeDone(c, r.text));
+        }
+        messages.push({ role: "tool", tool_call_id: c.id, name: c.function.name, content: r.text });
       }
+    }
+    } catch (e) {
+      // Si se corta (tiempo, red, cancelación) después de haber cambiado algo, se dice qué cambió: nada queda a escondidas.
+      if (!done.length && !proposed.length) throw e;
+      throw new Error(`${(e as Error).message}\n\nAntes de cortarse (lo hecho se puede deshacer en «Lo que ha hecho Kio»):\n${summary()}`);
     }
 
     const keep = [...history, { role: "user" as const, content: i.message.slice(0, HISTORY_CHARS) }, { role: "assistant" as const, content: answer.slice(0, HISTORY_CHARS) }].slice(-HISTORY_MESSAGES);
@@ -322,21 +506,89 @@ export class NativeEngine implements AssistantEngine {
   }
 
   /** Ejecuta una herramienta pedida por el modelo. Nunca lanza: lo que falle vuelve al modelo como error para que rectifique. */
-  private async runTool(c: ToolCall, known: Set<string>, daemon: (m: "GET" | "POST", p: string, b?: unknown) => Promise<unknown>): Promise<string> {
+  private async runTool(c: ToolCall, known: Set<string>, daemon: (m: "GET" | "POST", p: string, b?: unknown) => Promise<unknown>): Promise<{ ok: boolean; text: string }> {
     const name = c.function.name;
-    if (!known.has(name)) return `Error: la herramienta «${name.slice(0, 60)}» no existe. Usa solo las herramientas de Kioku que tienes.`;
+    const fail = (text: string) => ({ ok: false, text });
+    if (!known.has(name)) return fail(`Error: la herramienta «${name.slice(0, 60)}» no existe. Usa solo las herramientas de Kioku que tienes.`);
     let args: unknown;
     try { args = c.function.arguments.trim() ? JSON.parse(c.function.arguments) : {}; }
-    catch { return "Error: los argumentos no son JSON válido. Repite la llamada con un objeto JSON."; }
-    if (!args || typeof args !== "object" || Array.isArray(args)) return "Error: los argumentos deben ser un objeto JSON.";
-    if (name === REMEMBER_TOOL.name) return this.remember((args as { text?: unknown }).text);
+    catch { return fail("Error: los argumentos no son JSON válido. Repite la llamada con un objeto JSON."); }
+    if (!args || typeof args !== "object" || Array.isArray(args)) return fail("Error: los argumentos deben ser un objeto JSON.");
+    if (name === REMEMBER_TOOL.name) {
+      const text = await this.remember((args as { text?: unknown }).text);
+      return { ok: text === "Guardado en la memoria.", text };
+    }
     try {
       const r = (await daemon("POST", "/api/assistant/tools/call", { name, args })) as { text: string; isError?: boolean };
       const text = r.text.length > TOOL_RESULT_CHARS ? `${r.text.slice(0, TOOL_RESULT_CHARS)}\n…(resultado recortado: afina la búsqueda o pide menos elementos)` : r.text;
-      return r.isError ? `Error: ${text}` : text;
+      return r.isError ? fail(`Error: ${text}`) : { ok: true, text };
     } catch (e) {
-      return `Error: ${(e as Error).message}`;
+      return fail(`Error: ${(e as Error).message}`);
     }
+  }
+
+  /**
+   * «Tu espacio»: qué bases hay y, en las de hábitos, cómo se llama cada uno. A un modelo pequeño le ahorra búsquedas
+   * y evita que guarde «hoy hice ejercicio» como nota en vez de marcar el hábito. Pasa por las herramientas (con sus
+   * exclusiones); si algo falla, simplemente no se añade.
+   */
+  private async spaceSummary(daemon: (m: "GET" | "POST", p: string, b?: unknown) => Promise<unknown>): Promise<string> {
+    type Db = { path: string; title: string; rows: number; views: { kind: string; track?: string; total?: string }[] };
+    const call = async (name: string, args: object) => {
+      const r = (await daemon("POST", "/api/assistant/tools/call", { name, args })) as { text: string; isError?: boolean };
+      return r.isError ? null : JSON.parse(r.text);
+    };
+    try {
+      const dbs = ((await call("list_databases", {})) ?? []) as Db[];
+      if (!dbs.length) return "";
+      const lines: string[] = [];
+      for (const d of dbs.slice(0, 12)) {
+        const habits = d.views.find((v) => v.kind === "habits");
+        const progress = d.views.find((v) => v.kind === "progress");
+        if (habits) {
+          const q = (await call("query_database", { path: d.path })) as { rows?: { title?: string }[] } | null;
+          const names = (q?.rows ?? []).map((r) => r.title).filter(Boolean).slice(0, 20);
+          lines.push(`- ${d.title} (${d.path}): hábitos ${names.length ? names.map((n) => `«${n}»`).join(", ") : "(ninguno todavía)"}. Para marcar uno hecho usa log_habit con su nombre.`);
+        } else if (progress?.track) {
+          lines.push(`- ${d.title} (${d.path}): ${d.rows} filas; el avance va en la propiedad «${progress.track}»${progress.total ? ` (de «${progress.total}»)` : ""}. Para apuntarlo usa log_progress con el nombre de la fila y el número (p. ej. «he leído Juan 3» → item «Juan», value 3).`);
+        } else lines.push(`- ${d.title} (${d.path}): ${d.rows} filas.`);
+      }
+      return `## Tu espacio\n${lines.join("\n")}`.slice(0, 1500);
+    } catch {
+      return "";
+    }
+  }
+
+  private describeProposal(c: ToolCall): string {
+    try { const a = JSON.parse(c.function.arguments) as { title?: unknown }; if (typeof a.title === "string" && a.title) return a.title.slice(0, 200); } catch { /* sin título */ }
+    return "Propuesta de cambio";
+  }
+
+  /** Una línea honesta sobre un cambio aplicado, con la ruta que devolvió Kioku (no la que dijo el modelo). */
+  private describeDone(c: ToolCall, result: string): string {
+    const label = DONE_LABEL[c.function.name] ?? `Hecho con ${c.function.name}`;
+    let where = "";
+    try {
+      const out = JSON.parse(result) as { path?: unknown; habit?: unknown; date?: unknown };
+      if (typeof out.habit === "string") where = `${out.habit}${typeof out.date === "string" ? `, ${out.date}` : ""}`;
+      else if (typeof (out as { item?: unknown }).item === "string") {
+        const o = out as Record<string, unknown>;
+        const k = Object.keys(o).find((x) => !["path", "item", "total"].includes(x) && typeof o[x] === "number");
+        where = `${o.item}${k ? ` (${k}: ${o[k]}${typeof o.total === "number" ? ` de ${o.total}` : ""})` : ""}`;
+      }
+      else if (typeof out.path === "string") where = out.path;
+    } catch { /* resultado en texto */ }
+    if (!where) {
+      try { const a = JSON.parse(c.function.arguments) as { path?: unknown; title?: unknown }; where = typeof a.path === "string" ? a.path : typeof a.title === "string" ? a.title : ""; } catch { /* sin detalle */ }
+    }
+    if (c.function.name === "set_props") {
+      try {
+        const props = (JSON.parse(c.function.arguments) as { props?: Record<string, unknown> }).props ?? {};
+        const shown = Object.entries(props).slice(0, 4).map(([k, v]) => `${k}: ${v === null ? "(quitada)" : Array.isArray(v) ? v.join(", ") : String(v)}`.slice(0, 80));
+        if (shown.length) where += ` (${shown.join(" · ")})`;
+      } catch { /* sin detalle */ }
+    }
+    return where ? `${label}: ${where}` : label;
   }
 
   private memoryDir(): string { return path.join(this.o.homeDir, ".kioku", "hermes", "memories"); }
@@ -369,12 +621,12 @@ export class NativeEngine implements AssistantEngine {
   }
 
   /** Una vuelta del modelo con reintentos: si la conexión se corta o el servidor se reinicia, se repite la misma petición. */
-  private async complete(cfg: Awaited<ReturnType<NativeEngine["settings"]>>, messages: ChatMessage[], tools: unknown[] | undefined, deadline: number, i: AskInput) {
+  private async complete(cfg: Awaited<ReturnType<NativeEngine["settings"]>>, messages: ChatMessage[], tools: unknown[] | undefined, deadline: number, i: AskInput, think?: boolean) {
     const retries = this.o.retries ?? 2;
     const delays = this.o.retryDelayMs ?? [800, 2500];
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.completeOnce(cfg, messages, tools, deadline, i);
+        return await this.completeOnce(cfg, messages, tools, deadline, i, think);
       } catch (e) {
         if (!(e instanceof Transient) || attempt >= retries || i.signal?.aborted) throw e instanceof Transient || e instanceof Fatal ? new Error(e.message) : e;
         const wait = delays[Math.min(attempt, delays.length - 1)] ?? 1000;
@@ -385,7 +637,7 @@ export class NativeEngine implements AssistantEngine {
     }
   }
 
-  private async completeOnce(cfg: Awaited<ReturnType<NativeEngine["settings"]>>, messages: ChatMessage[], tools: unknown[] | undefined, deadline: number, i: AskInput) {
+  private async completeOnce(cfg: Awaited<ReturnType<NativeEngine["settings"]>>, messages: ChatMessage[], tools: unknown[] | undefined, deadline: number, i: AskInput, thinkOverride?: boolean) {
     const left = deadline - Date.now();
     if (left <= 0) throw new Fatal("El asistente tardó demasiado y se canceló.");
     const ac = new AbortController();
@@ -398,10 +650,20 @@ export class NativeEngine implements AssistantEngine {
     const beat = () => { clearTimeout(timer); timer = setTimeout(() => abort("idle"), this.o.idleMs ?? 60_000); };
     let produced = false;
     try {
-      const r = await this.fetch(`${cfg.base}/chat/completions`, {
-        method: "POST", headers: cfg.headers, signal: ac.signal,
-        body: JSON.stringify({ model: cfg.settings.model, messages, stream: true, ...(tools ? { tools } : {}) }),
-      });
+      // Ollama por su API nativa: es la única que respeta `num_ctx` (por «chat completions» se queda en 4096 tokens y corta).
+      const ollama = cfg.settings.provider === "ollama";
+      const numCtx = this.o.numCtx ?? (Number((this.o.env ?? process.env).KIOKU_OLLAMA_NUM_CTX) || OLLAMA_NUM_CTX);
+      const thinkEnv = (this.o.env ?? process.env).KIOKU_OLLAMA_THINK;
+      const think = thinkOverride ?? this.o.think ?? (thinkEnv === "0" ? false : thinkEnv === "1" ? true : undefined);
+      const r = ollama
+        ? await this.fetch(`${cfg.base.replace(/\/v1$/, "")}/api/chat`, {
+          method: "POST", headers: cfg.headers, signal: ac.signal,
+          body: JSON.stringify({ model: cfg.settings.model, messages: toOllamaMessages(messages), stream: true, options: { num_ctx: numCtx }, ...(think === undefined ? {} : { think }), ...(tools ? { tools } : {}) }),
+        })
+        : await this.fetch(`${cfg.base}/chat/completions`, {
+          method: "POST", headers: cfg.headers, signal: ac.signal,
+          body: JSON.stringify({ model: cfg.settings.model, messages: messages.map(({ name: _n, ...m }) => m), stream: true, ...(tools ? { tools } : {}) }),
+        });
       if (!r.ok) {
         const detail = await r.text().catch(() => "");
         let msg = detail;
@@ -411,6 +673,13 @@ export class NativeEngine implements AssistantEngine {
         throw r.status >= 500 || r.status === 429 ? new Transient(text) : new Fatal(text);
       }
       beat();
+      if (ollama) {
+        if (!r.body) throw new Transient("El modelo cerró la conexión sin responder.");
+        return await readOllamaStream(r.body as unknown as AsyncIterable<Uint8Array>, {
+          activity: beat,
+          text: (t) => { produced = true; i.onEvent?.({ type: "delta", text: t } satisfies EngineEvent); },
+        });
+      }
       if (!(r.headers.get("content-type") ?? "").includes("text/event-stream")) {
         // Servidor que ignora `stream`: respuesta JSON completa.
         const j = (await r.json()) as { choices?: { message?: { content?: string | null; tool_calls?: ToolCall[] } }[] };

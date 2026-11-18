@@ -255,3 +255,262 @@ test("tailnet: http solo hacia localhost o hacia equipos de Tailscale (100.64/10
   assert.ok(!isTailnetHost("192.168.1.10"));
   assert.ok(!isTailnetHost("evil-ts.net.example.com"));
 });
+
+type OllamaReply = { content?: string; thinking?: string; tool_calls?: { name: string; args: unknown }[]; done_reason?: string; hang?: boolean };
+
+/** Ollama de mentira por su API nativa (`/api/chat`, NDJSON): la que respeta `options.num_ctx`. */
+async function fakeOllama(script: OllamaReply[]) {
+  const requests: any[] = [];
+  const server = http.createServer(async (req, res) => {
+    if (req.url === "/v1/models") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ data: [{ id: "qwen3.5:9b" }] })); }
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    requests.push({ url: req.url, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) });
+    if (req.url !== "/api/chat") { res.writeHead(404); return res.end("{}"); }
+    const r = script.shift() ?? { content: "(sin guion)" };
+    if (r.hang) return; // nunca responde
+    res.writeHead(200, { "content-type": "application/x-ndjson" });
+    const line = (o: object) => res.write(JSON.stringify({ model: "qwen3.5:9b", ...o }) + "\n");
+    if (r.thinking) line({ message: { role: "assistant", content: "", thinking: r.thinking }, done: false });
+    for (const piece of (r.content ?? "").match(/.{1,6}/gs) ?? []) line({ message: { role: "assistant", content: piece }, done: false });
+    if (r.tool_calls) line({ message: { role: "assistant", content: "", tool_calls: r.tool_calls.map((t) => ({ function: { name: t.name, arguments: t.args } })) }, done: false });
+    line({ message: { role: "assistant", content: "" }, done: true, done_reason: r.done_reason ?? "stop" });
+    res.end();
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as AddressInfo).port;
+  return { url: `http://127.0.0.1:${port}/v1`, requests, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+}
+
+async function setupOllama(script: OllamaReply[], engineOpts: object = {}) {
+  const { root, cleanup } = tmpVault();
+  const web = mkdtempSync(path.join(tmpdir(), "kioku-web-"));
+  writeFileSync(path.join(web, "index.html"), "<h1>hola</h1>");
+  const userHome = mkdtempSync(path.join(tmpdir(), "kioku-home-"));
+  const model = await fakeOllama(script);
+  mkdirSync(path.join(root, ".kioku"), { recursive: true });
+  writeFileSync(path.join(root, ".kioku", "assistant.json"), JSON.stringify({ model: { provider: "ollama", default: "qwen3.5:9b", base_url: model.url } }));
+  const j = await Kioku.open({ root });
+  const engine = new NativeEngine({ homeDir: root, userHome, env: {}, retryDelayMs: [10, 10], ...engineOpts });
+  const srv = await startServer(j, { port: 0, webDir: web, assistant: { engine }, agentState: { successMs: 30, errorMs: 30 } });
+  const ask = async (message: string) => {
+    const r = await fetch(`${srv.url}/api/assistant/ask`, { method: "POST", headers: { "x-kioku-key": srv.key, "content-type": "application/json" }, body: JSON.stringify({ message }) });
+    return { status: r.status, json: (await r.json()) as any };
+  };
+  return { j, srv, model, ask, done: async () => { await srv.close(); await model.close(); j.close(); cleanup(); } };
+}
+
+test("Ollama: usa su API nativa con contexto amplio (num_ctx), entiende sus llamadas a herramientas y oculta el razonamiento", async () => {
+  const s = await setupOllama([
+    { thinking: "debo crear la tarea", tool_calls: [{ name: "create_task", args: { title: "Renovar el DNI", due: "2026-11-30" } }] },
+    { thinking: "ya está", content: "He creado la tarea «Renovar el DNI» para el 30 de noviembre." },
+  ]);
+  try {
+    const r = await s.ask("apúntame renovar el DNI para el 30 de noviembre");
+    assert.equal(r.status, 200);
+    assert.equal(r.json.answer, "He creado la tarea «Renovar el DNI» para el 30 de noviembre.");
+    assert.ok(s.j.index.tasks({}).some((t) => t.title === "Renovar el DNI"), "la tarea existe de verdad");
+    const [first, second] = s.model.requests;
+    assert.equal(first.url, "/api/chat");
+    assert.ok(first.body.options.num_ctx >= 16384, "Ollama por defecto corta a 4096 tokens: el prompt de Kio no cabe");
+    assert.equal(first.body.stream, true);
+    const call = second.body.messages.find((m: any) => m.tool_calls);
+    assert.deepEqual(call.tool_calls[0].function.arguments, { title: "Renovar el DNI", due: "2026-11-30" }, "argumentos como objeto, como los espera Ollama");
+    const tool = second.body.messages.at(-1);
+    assert.equal(tool.role, "tool");
+    assert.equal(tool.tool_name, "create_task");
+    assert.match(tool.content, /Renovar el DNI/);
+  } finally { await s.done(); }
+});
+
+test("respuesta cortada por falta de contexto: se dice claramente, no «(El modelo no devolvió texto.)»", async () => {
+  const s = await setupOllama([{ thinking: "Primero necesito averiguar el", done_reason: "length" }]);
+  try {
+    const r = await s.ask("¿por qué capítulo voy de Juan?");
+    assert.doesNotMatch(JSON.stringify(r.json), /no devolvió texto/);
+    assert.match(r.json.answer ?? r.json.error, /se cortó|contexto/i);
+  } finally { await s.done(); }
+});
+
+test("honestidad: si afirma haber hecho algo sin ejecutar ninguna herramienta, Kioku se lo hace notar y el modelo lo hace de verdad", async () => {
+  const s = await setupOllama([
+    { content: "He creado una tarea «Renovar el DNI» para el 30 de noviembre." },
+    { tool_calls: [{ name: "create_task", args: { title: "Renovar el DNI", due: "2026-11-30" } }] },
+    { content: "Hecho: tarea «Renovar el DNI» creada en Tareas/Renovar el DNI.md." },
+  ]);
+  try {
+    const r = await s.ask("apúntame renovar el DNI");
+    assert.equal(r.status, 200);
+    assert.equal(s.model.requests.length, 3);
+    assert.match(JSON.stringify(s.model.requests[1].body.messages.at(-1)), /no has ejecutado ninguna herramienta/i);
+    assert.ok(s.j.index.tasks({}).some((t) => t.title === "Renovar el DNI"));
+    assert.equal(r.json.actions.length, 1);
+    assert.match(r.json.answer, /Renovar el DNI/);
+  } finally { await s.done(); }
+});
+
+test("honestidad: si insiste en afirmar un cambio que no hizo, la respuesta avisa de que no se cambió nada", async () => {
+  const s = await setupOllama([
+    { content: "He enviado el correo a Ramón." },
+    { content: "Listo, he enviado el correo a Ramón." },
+  ]);
+  try {
+    const r = await s.ask("mándale un correo a Ramón");
+    assert.equal(r.status, 200);
+    assert.equal(r.json.actions.length, 0);
+    assert.match(r.json.answer, /no se ha hecho ningún cambio/i);
+  } finally { await s.done(); }
+});
+
+test("honestidad: negar o preguntar no dispara el aviso («no he creado…», «¿quieres que lo guarde?»)", async () => {
+  const s = await setupOllama([{ content: "No he creado ninguna tarea sobre el seguro del coche: no la encuentro." }]);
+  try {
+    const r = await s.ask("¿ya creaste la tarea del seguro?");
+    assert.equal(s.model.requests.length, 1);
+    assert.equal(r.json.answer, "No he creado ninguna tarea sobre el seguro del coche: no la encuentro.");
+  } finally { await s.done(); }
+});
+
+test("sin texto final pero con cambios hechos: Kioku resume lo que de verdad se hizo", async () => {
+  const s = await setupOllama([
+    { tool_calls: [{ name: "create_note", args: { title: "Viaje a Asturias", body: "Covadonga" } }] },
+    { thinking: "ya está", content: "" },
+  ]);
+  try {
+    const r = await s.ask("crea una nota Viaje a Asturias con Covadonga");
+    assert.equal(r.status, 200);
+    assert.match(r.json.answer, /Viaje a Asturias/);
+    assert.doesNotMatch(r.json.answer, /no devolvió texto/);
+  } finally { await s.done(); }
+});
+
+test("detector de afirmaciones: reconoce «Creada la tarea…», «ya está apuntado», «Listo:» y no las negaciones ni las preguntas", async () => {
+  const { claimsAction } = await import("../src/assistant/native-engine.ts");
+  for (const yes of ["Creada la tarea «Renovar el DNI» con fecha 2026-11-30.", "Ya está apuntado en tu nota.", "Listo: tarea añadida al proyecto.", "He organizado tu bandeja.", "La nota ha sido actualizada.", "Te lo he apuntado."]) assert.ok(claimsAction(yes), yes);
+  for (const no of ["No he creado ninguna tarea.", "¿Quieres que lo guarde en una nota?", "No encuentro el hábito «Correr».", "La tarea no está creada todavía.", "No tengo una herramienta para enviar correos."]) assert.ok(!claimsAction(no), no);
+});
+
+test("si se acaba el tiempo después de hacer cambios, el error dice lo que sí se hizo", async () => {
+  const s = await setupOllama([
+    { tool_calls: [{ name: "create_task", args: { title: "Llamar al electricista" } }] },
+    { hang: true },
+  ], { totalMs: 1500, firstByteMs: 500, retries: 0 });
+  try {
+    const r = await s.ask("organiza la bandeja");
+    const text = r.json.answer ?? r.json.error;
+    assert.ok(s.j.index.tasks({}).some((t) => t.title === "Llamar al electricista"));
+    assert.notEqual(r.status, 200);
+    assert.match(text, /Llamar al electricista/, "el error menciona el cambio ya aplicado");
+  } finally { await s.done(); }
+});
+
+test("el prompt incluye un resumen breve del espacio: bases, hábitos por nombre y qué propiedad lleva el progreso", async () => {
+  const s = await setupOllama([{ content: "¡Bien hecho!" }]);
+  try {
+    const db = await s.j.createDatabase({ name: "Hábitos", template: "hábitos" });
+    for (const h of ["Ejercicio", "Meditar"]) await s.j.createRow(db.path, { title: h, props: {} });
+    await s.j.createDatabase({ name: "Lectura de la Biblia", template: "biblia" });
+    await s.ask("hoy he hecho ejercicio");
+    const system = s.model.requests[0].body.messages[0].content as string;
+    assert.match(system, /## Tu espacio/);
+    assert.match(system, /Hábitos[^\n]*Ejercicio[^\n]*Meditar[^\n]*log_habit/);
+    assert.match(system, /Lectura de la Biblia[^\n]*Leídos/);
+  } finally { await s.done(); }
+});
+
+test("el prompt trae los próximos días con su nombre: «este viernes» no se calcula a ojo", async () => {
+  const s = await setupOllama([{ content: "Vale." }], { now: () => new Date(2026, 10, 18, 9, 0) });
+  try {
+    await s.ask("apunta algo para este viernes");
+    const system = s.model.requests[0].body.messages[0].content as string;
+    assert.match(system, /mañana jueves 2026-11-19/);
+    assert.match(system, /viernes 2026-11-20/);
+    assert.match(system, /martes 2026-11-24/);
+  } finally { await s.done(); }
+});
+
+test("una propuesta no se resume como «Hecho»: queda claro que falta tu aprobación", async () => {
+  const s = await setupOllama([
+    { tool_calls: [{ name: "propose", args: { title: "Borrar nota «Médico»", rationale: "lo pidió", ops: [{ op: "trash", path: "Notas/Médico.md" }] } }] },
+    { content: "" },
+  ]);
+  try {
+    await s.j.createNote({ title: "Médico", type: "note", body: "Dra. Pardo" });
+    const r = await s.ask("borra la nota del médico");
+    const a = r.json.answer as string;
+    assert.doesNotMatch(a, /Hecho/);
+    assert.match(a, /pendiente de tu aprobación/i);
+    assert.match(a, /Borrar nota «Médico»/);
+    assert.ok(s.j.index.getNote("Notas/Médico.md"), "la nota sigue ahí");
+  } finally { await s.done(); }
+});
+
+test("el resumen de un cambio de propiedades dice qué se cambió", async () => {
+  const s = await setupOllama([
+    { tool_calls: [{ name: "set_props", args: { path: "Notas/Juan.md", props: { Leídos: 3 } } }] },
+    { content: "" },
+  ]);
+  try {
+    await s.j.createNote({ title: "Juan", type: "note", body: "x" });
+    const r = await s.ask("he leído Juan 3");
+    assert.match(r.json.answer, /Notas\/Juan\.md \(Leídos: 3\)/);
+  } finally { await s.done(); }
+});
+
+test("vuelta vacía tras usar herramientas: se repite sin razonamiento (qwen3.5 a veces anuncia la acción y se para)", async () => {
+  const s = await setupOllama([
+    { thinking: "miro la bandeja", tool_calls: [{ name: "inbox", args: {} }] },
+    { thinking: "Ahora convierto las capturas. Voy a hacerlo:", content: "" },
+    { tool_calls: [{ name: "create_task", args: { title: "Llamar al electricista" } }] },
+    { thinking: "hecho", content: "He creado la tarea «Llamar al electricista»." },
+  ]);
+  try {
+    const r = await s.ask("organiza la bandeja");
+    assert.equal(r.status, 200);
+    const reqs = s.model.requests.map((x) => x.body);
+    assert.equal(reqs[0].think, undefined, "primera vuelta: lo que decida el modelo");
+    assert.equal(reqs[2].think, false, "la vuelta que se quedó vacía se repite sin razonamiento");
+    assert.equal(reqs[3].think, undefined, "y después vuelve a lo normal");
+    assert.ok(s.j.index.tasks({}).some((t) => t.title === "Llamar al electricista"));
+  } finally { await s.done(); }
+});
+
+test("vuelta vacía sin haber leído nada: se insiste con razonamiento (sin datos, sin razonar se inventa)", async () => {
+  const s = await setupOllama([
+    { thinking: "veamos", content: "" },
+    { thinking: "busco", tool_calls: [{ name: "list_tasks", args: {} }] },
+    { content: "No tienes tareas pendientes." },
+  ]);
+  try {
+    const r = await s.ask("¿qué tareas tengo?");
+    assert.equal(r.status, 200);
+    assert.equal(s.model.requests[1].body.think, undefined);
+    assert.equal(r.json.answer, "No tienes tareas pendientes.");
+  } finally { await s.done(); }
+});
+
+test("un cambio que Kioku convierte en propuesta (p. ej. por el límite de notas) no se cuenta como hecho", async () => {
+  const calls = Array.from({ length: 7 }, (_, n) => ({ name: "create_note", args: { title: `Nota ${n}`, body: "x" } }));
+  const s = await setupOllama([{ tool_calls: calls }, { content: "" }]);
+  try {
+    const r = await s.ask("crea siete notas");
+    const a = r.json.answer as string;
+    const hechas = (a.match(/Nota creada/g) ?? []).length;
+    assert.equal(hechas, s.j.index.listNotes({ type: "note", limit: 50 }).length, "solo las que existen de verdad");
+    assert.match(a, /Pendiente de tu aprobación/);
+  } finally { await s.done(); }
+});
+
+test("si el razonamiento anuncia una herramienta de escritura y no la llama, se repite la vuelta sin razonamiento", async () => {
+  const s = await setupOllama([
+    { thinking: "Voy a usar create_note con estos parámetros.", content: "Crea la nota «Viaje a Asturias» con las ideas." },
+    { tool_calls: [{ name: "create_note", args: { title: "Viaje a Asturias", body: "Covadonga" } }] },
+    { content: "Nota «Viaje a Asturias» creada." },
+  ]);
+  try {
+    const r = await s.ask("crea una nota Viaje a Asturias con Covadonga");
+    assert.equal(s.model.requests[1].body.think, false);
+    assert.ok(s.j.index.listNotes({ limit: 50 }).some((n) => n.title === "Viaje a Asturias"));
+    assert.equal(r.json.answer, "Nota «Viaje a Asturias» creada.");
+  } finally { await s.done(); }
+});
