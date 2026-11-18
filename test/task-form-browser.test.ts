@@ -213,6 +213,6 @@ test("formulario de tareas en un navegador real: crear, editar en lista, tabla y
     await srv.close();
     j.close();
     cleanup();
-    rmSync(profile, { recursive: true, force: true });
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

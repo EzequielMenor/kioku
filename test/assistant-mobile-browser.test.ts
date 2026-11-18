@@ -72,6 +72,6 @@ test("asistente móvil: conversar, revisar, cancelar y aprobar un cambio crític
     assert.equal(asks, 1, "no se reenvía ni se encola la pregunta");
   } finally {
     await p?.close();
-    await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true });
+    await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

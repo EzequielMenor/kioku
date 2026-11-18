@@ -180,7 +180,7 @@ test("menú de cabecera: renombrar con Deshacer, ocultar en la vista y borrar un
     await srv.close();
     j.close();
     cleanup();
-    rmSync(profile, { recursive: true, force: true });
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
 
@@ -215,7 +215,7 @@ test("menú de cabecera: las columnas de sistema solo ordenan y ocultan", { skip
     await srv.close();
     j.close();
     cleanup();
-    rmSync(profile, { recursive: true, force: true });
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
 
@@ -241,7 +241,7 @@ test("menú de cabecera: con el rol móvil no existe el menú y la cabecera sigu
     await srv.close();
     j.close();
     cleanup();
-    rmSync(profile, { recursive: true, force: true });
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
 
@@ -266,7 +266,7 @@ async function withBase(opts: { mobile?: boolean; make?: typeof vault; ready?: s
     await srv.close();
     j.close();
     cleanup();
-    rmSync(profile, { recursive: true, force: true });
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }
 

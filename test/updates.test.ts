@@ -377,6 +377,6 @@ test("UI escritorio muestra aviso de actualización y ejecuta Actualizar ahora t
   } finally {
     await p?.close();
     await srv.close(); j.close(); cleanup();
-    rmSync(profile, { recursive: true, force: true });
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

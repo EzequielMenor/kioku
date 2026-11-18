@@ -37,7 +37,7 @@ test("lanzador: gestión de Hermes accesible en escritorio y oculta para el móv
     await until(() => page!.ev<boolean>(`!!document.querySelector('.palette')`), "lanzador móvil");
     assert.equal(await page.ev<boolean>(`[...document.querySelectorAll('.plist li')].some(x => x.textContent === 'Modelo de Kio')`), false);
   } finally {
-    await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true });
+    await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
 
@@ -57,7 +57,7 @@ test("conversación en capas: cabecera y subpantallas de Kio en móvil", { skip:
     assert.equal(await page.ev<string>(`[...document.querySelectorAll('.section-tabs a')].map((a) => a.textContent).join('|')`), "Conversación|Propuestas|Actividad");
     assert.equal(await page.ev<boolean>(`document.documentElement.scrollWidth <= innerWidth`), true);
   } finally {
-    await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true });
+    await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
 
@@ -99,7 +99,7 @@ test("la franja revisa una propuesta real y cancelar no toca la nota", { skip: b
     await until(async () => !(await page!.ev<boolean>(`!!document.querySelector('.assistant-review .primary')`)), "aplicada");
     await assert.rejects(j.vault.read(note.path));
   } finally {
-    await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true });
+    await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
 
@@ -119,6 +119,6 @@ test("ruta de propuestas de escritorio conserva la vista de operaciones y aplica
     await until(() => page!.ev<boolean>(`!document.querySelector('.proposal-actions')`), "aplicada en escritorio");
     assert.match((await j.vault.read("Notas/Capa.md")).text, /Contenido de prueba/);
   } finally {
-    await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true });
+    await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

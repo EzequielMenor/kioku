@@ -62,5 +62,5 @@ test("private setup UI: confirm Tailscale, create local QR, enroll by name and r
     await until(() => page!.ev<boolean>(`!!document.querySelector('[data-device-enrollment]')`), "enlace en carga fría");
     await page.ev(`location.hash = '#/conexiones'`);
     await until(() => page!.ev<boolean>(`!document.querySelector('[data-device-enrollment]') && !!document.querySelector('[data-private-setup]')`), "salida del enlace");
-  } finally { await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true }); }
+  } finally { await page?.close(); await srv.close(); j.close(); v.cleanup(); rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
 });
