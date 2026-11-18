@@ -232,12 +232,19 @@ const CLAIM_RES = [
   new RegExp(`\\b(?:está|están|queda|quedan|quedó|quedaron|ha sido|han sido)\\s+(?:ya\\s+)?${DONE_VERBS}\\b`, "giu"),
   /(?:^|[.!\n]\s*)(?:listo|hecho)\s*[:,.!]/giu,
 ];
-/** Lo que el modelo dice haber hecho, sin contar negaciones («no he creado…», «no está creada»). */
+/**
+ * Lo que el modelo dice haber hecho. No cuentan las negaciones de la misma cláusula («no he creado…», «ninguno ha sido
+ * marcado») ni las descripciones («los que están registrados son…»).
+ */
 export function claimsAction(text: string): boolean {
   for (const re of CLAIM_RES) {
     for (const m of text.matchAll(re)) {
-      const before = text.slice(Math.max(0, m.index - 24), m.index + (m[0].length - m[0].trimStart().length)).toLowerCase();
-      if (!/\b(?:no|nunca|todavía no|aún no)\s+(?:\p{L}+\s+)?$/u.test(before)) return true;
+      const start = m.index + (m[0].length - m[0].replace(/^[.!:;\n\s]+/, "").length);
+      const before = text.slice(0, start);
+      const clause = before.slice(Math.max(...[".", ",", ";", ":", "!", "?", "\n"].map((c) => before.lastIndexOf(c))) + 1).toLowerCase();
+      if (/(?<!\p{L})(?:no|nunca|ningún|ninguno|ninguna|nada)(?!\p{L})/u.test(clause)) continue;
+      if (/(?<!\p{L})que\s+$/u.test(clause)) continue;
+      return true;
     }
   }
   return false;
@@ -434,17 +441,27 @@ export class NativeEngine implements AssistantEngine {
     /** Ya se repitió una vuelta vacía sin razonamiento. */
     let retriedPlain = false;
     let plainNext = false;
+    let keepIfNoCall: string | undefined;
     try {
     for (let turn = 0; ; turn++) {
       if (i.signal?.aborted) throw new Error("Consulta cancelada.");
       i.onEvent?.({ type: "thinking" });
       // En la última vuelta ya no se ofrecen herramientas: el modelo debe contestar con lo que tiene.
       const last = turn >= maxTurns - 1;
+      const prev = messages.at(-1);
+      const afterNudge = prev?.role === "user" && typeof prev.content === "string" && prev.content.startsWith("[Aviso automático de Kioku]");
       const res = await this.complete(cfg, messages, last ? undefined : tools, deadline, i, plainNext ? false : undefined);
       plainNext = false;
+      const before = keepIfNoCall;
+      keepIfNoCall = undefined;
       const calls = res.toolCalls.length ? res.toolCalls : last ? [] : inlineToolCalls(res.content);
       if (!calls.length) {
         answer = stripThinking(res.content).replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "").trim();
+        // Repetida por una acción anunciada y sin llamar a nada tampoco: era una pregunta («¿qué hábitos he marcado?»
+        // razona sobre log_habit). Vale la primera respuesta si no afirmaba ningún cambio.
+        if (before) answer = before;
+        // Contesta al aviso («Entendido.», «Tienes razón:»), no al usuario, que no lo ha visto.
+        else if (afterNudge) answer = answer.replace(/^(?:entendido|de acuerdo|vale|tienes razón|gracias por el (?:aviso|recordatorio)[^.:!]*)\s*[.,:!]\s*/iu, "");
         const cut = res.finish === "length";
         // Un modelo pequeño a veces dice «he creado…» sin haber llamado a nada, o se queda sin decir nada: se le avisa una vez.
         const acted = done.length + proposed.length;
@@ -454,7 +471,8 @@ export class NativeEngine implements AssistantEngine {
         if (announced && !acted && !cut && !last && !retriedPlain) {
           retriedPlain = true;
           plainNext = true;
-          messages.push({ role: "assistant", content: answer || null }, { role: "user", content: `[Aviso automático de Kioku] Has dicho que ibas a usar ${announced}, pero no lo has llamado, así que no se ha hecho nada. Si el usuario lo pidió, llámalo ahora; si no, responde sin afirmar que está hecho.` });
+          if (answer && !claimsAction(answer)) keepIfNoCall = answer;
+          messages.push({ role: "assistant", content: answer || null }, { role: "user", content: `[Aviso automático de Kioku] Has pensado en usar ${announced}, pero no lo has llamado, así que no se ha hecho nada. Si el usuario te lo pidió o te cuenta algo que se guarda (un hábito hecho, una lectura, algo por hacer, un dato), llámalo ahora sin preguntar. Si solo preguntaba, responde sin afirmar que está hecho.` });
           continue;
         }
         // qwen3.5 con razonamiento a veces anuncia la acción («Voy a convertirlas…») y se para sin llamar a nada. Si ya leyó

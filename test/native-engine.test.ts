@@ -402,7 +402,8 @@ test("sin texto final pero con cambios hechos: Kioku resume lo que de verdad se 
 test("detector de afirmaciones: reconoce «Creada la tarea…», «ya está apuntado», «Listo:» y no las negaciones ni las preguntas", async () => {
   const { claimsAction } = await import("../src/assistant/native-engine.ts");
   for (const yes of ["Creada la tarea «Renovar el DNI» con fecha 2026-11-30.", "Ya está apuntado en tu nota.", "Listo: tarea añadida al proyecto.", "He organizado tu bandeja.", "La nota ha sido actualizada.", "Te lo he apuntado."]) assert.ok(claimsAction(yes), yes);
-  for (const no of ["No he creado ninguna tarea.", "¿Quieres que lo guarde en una nota?", "No encuentro el hábito «Correr».", "La tarea no está creada todavía.", "No tengo una herramienta para enviar correos."]) assert.ok(!claimsAction(no), no);
+  for (const no of ["No he creado ninguna tarea.", "¿Quieres que lo guarde en una nota?", "No encuentro el hábito «Correr».", "La tarea no está creada todavía.", "No tengo una herramienta para enviar correos.", "Ninguno de tus tres hábitos ha sido marcado hoy.", "Los únicos que están registrados son Ejercicio y Meditar.", "Hoy no has marcado ningún hábito: ninguno está marcado."]) assert.ok(!claimsAction(no), no);
+  assert.ok(claimsAction("Como no existía, he creado la nota."), "la negación de otra frase no cuenta");
 });
 
 test("si se acaba el tiempo después de hacer cambios, el error dice lo que sí se hizo", async () => {
@@ -513,6 +514,41 @@ test("un cambio que Kioku convierte en propuesta (p. ej. por el límite de notas
     const hechas = (a.match(/Nota creada/g) ?? []).length;
     assert.equal(hechas, s.j.index.listNotes({ type: "note", limit: 50 }).length, "solo las que existen de verdad");
     assert.match(a, /Pendiente de tu aprobación/);
+  } finally { await s.done(); }
+});
+
+test("pregunta de solo lectura cuyo razonamiento menciona una herramienta de escritura: se queda la respuesta buena", async () => {
+  const s = await setupOllama([
+    { thinking: "Para marcar uno usaría log_habit, pero solo pregunta.", content: "Hoy no has marcado ningún hábito." },
+    { content: "Tienes razón: no he llamado log_habit todavía." },
+  ]);
+  try {
+    const r = await s.ask("¿Qué hábitos he marcado hoy?");
+    assert.equal(r.json.answer, "Hoy no has marcado ningún hábito.");
+  } finally { await s.done(); }
+});
+
+test("el aviso por acción anunciada deja claro que contar algo que se guarda también es un encargo", async () => {
+  const s = await setupOllama([
+    { thinking: "Debo usar log_habit para Ejercicio.", content: "He marcado tus hábitos." },
+    { content: "Vale." },
+  ]);
+  try {
+    await s.ask("Hoy he hecho ejercicio");
+    const nudge = s.model.requests[1].body.messages.at(-1).content as string;
+    assert.match(nudge, /te cuenta/);
+    assert.match(nudge, /hábito hecho/);
+  } finally { await s.done(); }
+});
+
+test("tras un aviso automático, la respuesta no empieza por «Entendido.» ni «Tienes razón:»", async () => {
+  const s = await setupOllama([
+    { content: "He creado la tarea." },
+    { content: "Entendido. No he creado nada: dime la fecha y la creo." },
+  ]);
+  try {
+    const r = await s.ask("Recuérdame algo");
+    assert.equal(r.json.answer, "No he creado nada: dime la fecha y la creo.");
   } finally { await s.done(); }
 });
 
