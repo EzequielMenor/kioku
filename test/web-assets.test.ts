@@ -101,13 +101,13 @@ test("sw.ts limpia las cachés de shell antiguas y vacía la de la API ante un 4
 test("la app arranca la capa offline y la captura móvil pasa por la cola", () => {
   const app = read("src/app.tsx");
   assert.match(app, /startOffline\(\)/);
-  assert.match(app, /\bsubmit\(/);
-  assert.match(app, /Guardada sin conexión; se enviará al abrir con red/);
+  const capture = read("src/capture-overlay.tsx");
+  assert.match(capture, /Guardada sin conexión/);
   assert.match(app, /wipeOffline\(\)/);
   assert.match(app, /offline-bar/);
   assert.match(app, /Sincronizar ahora/);
   // sin cambios para el rol full: sigue enviando directo
-  assert.match(app, /isMobile\(\)[^;]*submit\(/s);
+  assert.match(capture, /isMobile\(\) \? await submit\(message\) : .*api<CaptureResult>\("POST", "\/api\/capture"/);
 });
 
 test("el CSS móvil define la franja de sin conexión y la insignia de pendientes", () => {

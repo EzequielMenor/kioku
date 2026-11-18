@@ -25,17 +25,20 @@ const PREFIXES: [RegExp, CaptureKind][] = [
   [/^(?:n|nota)\s+/i, "note"],
 ];
 
-export function parseCapture(input: string, today: string): ParsedCapture {
-  let text = input.trim();
-  let kind: CaptureKind = "capture";
-  for (const [re, k] of PREFIXES) {
-    const m = re.exec(text);
-    if (m) {
-      kind = k;
-      text = text.slice(m[0].length).trim();
-      break;
-    }
+/** Reconoce también un prefijo recién escrito en el formulario, antes de añadir el título. */
+export function splitCapturePrefix(input: string): { kind: CaptureKind; text: string } {
+  const text = input.trimStart();
+  for (const [pattern, kind] of PREFIXES) {
+    const match = pattern.exec(text);
+    if (match) return { kind, text: text.slice(match[0].length) };
   }
+  return { kind: "capture", text };
+}
+
+export function parseCapture(input: string, today: string): ParsedCapture {
+  const parsed = splitCapturePrefix(input.trim());
+  const kind = parsed.kind;
+  let text = parsed.text.trim();
 
   let due: string | null = null;
   let priority: 1 | 2 | 3 | null = null;

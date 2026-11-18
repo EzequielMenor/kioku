@@ -173,7 +173,7 @@ main { flex: 1; overflow: auto; }
 .addbar { margin: 4px 0 18px; } .addbar input { padding: 9px 12px; }
 .check { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
 details { margin-top: 12px; } summary { cursor: pointer; color: var(--muted); font-size: 13px; }
-.welcome ul.ex li { padding: 6px 0; color: var(--fg2); }
+.kio-box .small a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
 /* Foco */
 .focusbar { display: flex; align-items: center; gap: 10px; padding: 9px 22px; background: var(--accent-soft); border-bottom: 1px solid var(--accent-line); }
@@ -192,6 +192,27 @@ details { margin-top: 12px; } summary { cursor: pointer; color: var(--muted); fo
 .modal.wide { width: min(760px, 100%); } .modal.palette { width: min(640px, 100%); padding: 10px; }
 .big-input { width: 100%; font-size: 17px; padding: 11px 14px; background: var(--bg); }
 .palette .big-input { border: 0; background: transparent; border-bottom: 1px solid var(--line); border-radius: 0; padding: 10px 12px 14px; }
+
+.workspace-dialog { margin: auto; color: var(--fg); width: min(520px, calc(100% - 32px)); }
+.workspace-dialog::backdrop { background: rgba(5,6,8,.65); }
+.capture-types { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 12px; }
+.capture-types button { color: var(--fg2); }
+.capture-types button[aria-pressed=true] { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+.capture-dialog .small { margin: 8px 0 18px; }
+.workspace-dialog.palette { width: min(640px, calc(100% - 32px)); margin: min(14vh, 100px) auto auto; }
+.palette-head { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--line); }
+.palette-head .big-input { min-width: 0; border: 0; }
+.palette-head:focus-within { border-color: var(--accent); }
+.palette-status:not(:empty) { padding: 12px; overflow-wrap: anywhere; }
+.palette-status button { margin: 4px 0; }
+@media (max-width: 720px) {
+  .capture-types button, .capture-dialog .row button, .palette-head button, .palette-status button { min-height: 44px; }
+  .capture-dialog { padding: 16px; }
+  .capture-types button { flex: 1; padding-inline: 8px; }
+  .capture-dialog .row.end .primary { flex: 1; }
+  .workspace-dialog.palette { margin-top: max(16px, env(safe-area-inset-top)); }
+}
+
 .plist { list-style: none; margin: 8px 0 0; padding: 0; max-height: 50vh; overflow: auto; }
 .plist li { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; border-radius: 6px; cursor: pointer; color: var(--fg2); }
 .plist li.sel { background: var(--sel); color: var(--fg); }
@@ -524,11 +545,10 @@ button.subtle:hover { color: var(--fg); background: var(--hover); }
   .add-compact { flex: 0 0 auto; white-space: nowrap; }
 }
 
-/* Móvil: avisos de Hoy como filas grandes, ejemplos de captura y separador de ajustes en «Más» */
+/* Móvil: avisos de Hoy como filas grandes y separador de ajustes en «Más» */
 @media (max-width: 720px) {
   .pills { flex-direction: column; }
   .pills .pill { display: flex; align-items: center; min-height: 48px; padding: 8px 14px; font-size: 15px; }
-  .capture-examples { margin: 10px 0 0; }
   .sheet-list .sheet-sep { margin-top: 8px; border-top: 1px solid var(--line2); }
   .sheet-list button svg { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--accent); }
 }

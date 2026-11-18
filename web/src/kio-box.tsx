@@ -53,8 +53,8 @@ export function KioBox({ rev, say }: { rev: number; say: Say }) {
   return (
     <section class="kio-box">
       <form onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <textarea ref={input} rows={2} value={text} aria-label="Escribe a Kio"
-          placeholder={kioReady === false ? "Escribe una idea o una tarea: se guarda en «Sin organizar»…" : "Escribe una idea, una tarea o pregúntale a Kio…"}
+        <textarea ref={input} rows={2} value={text} aria-label={kioReady === false ? "Capturar una idea" : "Escribe a Kio"}
+          placeholder={kioReady === false ? "Escribe una idea para más tarde…" : "Escribe una idea, una tarea o pregúntale a Kio…"}
           onInput={(e) => setText(e.currentTarget.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); void send(); } }} />
         <button class="primary" type="submit" disabled={!text.trim() || saving || thread.busy}>{kioReady === false ? "Guardar" : "Enviar"}</button>
@@ -66,7 +66,7 @@ export function KioBox({ rev, say }: { rev: number; say: Say }) {
             {reply.actions?.map((a) => <UndoLine key={a.id} a={a} say={say} />)}
             <div class="row small"><a href="#/asistente">Seguir en Kio →</a><button class="ghost mini" onClick={() => setAsked(null)}>Cerrar</button></div>
           </div>)}
-      {kioReady === false && <p class="muted small">Kio no está disponible ahora{status.data?.reason ? ` (${status.data.reason})` : ""}. Lo que escribas queda guardado y él lo ordenará después.</p>}
+      {kioReady === false && <p class="muted small">Kio está desconectado. Encontrarás tus ideas en <a href="#/bandeja">Sin organizar</a>.</p>}
     </section>
   );
 }

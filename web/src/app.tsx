@@ -13,13 +13,15 @@ import { DatabasesList, DatabaseView } from "./databases.tsx";
 import { CalendarView } from "./calendar.tsx";
 import { enableDemoMode, handleDemoApi, isDemoMode, onDemoChange, resetDemoState } from "./demo/engine.ts";
 import { askConfirm, askText } from "./dialogs.tsx";
+import { WorkspaceDialog } from "./workspace-dialog.tsx";
+import { CaptureOverlay } from "./capture-overlay.tsx";
 import { useApi, useRevision, useRoute } from "./hooks.ts";
 import { GraphView } from "./graph.tsx";
 import { DemoBar, LandingView } from "./landing.tsx";
 import { extractKey } from "./pairing.ts";
 import { SEAL_PATH } from "./seal.ts";
 import { MOBILE_HIDDEN, getRole, isMobile, setRole } from "./role.ts";
-import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, submit, syncNow, useOffline, wipeOffline, loadMutations, retryMutation, resetMutationPath, setTaskStatus, type OfflineState } from "./offline/runtime.ts";
+import { discardCapture, formatAgo, loadQueue, retryCapture, startOffline, syncNow, useOffline, wipeOffline, loadMutations, retryMutation, resetMutationPath, setTaskStatus, type OfflineState } from "./offline/runtime.ts";
 import type { TaskStatus } from "./offline/store.ts";
 import type { QueuedCapture, StoredMutation } from "./offline/store.ts";
 import { NoteView } from "./note-view.tsx";
@@ -121,7 +123,7 @@ function App() {
   const [route, setRoute] = useRoute();
   const [demo, setDemo] = useState(bootDemo);
   const [toast, setToast] = useState<Toast | null>(null);
-  const [overlay, setOverlay] = useState<null | "palette" | "capture" | "help" | "context" | "endfocus" | "more" | "assistant-management">(null);
+  const [overlay, setOverlay] = useState<null | "palette" | "capture" | "capture-task" | "help" | "context" | "endfocus" | "more" | "assistant-management">(null);
   const [ctxPath, setCtxPath] = useState<string | null>(null);
   const [theme, setTheme] = useState(lsGet("theme") ?? "dark");
   const isLanding = route === "/inicio";
@@ -260,7 +262,7 @@ function App() {
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
     case "conexiones": case "ajustes": view = <SettingsView mobile={mobile} demo={demo} theme={theme} setTheme={setTheme} onManageKio={() => setOverlay("assistant-management")}><ConnectionsView mobile={mobile} demo={demo}>{mobile && <OfflineSection off={off} />}</ConnectionsView></SettingsView>; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
-    default: view = <TodayScreen rev={rev} go={setRoute} guard={guard} say={say} />;
+    default: view = <TodayScreen onCreateTask={() => setOverlay("capture-task")} rev={rev} go={setRoute} guard={guard} say={say} />;
   }
   const activeRoute = head ? SECTION_OF[head] ?? `/${head}` : "/hoy";
   const inbox = counts?.inbox.count ?? 0;
@@ -295,12 +297,12 @@ function App() {
       </div>
 
       <BottomNav active={activeRoute} pending={off.pending + off.failed + off.mutations} proposals={counts?.proposals ?? 0} onMore={() => setOverlay("more")} />
-      {overlay === "more" && <MoreSheet onClose={() => setOverlay(null)} onSearch={() => setOverlay("palette")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
+      {overlay === "more" && <MoreSheet onCapture={() => setOverlay("capture")} onClose={() => setOverlay(null)} onSearch={() => setOverlay("palette")} onJournal={() => { setOverlay(null); void openJournal(); }} />}
       {overlay === "palette" && <Palette go={(r) => { setOverlay(null); setRoute(r); }} onClose={() => setOverlay(null)} newNote={() => { setOverlay(null); void newNote("note"); }}
         newProject={() => { setOverlay(null); void newNote("project"); }} journal={() => { setOverlay(null); void openJournal(); }} toggleFocus={() => { setOverlay(null); void toggleFocus(); }}
         focusActive={!!focus?.active} manageAssistant={() => setOverlay("assistant-management")} />}
       {overlay === "assistant-management" && !mobile && <AssistantManagement onClose={() => setOverlay(null)} go={setRoute} />}
-      {overlay === "capture" && <CaptureOverlay onClose={() => setOverlay(null)} say={say} />}
+      {(overlay === "capture" || overlay === "capture-task") && <CaptureOverlay initialKind={overlay === "capture-task" ? "task" : "capture"} onClose={() => setOverlay(null)} say={say} />}
       {overlay === "help" && <Help onClose={() => setOverlay(null)} />}
       {overlay === "endfocus" && focus?.active && <EndFocus focus={focus} onClose={() => setOverlay(null)} say={say} guard={guard} />}
       {overlay === "context" && ctxPath && <ContextDialog path={ctxPath} onClose={() => setOverlay(null)} />}
@@ -408,7 +410,7 @@ function TodayAgenda({ date, rev }: { date: string; rev: number }) {
   );
 }
 
-function TodayScreen({ rev, go, guard, say }: { rev: number; go: Go; guard: Guard; say: Say }) {
+function TodayScreen({ rev, go, guard, say, onCreateTask }: { onCreateTask(): void; rev: number; go: Go; guard: Guard; say: Say }) {
   const { data: t, error } = useApi<TodayView>("/api/today", rev);
   if (error) return <div class="empty">No se pudo cargar: {error}</div>;
   if (!t) return <div class="empty muted">Cargando…</div>;
@@ -441,7 +443,13 @@ function TodayScreen({ rev, go, guard, say }: { rev: number; go: Go; guard: Guar
           )}
         </section>
       ) : (
-        <section class="card"><div class="eyebrow">Siguiente paso</div><p class="muted">No hay tareas abiertas. Escribe una arriba («llamar a Ana mañana») y Kio la apunta.</p></section>
+        <section class="card welcome">
+          <h2>{nothing ? "Empieza por aquí" : "Tu próxima tarea"}</h2>
+          <p class="muted">{nothing
+            ? "Puedes convertir tus ideas guardadas en notas o tareas. Si ya sabes qué tienes que hacer, crea una tarea directamente."
+            : "Puedes apuntar una tarea en cuanto sepas qué quieres hacer."}</p>
+          <button onClick={onCreateTask}>Crear una tarea</button>
+        </section>
       )}
 
       {(t.overdue > 0 || t.inbox.count > 0 || t.proposals > 0) && (
@@ -464,17 +472,7 @@ function TodayScreen({ rev, go, guard, say }: { rev: number; go: Go; guard: Guar
           </div>
         </section>
       )}
-      {nothing && (
-        <section class="card welcome">
-          <h2>Empieza por aquí</h2>
-          <p class="muted">Escribe arriba lo que tengas en la cabeza, sin pensar dónde va. Kio lo guarda donde toca y siempre puedes deshacerlo:</p>
-          <ul class="plain ex">
-            <li><code>Llamar a Ana mañana</code> → una tarea con fecha</li>
-            <li><code>Idea: un blog sobre lo que leo</code> → una nota con etiquetas y enlaces</li>
-            <li><code>¿Qué tengo esta semana?</code> → Kio te responde</li>
-          </ul>
-        </section>
-      )}
+
     </div>
   );
 }
@@ -890,13 +888,14 @@ function BottomNav({ active, pending, proposals, onMore }: { active: string; pen
 }
 
 /** «Más»: el resto de pantallas en el móvil. */
-function MoreSheet({ onClose, onSearch, onJournal }: { onClose(): void; onSearch(): void; onJournal(): void }) {
+function MoreSheet({ onClose, onSearch, onJournal, onCapture }: { onCapture(): void; onClose(): void; onSearch(): void; onJournal(): void }) {
   const rest = visibleNav().filter((n) => !["/hoy", "/notas", "/tareas", "/asistente"].includes(n.route));
   return (
     <div class="scrim sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div class="modal sheet" role="dialog" aria-label="Más">
         <ul class="sheet-list">
           <li><button onClick={onSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg><span>Buscar</span></button></li>
+          <li><button onClick={onCapture}><Icon name="bandeja" /><span>Capturar</span></button></li>
           {rest.map((n) => <li key={n.route}><a href={`#${n.route}`} onClick={onClose}><Icon name={n.icon} /><span>{n.label}</span></a></li>)}
           <li><a href="#/diario" onClick={(e) => { e.preventDefault(); onJournal(); }}><Icon name="diario" /><span>Diario de hoy</span></a></li>
           <li class="sheet-sep"><a href="#/ajustes" onClick={onClose}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></svg><span>Ajustes</span></a></li>
@@ -1020,39 +1019,16 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose(): v
   );
 }
 
-function CaptureOverlay({ onClose, say }: { onClose(): void; say: Say }) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const send = async () => {
-    if (!text.trim() || busy) return;
-    setBusy(true);
-    try {
-      // En el móvil la captura pasa por la cola: sin red se guarda y se envía al abrir con red.
-      const r = isMobile() ? await submit(text) : { sent: true as const, result: await api<CaptureResult>("POST", "/api/capture", { text }) };
-      if (r.sent) say(r.result.message + (r.result.warnings.length ? ` (${r.result.warnings.join("; ")})` : ""));
-      else say("Guardada sin conexión; se enviará al abrir con red");
-      onClose();
-    } catch (e) { say(errText(e), true); setBusy(false); }
-  };
-  return (
-    <Modal title="Captura rápida" onClose={onClose}>
-      <input class="big-input" autofocus placeholder={isMobile() ? "Escribe lo que tengas en la cabeza…" : "Idea suelta · t tarea !mañana @proyecto p1 · d decisión · n nota"} value={text}
-        onInput={(e) => setText(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") void send(); }} />
-      {isMobile() && (
-        <div class="chips capture-examples" role="group" aria-label="Ejemplos">
-          {[["t ", "Tarea"], ["n ", "Nota"], ["d ", "Decisión"]].map(([prefix, label]) => <button key={prefix} class="chip btn" onClick={() => setText(prefix + text.replace(/^[tnd] /, ""))}>{label}</button>)}
-        </div>
-      )}
-      <p class="muted small">{isMobile() ? "Sin más, va a la Bandeja. Con Tarea, Nota o Decisión se guarda ya clasificada. Pulsa Intro para guardar." : "Enter para guardar. Sin prefijo va a la Bandeja; nada se organiza solo."}</p>
-    </Modal>
-  );
-}
-
-interface PaletteItem { label: string; hint?: string; run(): void }
+interface PaletteItem { label: string; hint?: string; snippet?: string; run(): void }
 
 function Palette(p: { go(r: string): void; onClose(): void; newNote(): void; newProject(): void; journal(): void; toggleFocus(): void; focusActive: boolean; manageAssistant(): void }) {
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [response, setResponse] = useState<{ query: string; hits: SearchHit[] | null } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const input = useRef<HTMLInputElement>(null);
+  const query = q.trim();
+  const current = response?.query === query ? response : null;
+  const hits = current?.hits ?? [];
   const [sel, setSel] = useState(0);
   const cmds: PaletteItem[] = [
     ...visibleNav().map((n) => ({ label: `Ir a ${n.label}`, hint: isMobile() ? undefined : `g ${n.key}`, run: () => p.go(n.route) })),
@@ -1062,45 +1038,66 @@ function Palette(p: { go(r: string): void; onClose(): void; newNote(): void; new
     ...(isMobile() ? [] : [{ label: p.focusActive ? "Terminar foco" : "Iniciar foco", hint: "f", run: p.toggleFocus }]),
   ];
   useEffect(() => {
-    if (q.trim().length < 2) { setHits([]); return; }
+    if (query.length < 2) return;
     let dead = false;
     const t = setTimeout(() => {
-      api<SearchHit[]>("GET", `/api/search?q=${encodeURIComponent(q)}&limit=12`).then((h) => { if (!dead) setHits(h); }, () => {});
+      api<SearchHit[]>("GET", `/api/search?q=${encodeURIComponent(query)}&limit=12`).then(
+        hits => { if (!dead) setResponse({ query, hits }); },
+        () => { if (!dead) setResponse({ query, hits: null }); },
+      );
     }, 90);
     return () => { dead = true; clearTimeout(t); };
-  }, [q]);
-  const ql = q.trim().toLowerCase();
+  }, [query, attempt]);
+  const ql = query.toLowerCase();
   const shownCmds = ql ? cmds.filter((c) => c.label.toLowerCase().includes(ql)) : cmds;
   const items: PaletteItem[] = [
     ...hits.map((h) => ({
       label: h.title, hint: h.type,
       run: () => p.go(h.type === "project" ? `/proyecto/${h.path}` : `/nota/${h.path}`),
       snippet: h.snippet,
-    } as PaletteItem & { snippet?: string })),
+    })),
     ...shownCmds,
   ];
   useEffect(() => setSel(0), [q, hits.length]);
+  useEffect(() => {
+    document.getElementById(`palette-option-${sel}`)?.scrollIntoView({ block: "nearest" });
+  }, [sel]);
   const key = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(items.length - 1, s + 1)); }
+    if (e.isComposing) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.max(0, Math.min(items.length - 1, s + 1))); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
     else if (e.key === "Enter") { e.preventDefault(); items[sel]?.run(); }
   };
   return (
-    <div class="scrim top" onMouseDown={(e) => { if (e.target === e.currentTarget) p.onClose(); }}>
-      <div class="modal palette" role="dialog" aria-label="Buscar o ejecutar">
-        <input class="big-input" autofocus placeholder="Buscar notas, tareas, proyectos… o escribir un comando" value={q} onInput={(e) => setQ(e.currentTarget.value)} onKeyDown={key} />
-        <ul class="plist" role="listbox">
+    <WorkspaceDialog className="palette" label="Buscar o ejecutar" onClose={p.onClose}>
+        <div class="palette-head">
+          <input ref={input} class="big-input" autofocus role="combobox" aria-label="Buscar notas, tareas, proyectos o comandos"
+            aria-controls="palette-results" aria-expanded="true" aria-autocomplete="list" aria-activedescendant={items[sel] ? `palette-option-${sel}` : undefined}
+            placeholder="Buscar o ejecutar un comando…" value={q} onInput={e => {
+              const value = e.currentTarget.value;
+              if (value.trim() !== query) { setResponse(null); setSel(0); }
+              setQ(value);
+            }} onKeyDown={key} />
+          <button class="ghost" aria-label="Cerrar búsqueda" onClick={p.onClose}>Cerrar</button>
+        </div>
+        <ul class="plist" role="listbox" id="palette-results" aria-label="Resultados y comandos">
           {items.map((it, i) => (
-            <li key={i} role="option" aria-selected={i === sel} class={i === sel ? "sel" : ""} onMouseEnter={() => setSel(i)} onClick={() => it.run()}>
+            <li key={i} id={`palette-option-${i}`} role="option" aria-selected={i === sel} class={i === sel ? "sel" : ""} onMouseEnter={() => setSel(i)} onClick={() => it.run()}>
               <span>{it.label}</span>
-              {(it as { snippet?: string }).snippet && <span class="snip" dangerouslySetInnerHTML={{ __html: snippetHtml((it as { snippet?: string }).snippet!) }} />}
+              {it.snippet && <span class="snip" dangerouslySetInnerHTML={{ __html: snippetHtml(it.snippet) }} />}
               {it.hint && <span class="chip">{it.hint}</span>}
             </li>
           ))}
-          {items.length === 0 && <li class="muted">Sin resultados</li>}
         </ul>
-      </div>
-    </div>
+        <div role="status" class="palette-status muted small">
+          {query.length === 1 ? "Escribe al menos dos caracteres para buscar en tus notas y tareas."
+            : query.length >= 2 && !current ? "Buscando…"
+            : current?.hits === null ? <>No se pudo completar la búsqueda. <button onClick={() => {
+                setResponse(null); setAttempt(a => a + 1); input.current?.focus();
+              }}>Reintentar</button></>
+            : !items.length ? `Sin resultados para «${query}».` : null}
+        </div>
+    </WorkspaceDialog>
   );
 }
 
