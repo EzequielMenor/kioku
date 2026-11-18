@@ -297,4 +297,13 @@ En ninguna pasada con el código final afirmó Kio un cambio que no estuviera en
 
 **Instalador (Bash 3.2 de macOS).** No se encontró registro del error original de la línea 138. Esta versión solo se diferencia de la ya validada en macOS real (`e315550`) en el array `build_env`, que nunca está vacío, así que es segura con `set -u` en Bash 3.2. La comprobación final es el workflow `macos-validation`, que lanza las pruebas del instalador con el `/bin/bash` del sistema (Bash 3.2) en un macOS real. Al juntarlo todo en `main` falló una cosa: instalaba y arrancaba bien, pero la compilación de Swift dejaba restos en el TMPDIR de quien lo llama. Ahora la compilación usa un TMPDIR propio dentro de la carpeta de trabajo, que se borra al terminar.
 
+**macOS real (GitHub Actions, sobre `main` 50a6b1d):**
+- `macos-validation` en verde en Intel y Apple Silicon (run 44293742582): suite completa e instalador con el Bash 3.2 del sistema, sin restos en TMPDIR.
+- `macos-native` en verde (run 44293764996): Kioku.app nativa, prueba de humo de 44 de 44 comprobaciones.
+
+Al integrar salieron y se corrigieron tres fallos:
+- el Ollama simulado de la prueba de humo solo hablaba `/v1`, y Kio ya usa `/api/chat` (ahora `test/mock-ollama.test.ts` lo comprueba también en Linux);
+- la prueba del instalador esperaba la app sin Swift (ahora la fija con `KIOKU_NATIVE=0`; la nativa la recorre `macos-native`);
+- launchd tarda un poco en retirar el servicio, y ahora se le espera.
+
 **Sin verificar:** el instalador en el Mac mini real, Kioku.app con ratón y teclado reales, el iPhone emparejado y Omarchy como cliente. La lista está en [version-candidata.md](version-candidata.md#comprobaciones-manuales-pendientes-las-haces-tú).
