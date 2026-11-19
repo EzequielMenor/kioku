@@ -552,6 +552,7 @@ test("Bases tipo Notion: preset Prioridad, MultiCell, alta inline en Tabla y Tab
     await until(() => p.ev<boolean>(`!${q("[role=dialog]")}`), "MultiCell cerrado");
 
     // 3. Alta inline "+ Nueva fila" en el pie de la tabla.
+    assert.equal(await p.ev(`document.querySelectorAll("main .addbar").length`), 0);
     await clickSel(p, `.dbtable tfoot .inline-row-btn`);
     await until(() => p.ev<boolean>(`!!${q(`input[aria-label="Añadir fila en la tabla"]`)}`), "input inline en Tabla");
     await typeInto(p, `input[aria-label="Añadir fila en la tabla"]`, "Neuromante", true);

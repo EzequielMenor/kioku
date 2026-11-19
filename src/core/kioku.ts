@@ -434,7 +434,14 @@ export class Kioku {
 
     const backlinkPaths = this.index.backlinks(rel).map((b) => b.path);
     if (nextText !== cur.text) await this.vault.write(rel, nextText, cur.hash);
-    if (destRel !== rel) await this.vault.move(rel, destRel);
+    if (destRel !== rel) {
+      const focus = curType === "task" || curType === "project" ? this.focusState() : null;
+      const targetPath = curType === "task" ? focus?.taskPath : focus?.projectPath;
+      await this.vault.move(rel, destRel);
+      if (focus?.id && targetPath === rel) {
+        await this.log.record("focus.move", destRel, { startedAt: focus.id, type: curType });
+      }
+    }
     const after = await this.vault.read(destRel);
 
     const mapper = createRenameLinkMapper(rel, parsed.title, destRel, nextBase, titleChanged ? nextTitle : parsed.title);
@@ -963,14 +970,23 @@ export class Kioku {
   focusState(): FocusState {
     const ev = this.index.events({ kinds: ["focus.start", "focus.end"], limit: 1 })[0];
     if (!ev || ev.kind === "focus.end") return { active: false };
-    const d = ev.data as { task?: string | null; project?: string | null };
-    const task = d.task ? this.index.getNote(d.task) : null;
-    const project = d.project ? this.index.getNote(d.project) : null;
+    const d = ev.data as { task?: string | null; project?: string | null; taskUid?: string | null; projectUid?: string | null };
+    const task = this.resolveFocusTarget(ev.ts, "task", d.task, d.taskUid);
+    const project = this.resolveFocusTarget(ev.ts, "project", d.project, d.projectUid);
     return {
       active: true, id: ev.ts, startedAt: ev.ts,
-      taskPath: d.task ?? null, taskTitle: task?.title ?? null,
-      projectPath: d.project ?? null, projectTitle: project?.title ?? null,
+      taskPath: task?.path ?? null, taskTitle: task?.title ?? null,
+      projectPath: project?.path ?? null, projectTitle: project?.title ?? null,
     };
+  }
+
+  private resolveFocusTarget(startedAt: string, type: "task" | "project", rel?: string | null, uid?: string | null): NoteRow | null {
+    if (!rel) return null;
+    // Los focos anteriores y las notas importadas pueden depender solo de la ruta.
+    const knownPath = uid ? rel : this.index.focusMovedPath(startedAt, type) ?? rel;
+    const current = this.index.getNote(knownPath);
+    const note = uid && current?.uid !== uid ? this.index.getNoteByUid(uid) : current;
+    return note?.type === type ? note : null;
   }
 
   private isParked(t: TaskRow): boolean {
@@ -989,7 +1005,10 @@ export class Kioku {
       if ((task.fm.status ?? "todo") === "todo") task = await this.setTaskStatus(task.path, "doing");
     }
     if (!task && !project) throw new VaultError("invalid", "Elige una tarea o un proyecto");
-    await this.log.record("focus.start", task?.path ?? project, { task: task?.path ?? null, project });
+    await this.log.record("focus.start", task?.path ?? project, {
+      task: task?.path ?? null, taskUid: task?.uid ?? null,
+      project, projectUid: project ? this.index.getNote(project)?.uid ?? null : null,
+    });
     this.changed("focus", null);
     return this.focusState();
   }

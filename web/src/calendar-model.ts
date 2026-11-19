@@ -273,12 +273,8 @@ export function gapBlock(task: CalendarTask, gap: Gap): Draft {
   return { kind: "block", title: task.title, start: gap.start, end: addMinutes(gap.start, task.estimate ?? 30), taskPath: task.path };
 }
 
-// ───────────── Tareas: panel de pendientes, formulario y arrastre a la agenda ─────────────
+// ───────────── Tareas: selección y creación desde una actividad ─────────────
 
-/** Tipo del arrastre de una tarea del panel; las actividades se arrastran con `text/plain`. */
-export const TASK_MIME = "application/x-kioku-task";
-/** Duración del bloque de una tarea sin estimación. */
-export const DEFAULT_TASK_MINUTES = 30;
 const MAX_TASK_MINUTES = 24 * 60;
 
 /** Lo escrito en el formulario de una tarea (todo texto; vacío = sin valor). */
@@ -286,19 +282,6 @@ export interface TaskForm { title: string; due: string; estimate: string; projec
 export type TaskCheck<T> = { ok: true; value: T } | { ok: false; error: string };
 /** Lo que se envía al crear: solo los campos con valor. */
 export interface TaskValues { title: string; due?: string; estimate?: number; projectPath?: string }
-/** Lo que se envía al editar: solo lo que cambió; `null` quita el valor. */
-export interface TaskPatch { title?: string; due?: string | null; estimate?: number | null; projectPath?: string | null }
-
-/** Fecha de vencimiento del panel, relativa al día actual y no al día mostrado en la agenda. */
-export function taskDueLabel(due: string, today: string): string {
-  const days = diffDays(today, due);
-  const date = `${dayMonth(due)} de ${due.slice(0, 4)}`;
-  if (days < 0) return `vencida · ${date}`;
-  if (days === 0) return "vence hoy";
-  if (days === 1) return "vence mañana";
-  if (days < 7) return `vence ${weekdayName(due)}`;
-  return `vence ${date}`;
-}
 
 /** Pendientes (por hacer o en curso): las que vencen antes primero, luego prioridad y título; sin fecha al final. */
 export const pendingTasks = (tasks: CalendarTask[]): CalendarTask[] => tasks
@@ -323,34 +306,6 @@ export function taskInput(form: TaskForm): TaskCheck<TaskValues> {
   if (!r.ok) return r;
   const { title, due, estimate, projectPath } = r.value;
   return { ok: true, value: { title, ...(due ? { due } : {}), ...(estimate !== null ? { estimate } : {}), ...(projectPath ? { projectPath } : {}) } };
-}
-
-/** Editar en el sitio: solo lo que cambió respecto a la tarea; vaciar un campo lo quita (`null`). */
-export function taskChanges(task: Pick<CalendarTask, "title" | "due" | "estimate" | "projectPath">, form: TaskForm): TaskCheck<TaskPatch> {
-  const r = readTaskForm(form);
-  if (!r.ok) return r;
-  const next = r.value, patch: TaskPatch = {};
-  if (next.title !== task.title) patch.title = next.title;
-  if (next.due !== (task.due ?? null)) patch.due = next.due;
-  if (next.estimate !== (task.estimate ?? null)) patch.estimate = next.estimate;
-  if (next.projectPath !== (task.projectPath ?? null)) patch.projectPath = next.projectPath;
-  return { ok: true, value: patch };
-}
-
-/** El bloque que nace al soltar una tarea en la agenda: dura lo que estima (30 min si no estima) y queda enlazado a ella. */
-export function taskDraftBlock(task: Pick<CalendarTask, "title" | "path" | "estimate">, start: string): Draft {
-  return { kind: "block", title: task.title, start, end: addMinutes(start, task.estimate ?? DEFAULT_TASK_MINUTES), taskPath: task.path };
-}
-
-/** Inicio de un bloque soltado en un día sin hora concreta (semana o lista): el primer hueco libre donde cabe; si no, la hora inicial por defecto. */
-export function dropStart(items: CalendarEntry[], day: string, now: Date, minutes: number): string {
-  return openGaps(items, day, now).find((g) => g.minutes >= minutes)?.start ?? defaultSlot(day, now).start;
-}
-
-/** Minutos desde la medianoche de `day` → «YYYY-MM-DDTHH:mm», sin pasar de las 23:45 (un bloque no nace a medianoche). */
-export function minuteStamp(day: string, minute: number): string {
-  const m = Math.max(0, Math.min(24 * 60 - 15, minute));
-  return `${day}T${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
 /** Horas iniciales al crear: el próximo cuarto de hora de hoy, o las 09:00. */

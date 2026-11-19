@@ -267,6 +267,7 @@ test("override: inválido falla cerrado (no cae en assistant.json, Hermes ni Cod
     ["provider desconocido", overrideText({ provider: SECRET })],
     ["sin provider", overrideText({ default: "m" })],
     ["modelo con forma de clave", overrideText({ provider: "openrouter", default: SECRET })],
+    ["modelo con forma de clave de OpenCode", overrideText({ provider: "opencode-go", default: "oc_" + SECRET })],
     ["modelo inválido", overrideText({ provider: "openrouter", default: `a b ${SECRET}` })],
     ["api_mode inválido", overrideText({ provider: "openrouter", api_mode: SECRET })],
     ["base_url en otro provider", overrideText({ provider: "openrouter", base_url: "https://x.example.com" })],
@@ -382,7 +383,8 @@ test("override: serializar y volver a leer conserva exactamente la selección, c
 
 test("proveedores: lista cerrada con las variables de clave de cada uno (nunca valores)", () => {
   const list = describeProviders();
-  assert.deepEqual(list.map((p) => p.id), ["openai-codex", "openrouter", "anthropic", "gemini", "deepseek", "zai", "kimi-coding", "minimax", "ollama", "ollama-launch", "custom"]);
+  assert.deepEqual(list.map((p) => p.id), ["openai-codex", "openrouter", "opencode-go", "anthropic", "gemini", "deepseek", "zai", "kimi-coding", "minimax", "ollama", "ollama-launch", "custom"]);
+  assert.deepEqual(list.find((p) => p.id === "opencode-go"), { id: "opencode-go", keys: ["OPENCODE_GO_API_KEY"], keylessLocal: false, ownBaseUrl: false });
   assert.deepEqual(list.find((p) => p.id === "gemini")?.keys, ["GOOGLE_API_KEY", "GEMINI_API_KEY"]);
   assert.deepEqual(list.find((p) => p.id === "custom"), { id: "custom", keys: ["OPENAI_API_KEY"], keylessLocal: true, ownBaseUrl: true });
 });

@@ -107,10 +107,6 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
     const props: Record<string, unknown> = {};
     for (const f of view.filter) if (f.op === "is" && f.value !== undefined && !READONLY.has(f.prop)) props[f.prop] = f.value;
     if (extraProps) Object.assign(props, extraProps);
-    else {
-      const firstLane = db.available.find((c) => c.key === view.group)?.options?.[0]?.name;
-      if (kind === "board" && view.group && !READONLY.has(view.group) && props[view.group] === undefined && firstLane) props[view.group] = firstLane;
-    }
     const r = await guard(() => api<{ path: string }>("POST", "/api/database/row", { path, title: t, props }));
     if (r && customTitle === undefined) setTitle("");
     return !!r;
@@ -152,6 +148,7 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
   };
   const menu = isMobile() ? null : { path, guard, say, edit, onSchema: afterSchema };
   const tracker = kind === "habits" || kind === "progress";
+  const boardNeedsAdd = menu && kind === "board" && (!view.group || READONLY.has(view.group));
 
   return (
     <div class="page wide">
@@ -185,19 +182,16 @@ export function DatabaseView({ path, rev, go, guard, say }: { path: string; rev:
       {custom && menu && <CustomizePanel db={db} view={view} edit={edit} menu={menu} path={path} onClose={() => setCustom(false)} />}
       {panel && <ViewPanel view={view} available={db.available} edit={edit} />}
 
-      {tracker ? null : isMobile()
-        ? <div class="addbar"><span class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</span></div>
-        : <form class="inline addbar" onSubmit={(e) => { e.preventDefault(); void addRow(); }}>
-          <input placeholder="Nueva fila…  (título)" value={title} onInput={(e) => setTitle(e.currentTarget.value)} aria-label="Título de la nueva fila" />
-          <button class="primary" disabled={!title.trim()}>Añadir</button>
-          <span class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</span>
-        </form>}
-
       {kind === "table" && <Table res={res} view={view} sortBy={sortBy} setCell={setCell} menu={menu} addRow={addRow} />}
       {kind === "list" && <List res={res} setCell={setCell} menu={menu} addRow={addRow} />}
       {kind === "habits" && <Habits res={res} view={view} setCell={setCell} addRow={isMobile() ? null : (t) => addRow(t)} />}
       {kind === "progress" && <Progress res={res} view={view} setCell={setCell} />}
       {kind === "board" && <Board res={res} view={view} available={db.available} edit={edit} setCell={setCell} menu={menu} addRow={addRow} />}
+      {boardNeedsAdd && <form class="inline addbar" onSubmit={(e) => { e.preventDefault(); void addRow(); }}>
+        <input placeholder="Título de la nueva fila…" value={title} onInput={(e) => setTitle(e.currentTarget.value)} aria-label="Título de la nueva fila" />
+        <button class="primary" disabled={!title.trim()}>Añadir</button>
+      </form>}
+      {!tracker && <p class="muted small">{res.total === 1 ? "1 fila" : `${res.total} filas`}</p>}
     </div>
   );
 }

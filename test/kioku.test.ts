@@ -168,6 +168,57 @@ test("Guardado con conflicto: no sobrescribe cambios externos", async () => {
   } finally { cleanup(); }
 });
 
+test("el foco sigue a la tarea y al proyecto al renombrarlos y reconstruir el índice", async () => {
+  const { root, cleanup } = tmpVault();
+  const j = await Kioku.open({ root });
+  try {
+    const project = await j.createProject("Proyecto anterior");
+    const task = await j.createTask({ title: "Tarea anterior", projectPath: project.path });
+    const started = await j.startFocus({ taskPath: task.path });
+    const renamed = await j.renameNote(task.path, { title: "Tarea nueva" }, (await j.readNote(task.path)).hash);
+    const moved = await j.renameNote(project.path, { title: "Proyecto nuevo" }, (await j.readNote(project.path)).hash);
+    await j.reindex();
+    assert.deepEqual(j.focusState(), {
+      ...started, taskPath: renamed.path, taskTitle: "Tarea nueva", projectPath: moved.path, projectTitle: "Proyecto nuevo",
+    });
+    await j.endFocus({ done: true, checkpoint: "Continuar aquí" });
+    assert.equal(j.index.getNote(renamed.path)?.fm.status, "done");
+    assert.match((await j.readNote(moved.path)).text, /Continuar aquí/);
+  } finally { j.close(); cleanup(); }
+});
+
+test("un foco antiguo con la ruta desaparecida se puede terminar sin abrir ni completar esa ruta", async () => {
+  const { root, cleanup } = tmpVault();
+  const j = await Kioku.open({ root });
+  try {
+    await j.record("focus.start", "Tareas/Antigua.md", { task: "Tareas/Antigua.md", project: null });
+    assert.equal(j.focusState().taskPath, null);
+    await j.endFocus({ done: true });
+    assert.equal(j.focusState().active, false);
+  } finally { j.close(); cleanup(); }
+});
+
+test("el foco conserva las rutas de notas antiguas sin ID cuando se renombran desde Kioku", async () => {
+  const taskPath = "Tareas/Anterior.md";
+  const projectPath = "Proyectos/Anterior.md";
+  const { root, cleanup } = tmpVault({
+    [taskPath]: "---\ntype: task\nstatus: doing\n---\n",
+    [projectPath]: "---\ntype: project\n---\n",
+  });
+  const j = await Kioku.open({ root });
+  try {
+    await j.record("focus.start", taskPath, { task: taskPath, project: projectPath });
+    const task = await j.renameNote(taskPath, { title: "Tarea actual" }, (await j.readNote(taskPath)).hash);
+    const project = await j.renameNote(projectPath, { title: "Proyecto actual" }, (await j.readNote(projectPath)).hash);
+    await j.reindex();
+    assert.equal(j.focusState().taskPath, task.path);
+    assert.equal(j.focusState().projectPath, project.path);
+    await j.endFocus({ done: true, checkpoint: "Continuar aquí" });
+    assert.equal(j.index.getNote(task.path)?.fm.status, "done");
+    assert.match((await j.readNote(project.path)).text, /Continuar aquí/);
+  } finally { j.close(); cleanup(); }
+});
+
 test("Reindex: borrar el índice no pierde nada y reproduce el mismo estado", async () => {
   const { root, cleanup } = tmpVault();
   try {

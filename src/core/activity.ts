@@ -4,7 +4,7 @@ import type { Vault } from "./vault.ts";
 import type { EventRow, Index } from "./index.ts";
 
 export type EventKind =
-  | "note.open" | "note.edit" | "capture" | "task.status" | "focus.start" | "focus.end"
+  | "note.open" | "note.edit" | "capture" | "task.status" | "focus.start" | "focus.end" | "focus.move"
   | "checkpoint" | "decision" | "proposal.created" | "proposal.applied" | "proposal.rejected" | "import" | "capture.convert" | "ai.request" | "ai.organize" | "ai.action" | "ai.undo" | "ai.memory.delete";
 
 export class ActivityLog {

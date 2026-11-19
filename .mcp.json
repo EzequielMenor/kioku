@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "engram-compartido": {
+      "command": "/opt/homebrew/bin/engram",
+      "args": [
+        "mcp",
+        "--project",
+        "kioku",
+        "--tools=mem_current_project,mem_search,mem_get_observation,mem_save"
+      ],
+      "env": {
+        "ENGRAM_DATA_DIR": "/Users/ezequielmenor/.engram",
+        "ENGRAM_CLOUD_AUTOSYNC": "0",
+        "ENGRAM_CLOUD_SYNC": "0"
+      }
+    }
+  }
+}

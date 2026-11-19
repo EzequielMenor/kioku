@@ -63,15 +63,16 @@ const NAV: { route: string; label: string; key: string; icon: string }[] = [
   { route: "/asistente", label: "Kio", key: "a", icon: "asistente" },
   { route: "/notas", label: "Notas", key: "n", icon: "notas" },
   { route: "/tareas", label: "Tareas", key: "t", icon: "tareas" },
+  { route: "/proyectos", label: "Proyectos", key: "p", icon: "proyectos" },
   { route: "/calendario", label: "Calendario", key: "c", icon: "calendario" },
   { route: "/bases", label: "Bases", key: "d", icon: "bases" },
 ];
 /** Pantallas que viven dentro de una sección: siguen teniendo ruta y atajo «g …», pero no ocupan sitio en el menú. */
 const SECONDARY: { route: string; key: string }[] = [
-  { route: "/bandeja", key: "b" }, { route: "/proyectos", key: "p" }, { route: "/grafo", key: "g" }, { route: "/propuestas", key: "r" }, { route: "/ajustes", key: "s" },
+  { route: "/bandeja", key: "b" }, { route: "/grafo", key: "g" }, { route: "/propuestas", key: "r" }, { route: "/ajustes", key: "s" },
 ];
 /** Sección del menú que se ilumina para cada ruta. */
-const SECTION_OF: Record<string, string> = { bandeja: "/notas", nota: "/notas", grafo: "/notas", proyectos: "/tareas", proyecto: "/tareas", propuestas: "/asistente", conexiones: "/ajustes" };
+const SECTION_OF: Record<string, string> = { bandeja: "/notas", nota: "/notas", grafo: "/notas", proyecto: "/proyectos", propuestas: "/asistente", conexiones: "/ajustes" };
 
 /** Entradas de navegación que ve quien usa la interfaz (`MOBILE_HIDDEN` lista las que el móvil no tiene). */
 const visibleNav = () => NAV.filter((n) => !(isMobile() && MOBILE_HIDDEN.has(n.route)));
@@ -266,12 +267,12 @@ function App() {
   }
   const activeRoute = head ? SECTION_OF[head] ?? `/${head}` : "/hoy";
   const inbox = counts?.inbox.count ?? 0;
-  const subRoute = head === "nota" ? null : head === "proyecto" ? "/proyectos" : head === "asistente" && arg ? "/asistente/actividad" : `/${head ?? "hoy"}`;
+  const subRoute = head === "nota" ? null : head === "asistente" && arg ? "/asistente/actividad" : `/${head ?? "hoy"}`;
   const tabs = subRoute && ({
     "/notas": [["/notas", "Notas"], ["/bandeja", inbox ? `Sin organizar · ${inbox}` : "Sin organizar"], ["/grafo", "Grafo"]],
-    "/tareas": [["/tareas", "Tareas"], ["/proyectos", "Proyectos"]],
     "/asistente": [["/asistente", "Conversación"], ["/propuestas", counts?.proposals ? `Propuestas · ${counts.proposals}` : "Propuestas"], ["/asistente/actividad", "Actividad"]],
   } as Record<string, [string, string][]>)[activeRoute];
+  const sectionClass = tabs && activeRoute === "/notas" ? "notes-section" : activeRoute === "/tareas" ? "tasks-section" : undefined;
 
   return (
     <div class="shell">
@@ -294,7 +295,7 @@ function App() {
         {demo && <DemoBar onReset={() => { resetDemoState(); say("Datos de prueba restaurados."); }} onLanding={() => setRoute("/inicio")} />}
         {!mobile && !demo && !isLanding && <UpdateBanner go={setRoute} />}
         {focus?.active && !mobile && <FocusBar focus={focus} onEnd={() => setOverlay("endfocus")} go={setRoute} />}
-        <main>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{tabs && <SectionTabs tabs={tabs} active={subRoute!} />}{view}</main>
+        <main class={sectionClass}>{mobile && !off.online && <div class="offline-bar" role="status">{off.lastSync ? `Sin conexión · datos de ${formatAgo(off.lastSync, Date.now())}` : "Sin conexión · aún sin copia"}</div>}{tabs && <SectionTabs tabs={tabs} active={subRoute!} />}{view}</main>
       </div>
 
       <BottomNav active={activeRoute} pending={off.pending + off.failed + off.mutations} proposals={counts?.proposals ?? 0} onMore={() => setOverlay("more")} />
@@ -335,11 +336,11 @@ function FocusBar({ focus, onEnd, go }: { focus: FocusState; onEnd(): void; go: 
     <div class="focusbar" role="status">
       <span class="dot" />
       <div class="ftxt">
-        <strong>{focus.taskTitle ?? focus.projectTitle ?? "Foco libre"}</strong>
+        <strong>{focus.taskTitle ?? focus.projectTitle ?? "Foco en curso"}</strong>
         {focus.taskTitle && focus.projectTitle && <span class="muted"> · {focus.projectTitle}</span>}
         <span class="muted"> · {mins} min</span>
       </div>
-      {focus.taskPath && <button onClick={() => go(`/nota/${focus.taskPath}`)}>Abrir</button>}
+      {(focus.taskPath || focus.projectPath) && <button onClick={() => go(focus.taskPath ? `/nota/${focus.taskPath}` : `/proyecto/${focus.projectPath}`)}>Abrir</button>}
       <button class="primary" onClick={onEnd}>Terminar foco</button>
     </div>
   );
@@ -509,7 +510,7 @@ function InboxView({ rev, go, say, guard }: { rev: number; go: Go; say: Say; gua
     say("Descartada.");
   });
   return (
-    <div class="page narrow">
+    <div class="page">
       <header class="page-head">
         <h1>Sin organizar</h1>
         {data && data.length > 0 && <button onClick={() => void organize()}>Ordenar con Kio</button>}
@@ -660,7 +661,7 @@ function TasksView({ rev, go, guard, today }: { rev: number; go: Go; guard: Guar
   const upcoming = byDue((d) => !!d && (!today || d > today));
   const undated = byDue((d) => !d);
   return (
-    <div class={`page ${mode === "lista" ? "narrow" : "wide"}`}>
+    <div class="page wide">
       <header class="page-head"><h1>Tareas</h1><div class="row">
         {!mobile && <div class="seg" role="tablist" aria-label="Vista">
           {(["lista", "tabla", "tablero"] as const).map((m) => <button key={m} role="tab" aria-selected={mode === m} class={mode === m ? "on" : ""} onClick={() => setMode(m)}>{m[0].toUpperCase() + m.slice(1)}</button>)}
@@ -713,7 +714,7 @@ function NotesView({ rev, go, onNew, onJournal }: { rev: number; go: Go; onNew(t
   const list = listKnowledgeNotes(knowledge, { subType: type, folder: activeFolder, query: q });
   const reset = () => { setType("all"); setFolder("all"); setQ(""); };
   return (
-    <div class="page narrow">
+    <div class="page">
       <header class="page-head">
         <h1>Notas</h1>
         <div class="row">
@@ -873,7 +874,7 @@ function LockedScreen() {
 }
 
 /** Pantallas que en el móvil viven dentro de «Más»: con una de ellas abierta, ese botón es el activo. */
-const MORE_ROUTES = ["/calendario", "/bases", "/ajustes"];
+const MORE_ROUTES = ["/proyectos", "/calendario", "/bases", "/ajustes"];
 
 function BottomNav({ active, pending, proposals, onMore }: { active: string; pending: number; proposals: number; onMore(): void }) {
   const items: [string, string, string][] = [["/hoy", "Hoy", "hoy"], ["/notas", "Notas", "notas"], ["/tareas", "Tareas", "tareas"]];
@@ -1115,7 +1116,7 @@ function snippetHtml(s: string): string {
 function Help({ onClose }: { onClose(): void }) {
   const rows: [string, string][] = [
     ["Ctrl K  ·  /", "Buscar y comandos"], ["c", "Captura rápida"], ["a", "Hablar con el asistente"], ["f", "Iniciar / terminar foco"],
-    ["g h · a · n · t · c · d  ·  b bandeja · p proyectos · g grafo · r propuestas · s ajustes", "Ir a Hoy · Kio · Notas · Tareas · Calendario · Bases (y a Sin organizar, Proyectos, Grafo, Propuestas o Ajustes)"],
+    ["g h · a · n · t · p · c · d  ·  b bandeja · g grafo · r propuestas · s ajustes", "Ir a Hoy · Kio · Notas · Tareas · Proyectos · Calendario · Bases (y a Sin organizar, Grafo, Propuestas o Ajustes)"],
     ["Ctrl Enter (editor)", "Seguir [[enlace]] o marcar casilla"], ["/ · Ctrl B · Ctrl I (editor)", "Menú de formato · negrita · cursiva"], ["Ctrl S (editor)", "Guardar ahora (si no, autoguardado)"], ["j · k · Enter · x", "En listas: bajar · subir · abrir · marcar hecha"], ["Esc", "Cerrar"],
   ];
   return (

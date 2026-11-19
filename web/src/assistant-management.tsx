@@ -22,6 +22,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const PROVIDER_LABEL: Record<string, string> = {
   "openai-codex": "Codex (tu suscripción)", openrouter: "OpenRouter", anthropic: "Anthropic", gemini: "Google Gemini", deepseek: "DeepSeek",
+  "opencode-go": "OpenCode Go",
   zai: "Z.AI (GLM)", "kimi-coding": "Kimi", minimax: "MiniMax", ollama: "Ollama (local)", "ollama-launch": "Ollama lanzado por Hermes (local)", custom: "Personalizado · endpoint compatible",
 };
 const SOURCE_LABEL: Record<string, string> = {
@@ -150,7 +151,7 @@ function ModelSection({ data, onData }: { data: ModelResponse; onData(d: ModelRe
     setBusy(false);
   };
   const save = () => send(
-    { provider, model, api_mode: apiMode, ...(info?.ownBaseUrl ? { base_url: baseUrl.trim(), confirm_origin: remote ? confirm : "" } : {}) },
+    { provider, model, api_mode: provider === "opencode-go" ? "chat_completions" : apiMode, ...(info?.ownBaseUrl ? { base_url: baseUrl.trim(), confirm_origin: remote ? confirm : "" } : {}) },
     "Guardado. La próxima pregunta al asistente usará esta selección.",
   );
 
@@ -178,7 +179,7 @@ function ModelSection({ data, onData }: { data: ModelResponse; onData(d: ModelRe
           </select>
         </label>
         <label>Modelo
-          <input value={model} maxLength={200} spellcheck={false} autocomplete="off" placeholder="Vacío = el modelo por defecto de Hermes" onInput={(e) => setModel(e.currentTarget.value)} />
+          <input value={model} maxLength={200} spellcheck={false} autocomplete="off" required={provider === "opencode-go"} placeholder={provider === "opencode-go" ? "ID del modelo de OpenCode Go" : "Vacío = el modelo por defecto de Hermes"} onInput={(e) => setModel(e.currentTarget.value)} />
         </label>
         {info?.ownBaseUrl && (
           <label>Dirección del endpoint
@@ -195,12 +196,12 @@ function ModelSection({ data, onData }: { data: ModelResponse; onData(d: ModelRe
             </label>
           </div>
         )}
-        <label>Modo de API
+        {provider !== "opencode-go" && <label>Modo de API
           <select value={apiMode} onChange={(e) => setApiMode(e.currentTarget.value)}>
             <option value="">Predeterminado</option>
             {data.apiModes.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-        </label>
+        </label>}
         <p class="am-keys muted small">
           {info && info.keys.length > 0
             ? <>Kioku no pide ni guarda la clave. Define <code>{info.keys[0]}</code> en <code>~/.hermes/.env</code> o en el entorno con el que arranca Kioku{info.keylessLocal ? " (con un endpoint local es opcional)" : ""}.</>

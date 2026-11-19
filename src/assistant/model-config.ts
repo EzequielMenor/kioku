@@ -8,6 +8,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
 export const DEFAULT_PROVIDER = "openai-codex";
+const OPENCODE_GO_BASE = "https://opencode.ai/inference/go/openai/v1";
 
 /** Override que escribe la interfaz de Kioku: es un fichero aparte para no reescribir `assistant.json` (y sus exclusiones). */
 export const MODEL_OVERRIDE_FILE = "assistant-model.json";
@@ -42,6 +43,7 @@ interface ProviderSpec {
 const PROVIDERS: Record<string, ProviderSpec> = {
   "openai-codex": { keys: [] },
   openrouter: { keys: ["OPENROUTER_API_KEY"] },
+  "opencode-go": { keys: ["OPENCODE_GO_API_KEY"] },
   anthropic: { keys: ["ANTHROPIC_API_KEY"] },
   gemini: { keys: ["GOOGLE_API_KEY", "GEMINI_API_KEY"] },
   deepseek: { keys: ["DEEPSEEK_API_KEY"] },
@@ -128,7 +130,7 @@ export function describeProviders(): ProviderInfo[] {
 export const apiModes = (): string[] => [...API_MODES];
 
 const OVERRIDE_WHERE = `.kioku/${MODEL_OVERRIDE_FILE}`;
-const SECRET_SHAPE = /^(?:(?:sk|pk|rk|gsk|xai|hf|ghp|gho|pplx)[-_][A-Za-z0-9_-]{16,}|github_pat_\S+|AIza[A-Za-z0-9_-]{20,})$/;
+const SECRET_SHAPE = /^(?:(?:sk|pk|rk|gsk|xai|hf|ghp|gho|pplx|oc_sk)[-_][A-Za-z0-9_-]{16,}|github_pat_\S+|AIza[A-Za-z0-9_-]{20,})$/;
 
 /** Solo campos conocidos; los que parecen una clave se rechazan sin repetir el valor (el nombre solo si es corto y neutro). */
 export function rejectFields(o: Record<string, unknown>, allowed: string[], where: string): void {
@@ -328,7 +330,9 @@ export async function resolveModel(o: { homeDir: string; userHome: string }): Pr
   const model = vault.default ?? (inherit.default !== undefined ? checkModelName(inherit.default, userWhere) : undefined);
   if (model) s.model = model;
   if (effectiveProvider !== DEFAULT_PROVIDER) {
-    const baseUrl = vault.base_url ?? (inherit.base_url !== undefined ? checkBaseUrl(inherit.base_url, userWhere) : undefined);
+    const baseUrl = effectiveProvider === "opencode-go"
+      ? OPENCODE_GO_BASE
+      : vault.base_url ?? (inherit.base_url !== undefined ? checkBaseUrl(inherit.base_url, userWhere) : undefined);
     if (baseUrl) s.baseUrl = baseUrl;
     else if (effectiveProvider === "ollama") s.baseUrl = "http://localhost:11434/v1";
     else if (spec.ownBaseUrl) throw new ModelConfigError(`El proveedor "${effectiveProvider}" necesita «base_url» (URL https://, o http:// local): defínelo en .kioku/assistant.json → "model" o en tu config de Hermes`);

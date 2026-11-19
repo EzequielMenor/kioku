@@ -45,15 +45,16 @@ const app = readFileSync(path.join(import.meta.dirname, "..", "web", "src", "app
 const appCss = readFileSync(path.join(import.meta.dirname, "..", "web", "src", "app.css"), "utf8");
 const nav = [...app.matchAll(/{ route: "(\/[a-z]+)", label: "([^"]+)", key: "(.)", icon: "([a-z]+)" }/g)].map((m) => ({ route: m[1], label: m[2], key: m[3], icon: m[4] }));
 
-test("navegación: seis entradas (Hoy · Kio · Notas · Tareas · Calendario · Bases) y Ajustes abajo; las rutas antiguas siguen vivas", () => {
-  assert.deepEqual(nav.map((n) => `${n.route}:${n.label}:${n.key}`), ["/hoy:Hoy:h", "/asistente:Kio:a", "/notas:Notas:n", "/tareas:Tareas:t", "/calendario:Calendario:c", "/bases:Bases:d"]);
+test("navegación: Proyectos tiene un acceso directo y su propio atajo", () => {
+  assert.deepEqual(nav.map((n) => `${n.route}:${n.label}:${n.key}`), ["/hoy:Hoy:h", "/asistente:Kio:a", "/notas:Notas:n", "/tareas:Tareas:t", "/proyectos:Proyectos:p", "/calendario:Calendario:c", "/bases:Bases:d"]);
   assert.equal(new Set(nav.map((n) => n.key)).size, nav.length, "ningún atajo «g …» se repite");
   assert.deepEqual([...MOBILE_HIDDEN], [], "el móvil tiene las mismas pantallas: el daemon impone su privacidad");
   for (const r of ["bandeja", "proyectos", "proyecto", "grafo", "propuestas", "conexiones", "ajustes", "calendario", "nota"]) assert.match(app, new RegExp(`case "${r}":`), `la ruta /${r} sigue funcionando`);
   // Cada ruta secundaria ilumina la sección que la contiene.
-  assert.match(app, /SECTION_OF: Record<string, string> = {[^}]*bandeja: "\/notas"[^}]*grafo: "\/notas"[^}]*proyectos: "\/tareas"[^}]*propuestas: "\/asistente"[^}]*conexiones: "\/ajustes"/);
+  assert.match(app, /SECTION_OF: Record<string, string> = {[^}]*bandeja: "\/notas"[^}]*grafo: "\/notas"[^}]*proyecto: "\/proyectos"[^}]*propuestas: "\/asistente"[^}]*conexiones: "\/ajustes"/);
   assert.match(app, /href="#\/ajustes"/, "Ajustes abajo en la barra lateral");
-  assert.match(app, /\["g h · a · n · t · c · d  ·  b bandeja · p proyectos · g grafo · r propuestas · s ajustes"/);
+  assert.match(app, /\["g h · a · n · t · p · c · d  ·  b bandeja · g grafo · r propuestas · s ajustes"/);
+  assert.match(app, /MORE_ROUTES = \["\/proyectos"/);
 });
 
 test("móvil: la barra inferior es Hoy · Notas · Kio (centro) · Tareas · Más, y «Más» no repite lo de abajo", () => {

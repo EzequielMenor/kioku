@@ -52,6 +52,31 @@ test("navegador · /notas separa notas de conocimiento, filtra por carpeta y agr
     assert.match(chips[0] ?? "", /Recursos/);
     assert.ok(await t.p.ev<boolean>(`[...document.querySelectorAll(".page-head button")].some((b) => b.textContent === "Diario de hoy")`), "el diario vive en Notas");
     assert.ok(await t.p.ev<boolean>(`[...document.querySelectorAll(".section-tabs a")].map((a) => a.textContent).join("|").match(/^Notas\|Sin organizar( · \d+)?\|Grafo$/) !== null`), "Notas · Sin organizar · Grafo");
+    const bounds = (selector: string) => t.p.ev<number[]>(`(() => {
+      const { left, width } = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+      return [left, width];
+    })()`);
+    const notes = await bounds("main > .page");
+    const tabs = await bounds(".section-tabs");
+    for (const [route, selector] of [["bandeja", "main > .page"], ["grafo", ".graph-page"]]) {
+      await t.p.ev(`document.querySelector('.section-tabs a[href="#/${route}"]').click()`);
+      await until(() => t.p.ev(`document.querySelector('.section-tabs a[href="#/${route}"]').getAttribute('aria-current') === 'page'`), route);
+      assert.deepEqual(await bounds(selector), notes);
+      assert.deepEqual(await bounds(".section-tabs"), tabs);
+    }
+
+    await t.p.ev(`document.querySelector('.sidebar a[href="#/proyectos"]').click()`);
+    await until(() => t.p.ev(`document.querySelector("main h1")?.textContent === "Proyectos"`), "acceso directo a Proyectos");
+    assert.equal(await t.p.ev(`document.querySelector(".sidebar a.active")?.getAttribute("href")`), "#/proyectos");
+
+    await t.p.ev(`document.querySelector('.sidebar a[href="#/tareas"]').click()`);
+    await until(() => t.p.ev(`document.querySelector("main h1")?.textContent === "Tareas"`), "vista Tareas");
+    const tasks = await bounds("main > .page");
+    for (const mode of ["Tabla", "Tablero", "Lista"]) {
+      await t.p.ev(`[...document.querySelectorAll('main [role=tab]')].find(b => b.textContent === "${mode}").click()`);
+      await until(() => t.p.ev(`document.querySelector('main [aria-selected=true]')?.textContent === "${mode}"`), mode);
+      assert.deepEqual(await bounds("main > .page"), tasks);
+    }
   } finally { await t.done(); }
 });
 

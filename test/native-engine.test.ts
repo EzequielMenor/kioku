@@ -62,6 +62,42 @@ async function setup(script: Reply[], o: { engineOpts?: object; models?: string[
   return { j, srv, root, model, engine, ask, done: async () => { await srv.close(); await model.close(); j.close(); cleanup(); } };
 }
 
+test("OpenCode Go usa el catálogo oficial y conserva la sesión entre envíos de una conversación", async () => {
+  const requests: { url: string; headers: Headers; redirect?: RequestRedirect }[] = [];
+  const s = await setup([], { engineOpts: {
+    env: { OPENCODE_GO_API_KEY: "test-opencode-key", OPENAI_API_KEY: "test-custom-key" },
+    fetchFn: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.startsWith("https://")) return fetch(input, init);
+      requests.push({ url, headers: new Headers(init?.headers), redirect: init?.redirect });
+      return url.endsWith("/models")
+        ? Response.json({ data: [{ id: "test-model" }] })
+        : Response.json({ choices: [{ message: { content: "De acuerdo." } }] });
+    },
+  } });
+  try {
+    const config = (provider: string, base_url?: string) => writeFileSync(path.join(s.root, ".kioku", "assistant.json"), JSON.stringify({ model: { provider, default: "test-model", base_url } }));
+    config("custom", "https://opencode.ai/zen/go/v1");
+    assert.equal((await s.ask("Hola", { conversation: "one" })).status, 200);
+    assert.match(requests.at(-1)?.headers.get("x-opencode-session") ?? "", /^ses_/);
+    config("opencode-go");
+    assert.deepEqual(await s.engine.models(), ["test-model"]);
+    assert.equal(requests.at(-1)?.url, "https://opencode.ai/inference/go/v1/models");
+    for (const conversation of ["one", "one", "two"]) assert.equal((await s.ask("Hola", { conversation })).status, 200);
+    const sends = requests.filter((r) => r.url.includes("/inference/go/openai/v1/chat/completions"));
+    assert.equal(sends.length, 3);
+    assert.ok(sends.every((r) => r.headers.get("authorization") === "Bearer test-opencode-key"));
+    assert.ok(sends.every((r) => r.headers.get("user-agent") === "Kioku" && r.redirect === "error"));
+    const ids = sends.map((r) => r.headers.get("x-opencode-session"));
+    assert.match(ids[0] ?? "", /^ses_/);
+    assert.equal(ids[0], ids[1]);
+    assert.notEqual(ids[0], ids[2]);
+    config("custom", "https://other.example/v1");
+    assert.equal((await s.ask("Hola")).status, 200);
+    assert.equal(requests.at(-1)?.headers.get("x-opencode-session"), null);
+  } finally { await s.done(); }
+});
+
 test("flujo de texto: oculta el razonamiento <think> aunque la etiqueta llegue partida y acumula las llamadas a herramientas", async () => {
   const enc = new TextEncoder();
   const lines = [

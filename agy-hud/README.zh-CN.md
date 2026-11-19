@@ -1,0 +1,482 @@
+# agy-hud: Antigravity CLI 状态栏 HUD 插件
+
+[English](README.md) | **简体中文**
+
+`agy-hud` 是一个用 TypeScript 编写、运行在 Node.js 上的紧凑型 Antigravity CLI 状态栏 HUD 插件。
+
+它从标准输入读取 Antigravity 状态栏 JSON,并渲染出一到两行简短的终端 HUD:
+
+<img src="docs/hud-preview.png" alt="agy-hud 状态栏 HUD 预览" width="700">
+
+## 运行要求
+
+- Antigravity CLI 1.1.0 或更高版本。安装、状态栏接入、渲染和 `/usage` 回退已验证至 1.4.5,安装和 `/usage` 回退另在 1.5.3 上验证;loopback 配额探测已验证至 1.1.26,从 1.2.2 起被拒,此时配额刷新改为在后台执行官方的 `agy -p /usage`(见[配额缓存](#配额缓存))。状态栏通过 CLI 原生的 `/statusline` 命令接入,0.1.8 依赖它:旧版 `plugin.json` 声明的 `components` hook 在 1.1.x 下已不被识别,因此已被移除。如果你的 CLI 是尚无 `/statusline` 的 1.0.x,则无法激活这个版本——请留在 0.1.7,或升级 CLI。
+- Node.js 18+。CLI 启动状态栏时的 `PATH` 里不必有 `node`:`hooks/status-line.sh` 还会到 nvm、fnm、Volta、mise、asdf、nodenv、n 和 Homebrew 的安装位置查找(见[找不到 Node](#找不到-node))
+- macOS、Linux 或 Windows。macOS/Linux 下使用 `hooks/status-line.sh`，Windows 下提供 `hooks/status-line.cmd`,且 CLI 必须是通过 `cmd.exe` 运行状态栏的版本,大概是 1.1.2 或更新(见[从 GitHub Release 安装](#从-github-release-安装))。
+- 如果你想要图标,需要一个带 Nerd Font 字形的终端字体。没有的话,HUD 里那四个图标会显示成方块或 `[?]`——看起来像插件坏了,其实不是,详见[图标显示成方块](#图标显示成方块)。设置 `"show_icons": false` 可以得到完全不依赖字体的纯文本 HUD。
+
+`agy-hud` 以 Antigravity 插件归档包分发,不是 npm 包。归档包内已包含打包后的运行脚本 `dist/agy-hud.js`,所以插件用户不需要运行 `npm install`。
+
+## 从 GitHub Release 安装
+
+从[最新 release](https://github.com/franksde/agy-hud/releases/latest)下载平台无关归档包:
+
+```sh
+curl -fsSL -o agy-hud.tar.gz \
+  https://github.com/franksde/agy-hud/releases/latest/download/agy-hud.tar.gz
+tar -xzf agy-hud.tar.gz
+agy plugin install ./agy-hud
+```
+
+在 Windows 上,Windows PowerShell 把 `curl` 作为 `Invoke-WebRequest` 的别名,不认这些参数,所以要调用 `curl.exe`(Windows 10 及以上自带它和 `tar`):
+
+```powershell
+curl.exe -fsSL -o agy-hud.tar.gz https://github.com/franksde/agy-hud/releases/latest/download/agy-hud.tar.gz
+tar -xzf agy-hud.tar.gz
+agy plugin install .\agy-hud
+```
+
+解压出的目录就是一个完整的插件(包含 `plugin.json`、`hooks/`、`dist/`),可以直接传给 `agy plugin install`。它需要 Node.js 18+,解压后不需要再运行 `npm install`。
+
+**重要：安装完成后，请在你的 Antigravity CLI 交互式命令行内运行以下命令来启用状态栏：**
+```
+/statusline ~/.gemini/config/plugins/agy-hud/hooks/status-line.sh
+```
+
+在 Windows 上：
+```
+/statusline %USERPROFILE%\.gemini\config\plugins\agy-hud\hooks\status-line.cmd
+```
+
+Windows 上 CLI 通过 `cmd.exe` 运行状态栏,更早的版本做不到:它们用 `sh -c` 运行,没有 `sh` 就失败([antigravity-cli#344](https://github.com/google-antigravity/antigravity-cli/issues/344),2026-07-11 关闭;CLI 的 changelog 没有写明是哪个版本修的,这之后的第一个版本是 1.1.2)。命令里不要加引号。CLI 会把引号转义成 `\"`,`cmd.exe` 不把它当引号,状态栏于是每次重绘都失败,直到 CLI 把它自动关掉([tightship#89](https://github.com/ATNexusLab/tightship/issues/89))。命令里的路径含空格时(例如 `C:\Users\Jane Doe` 这样的用户目录),改用它的 8.3 短路径(这时 `%USERPROFILE%` 也一样),在 `cmd.exe` 里运行 `for %I in ("C:\Users\Jane Doe") do @echo %~sI` 可以得到。这要求所在卷启用了 8.3 短名,Windows 可以关闭它,此时这条命令会原样打印长路径。
+
+## 从本地路径安装
+
+不要把 git clone 出来的仓库目录直接传给 `agy plugin install`。该命令会拷贝**整个**目录,于是 `.git/`、`src/`、`test/` 之类全都会被塞进插件目录;而且如果这个 clone 启用了 git fsmonitor,拷贝会直接失败在 `.git/fsmonitor--daemon.ipc` 上——那是一个 socket,不是普通文件。
+
+正确做法是先按 release 归档的文件清单构造一个干净目录,再安装它:
+
+```sh
+npm ci && npm run build && npm test
+
+stage=$(mktemp -d)/agy-hud
+mkdir -p "$stage/hooks" "$stage/dist" "$stage/docs"
+cp plugin.json config.example.json README.md README.zh-CN.md LICENSE THIRD_PARTY_NOTICES.md SECURITY.md CONTRIBUTING.md CHANGELOG.md "$stage/"
+cp hooks/status-line.sh hooks/status-line.cmd "$stage/hooks/"
+cp dist/agy-hud.js "$stage/dist/"
+cp docs/hud-preview.png "$stage/docs/"
+
+agy plugin validate "$stage"
+agy plugin install "$stage"
+```
+
+本地安装和 release 安装会落到同一个插件目录,所以上面那条 `/statusline` 命令在这里同样需要执行。
+
+## 升级
+
+**装上新版本 ≠ 升级完成。** CLI 的 `statusLine.command` 指向的是某一个具体文件,而 `agy plugin install` 并不会去更新它。如果你的 command 仍然指向旧的那份 `dist/agy-hud.js`,那么跑的就还是旧版本:HUD 一切正常、没有任何报错,你只是没升级而已。
+
+先确认你实际在跑哪一份:
+
+```sh
+grep -A2 '"statusLine"' ~/.gemini/antigravity-cli/settings.json
+```
+
+command 只会是下面两种形态之一。无论哪种,**插件根目录都是路径里的那个 `agy-hud` 目录**——不是 command 里写的 `hooks` 目录,也不是 `dist`:
+
+```text
+/Users/you/.gemini/config/plugins/agy-hud/hooks/status-line.sh
+                                   ^^^^^^^ 插件根目录
+
+node /Users/you/.gemini/config/plugins/agy-hud/dist/agy-hud.js statusline
+                                       ^^^^^^^ 插件根目录
+```
+
+Antigravity CLI 1.3.4 及以上,`doctor`(见[图标显示成方块](#图标显示成方块))会替你做这个比对:它的 `installed` 一行列出 `agy plugin install` 写入的那份,状态栏运行的不是这份时会给出提示。
+
+确认这个根目录当前是什么版本:
+
+```sh
+node <插件根目录>/dist/agy-hud.js version
+```
+
+**如果你的 HUD 现在是正常的**,最省事的升级就是覆盖这个根目录里的 bundle。接线一个字都不用改,也不需要执行任何 slash command:
+
+```sh
+curl -fsSL -o agy-hud.tar.gz \
+  https://github.com/franksde/agy-hud/releases/latest/download/agy-hud.tar.gz
+tar -xzf agy-hud.tar.gz
+cp agy-hud/dist/agy-hud.js <插件根目录>/dist/agy-hud.js
+node <插件根目录>/dist/agy-hud.js version   # 确认已经报告新版本号
+```
+
+**如果你的 HUD 在把 Antigravity CLI 升到 1.1.x 之后就消失了**,说明你之前依赖的是旧的 `components` hook,而新版 CLI 不再注册它。按上面的安装步骤装好新版,并用 `/statusline` 接一次线即可。这一步无法省略:插件没有任何 install hook 能替你写入状态栏配置——`components` 原本就是那个机制,而它已经没了。
+
+**重新安装会删掉放在插件目录里的 `config.json`。** 从 Antigravity CLI 1.1.28 起,`agy plugin install` 会把插件目录整个按源目录原样替换,bundle 旁边或插件根目录下的配置不会保留。重装前请把它移到 `~/.config/agy-hud/config.json`;生效配置处在这个位置时,`doctor` 会给出提示。像上面那样只覆盖 bundle 则不受影响。
+
+配额缓存在两种情况下都无需任何操作,见[配额缓存](#配额缓存)。
+
+## 图标显示成方块
+
+HUD 里有四个图标取自 Nerd Font 的私有区码位:模型(U+EE9C)、套餐(U+F0A3)、git 分支(U+E725)、目录(U+F07C)。终端字体如果没有这些字形,每一个都会画成方块或 `[?]`。配额重置箭头 `↻` 是标准 Unicode(U+21BB),所以它照常显示——一行 `[?] 3.8 Flash High | [?] Pro | [?] dev` 配上正常的 `↻`,就正是这个情况,而不是插件坏了。
+
+跑内置的自检:
+
+```sh
+node <插件根目录>/dist/agy-hud.js doctor
+```
+
+它会打印当前生效的配置、识别到的终端、字体扫描结果,以及一行图标探针。**能回答这个问题的只有探针**,因为别的都做不到:终端不会回传它究竟画出了什么字形,所以没有任何程序能判断你屏幕上显示的是图标还是方块。请你自己看那行探针。
+
+如果探针显示的是方块,二选一。
+
+**A. 关掉图标。** 到处都能用,下一次重绘就生效,不需要任何字体:
+
+```sh
+mkdir -p ~/.config/agy-hud
+echo '{"show_icons": false}' > ~/.config/agy-hud/config.json   # 文件已存在时请把这个键合并进去
+```
+
+在 Windows 上用 PowerShell(cmd 没有 `mkdir -p`,Windows PowerShell 5.1 的 `>` 会写成 UTF-16,HUD 读不了):
+
+```powershell
+New-Item -ItemType Directory -Force -Path "~\.config\agy-hud" | Out-Null
+Set-Content -Encoding ascii -Path "~\.config\agy-hud\config.json" -Value '{"show_icons": false}'
+```
+
+HUD 随后以纯文本渲染:`3.8 Flash High | Pro | dev`。
+
+先看 `doctor` 输出里的 `config` 那一行。如果它已经指向某个文件,请改**那一个**:bundle 旁边或插件根目录下的 `config.json` 优先级高于 `~/.config/agy-hud/config.json`(完整顺序见[配置](#配置)),所以在 `~/.config` 下新建的文件会被压住,屏幕上什么都不会变。
+
+**B. 保留图标。** 两步,而且只有第二步才会改变你看到的东西:
+
+1. 装一个 Nerd Font,例如 macOS 上 `brew install --cask font-hack-nerd-font`,Windows 上从 <https://www.nerdfonts.com> 下载 Hack Nerd Font。
+2. 把终端的字体指向那个字族——iTerm2 → Settings → Profiles → Text → Font、VS Code 的 `terminal.integrated.fontFamily`、`~/.config/ghostty/config` 里的 `font-family`、Windows Terminal → Settings → Profiles → Defaults → Appearance → Font face,等等。`doctor` 会针对它识别到的终端打印这个设置的位置。
+
+只装字体不会有任何变化,因为终端仍然用它自己 profile 里写的那个字族来画。
+
+字体扫描有两条限制,所以 `doctor` 把它作为启发式给出,而绝不作为判据。已安装的 Nerd Font 未必就是终端在用的那个。而 Ghostty、WezTerm、kitty 自带 Nerd Font 符号回退,所以扫不到任何东西的终端照样可能把每个图标都画得好好的。
+
+在 SSH 会话里,字形是由你本地机器上的终端画的,所以在远端主机上装字体不可能改变它们。请在本地机器上走方案 B,或者在远端走方案 A。
+
+## 找不到 Node
+
+CLI 启动状态栏时可能不加载你的 shell profile。如果版本管理器只在 `.zshrc` 或 `.bashrc` 里初始化,那么即使终端里 `node` 可用,状态栏的 `PATH` 里也没有它。0.1.12 之前,这种情况下 HUD 不会出现。
+
+从 0.1.12 起,`PATH` 上没有 `node` 时,`hooks/status-line.sh` 会自己查找,顺序如下:
+
+| 位置 | 选取规则 |
+| --- | --- |
+| Volta | 已安装的最高版本 |
+| nvm | `default` alias,支持 `lts/*` 和 `22` 这类部分版本号;否则取已安装的最高版本 |
+| fnm | `default` alias;否则取已安装的最高版本 |
+| mise、asdf | 已安装的最高版本 |
+| nodenv | 全局 `version` 文件;否则取已安装的最高版本 |
+| n | `$N_PREFIX/bin`、`~/n/bin`、`~/.n/bin` |
+| Homebrew | `<prefix>/bin`,然后是 `node@22` 这类 keg-only formula |
+| 系统目录 | `~/.local/bin`、`/usr/bin`、`/snap/bin` |
+
+低于 Node 18 的安装会被跳过。找到的目录追加在 `PATH` 末尾,所以 `PATH` 原本能解析的命令不受影响。`node` 已经在 `PATH` 上时,以上逻辑完全不执行。
+
+对 Volta 和 mise,hook 直接使用已安装的 Node,不走管理器的 shim,因此取的是已安装的最高版本,不一定是你配置的默认版本。任何 Node 18+ 运行 HUD 的效果都一样。
+
+想确认 hook 在精简 `PATH` 下的行为,运行:
+
+```sh
+env -i HOME="$HOME" PATH=/usr/bin:/bin <插件根目录>/hooks/status-line.sh < /dev/null; echo "exit $?"
+```
+
+输出 `agy-hud` 和 `exit 0` 表示找到了 Node。输出 `agy-hud: node not found on PATH or in a known version-manager directory` 和 `exit 127` 表示没找到。这时把状态栏直接接到 Node 的完整路径上,就不需要查找了:
+
+```text
+/statusline /full/path/to/node <插件根目录>/dist/agy-hud.js statusline
+```
+
+在终端里运行 `command -v node` 可以得到这个路径。
+
+在 Windows 上,`hooks/status-line.cmd` 不会自己查找 Node,只运行 CLI 启动它时 `PATH` 里的第一个 `node.exe`,它必须是 Node 18 或更新版本。只有 `node.cmd` shim、旁边没有 `node.exe` 的不会被使用。与 `cmd.exe` 里的裸命令不同,这次查找跳过当前目录(也就是你的工作区),除非 `PATH` 本身以 `.` 或其他相对路径列出了它。找不到时输出 `agy-hud: node not found on PATH` 并以 127 退出。同样可以把状态栏直接接到 `node.exe` 的完整路径上。PowerShell 里 `(Get-Command node.exe).Source` 会打印这个路径;`cmd.exe` 里的 `where node` 会先查当前目录,请在可信的目录里运行它:
+
+```text
+/statusline <node.exe 的完整路径> <插件根目录>\dist\agy-hud.js statusline
+```
+
+默认安装位置是 `C:\Program Files\nodejs\node.exe`,其中的空格会让命令断开;请按[从 GitHub Release 安装](#从-github-release-安装)里的说明改用不带引号的 8.3 短路径。
+
+## 卸载
+
+`/statusline` 命令会把配置独立保存在插件文件之外。卸载前请先清除这项配置,避免 CLI
+继续保留一个指向已删除插件的 command:
+
+```text
+/statusline delete
+```
+
+然后卸载插件:
+
+```sh
+agy plugin uninstall agy-hud
+```
+
+## 面向 AI Agent
+
+如果你是正在替用户安装 `agy-hud` 的 AI agent,请不要静默安装,也不要默认图标一定能显示出来。图标变成方块是 agent 代装之后最常见的抱怨,而它是用户机器上的字体状况,你从一串文本里是观察不到的。
+
+**先判断用户是不是已经装过**:读 `~/.gemini/antigravity-cli/settings.json` 里的 `statusLine.command`。如果它已经指向某个 `agy-hud.js`,那这就是一次**升级**而不是安装:请按[升级](#升级)一节,直接覆盖那个文件。不要只是 `agy plugin install` 到新的插件目录就收工——那样 CLI 跑的仍是旧文件,HUD 看起来完全正常,用户永远不会发现自己还停在旧版本。
+
+如果确认是全新安装:
+
+1. 把下面这段信息完整的 HUD 预览发给用户,让他们在安装之前就看到每一个元素:
+
+   ```
+    3.5 Flash High |  Pro │  agy-hud │  main
+   Context ░░░░░░░░░░ 0% │ Usage ████████░░ 82% (↻ 1h 52m) |  █░░░░░░░░░ 13% (↻ 4d 21h)
+   ```
+
+   向用户说明各部分的含义:模型与套餐档位、工作目录、git 分支、带 token 明细的上下文进度条(`context_value: both`)、连续的配额剩余进度条、本地重置时间,以及 agent 状态。默认配置使用更紧凑的 `percent` 上下文显示,HUD 在窄终端下也会平滑降级。
+
+2. 在同一条消息里发出图标探针,并直接就它提问:
+
+   ```
+    model     plan     branch     folder
+   ```
+
+   > 上面这四个标签,每一个前面是不是都有一个各不相同的图标?还是你看到的是方块、`[?]` 或空白?
+
+   等他回答。这个问题你自己答不了:你读到的是字符流,而问题问的是他的字体画出了什么。另外,只有当你的输出落在他实际运行 Antigravity CLI 的那个终端里时,探针才作数。如果他是通过网页或另一个终端在跟你对话,就说明这一点,并让他在第 4 步之后自己运行 `doctor`——它会在他自己的终端里打印同一行探针,而那里才是这个答案唯一有意义的地方。
+
+3. 如果他报告看到方块,请在安装**之前**就把配置写好,让他第一眼看到的 HUD 就是能用的:
+
+   ```sh
+   mkdir -p ~/.config/agy-hud
+   echo '{"show_icons": false}' > ~/.config/agy-hud/config.json
+   ```
+
+   在 Windows 上改用[图标显示成方块](#图标显示成方块)里的 PowerShell 命令;上面的命令在 cmd 里会失败,在 Windows PowerShell 5.1 里会写出读不了的文件。
+
+   如果文件已存在,请把这个键合并进去——读出来、设置 `show_icons`、再写回。不要覆盖用户已经调过的配置。另外,如果 `doctor` 报出的 `configPath` 不是这一个,请改写到它报出的那个路径:bundle 旁边的配置优先级更高,写在这里的文件会被压住。
+
+   **除非用户主动要求,否则不要替他装字体。** 那是系统级改动,而且它本身什么都修不好:终端仍然按自己 profile 里写的字族来画,而那个设置无法可靠地脚本化。在 SSH 场景下更是有害无益——字形由他本地机器上的终端绘制,在远端主机装字体不可能改变任何东西。如果他确实想要图标,把[图标显示成方块](#图标显示成方块)里的两步告诉他,第二步交给他自己做。
+
+4. 询问用户是否需要调整 `multiline`、`context_value` 或 `usage_value`(见[配置](#配置))。然后下载 `https://github.com/franksde/agy-hud/releases/latest/download/agy-hud.tar.gz` 并解压,执行 `agy plugin install <解压目录>`。传入的必须是解压出来的归档目录,绝不能是 git clone 的仓库目录(原因见[从本地路径安装](#从本地路径安装))。如果失败,把错误展示给用户,不要静默重试。
+
+5. 用 `node <插件根目录>/dist/agy-hud.js doctor --json` 校验安装结果,它以机器可读的 JSON 汇报:
+
+   ```json
+   {
+     "version": "0.1.17",
+     "homedir": "/home/u",
+     "nodeVersion": "v22.14.0",
+     "nodeOk": true,
+     "platform": "linux",
+     "statuslineCommand": "/home/u/.gemini/config/plugins/agy-hud/hooks/status-line.sh",
+     "statuslineWired": true,
+     "configPath": "/home/u/.config/agy-hud/config.json",
+     "suggestedConfigPath": "/home/u/.config/agy-hud/config.json",
+     "userConfigPath": "/home/u/.config/agy-hud/config.json",
+     "configInPluginDir": false,
+     "showIcons": false,
+     "terminal": "iTerm.app",
+     "remoteSession": false,
+     "nerdFont": "not-found",
+     "nerdFontMatches": [],
+     "installedPlugin": { "version": "0.1.17", "path": "/home/u/.gemini/config/plugins/agy-hud", "enabled": true },
+     "installedPluginStatus": "found",
+     "statuslineRunsInstalled": true
+   }
+   ```
+
+   按下面的方式处理:
+
+   - `nodeOk: false` —— 运行时低于 18。如实汇报,HUD 跑不起来。
+   - `nodeOk` 描述的是运行 `doctor` 的那个 Node,也就是你 shell 的 `PATH` 上的那个。CLI 启动状态栏时的 `PATH` 可能更短。如果 `doctor` 通过而 HUD 仍不出现,请运行[找不到 Node](#找不到-node)里的检查命令。
+   - `statuslineWired: false` —— CLI 并没有在跑这个插件。请用户运行 `/statusline <插件根目录>/hooks/status-line.sh`(`platform` 为 `win32` 时用 `\hooks\status-line.cmd`),在此之前 HUD 不会出现。如果 `statuslineCommand` 有值却没接到 agy-hud,说明状态栏归别的程序管,请说明它是什么,而不要直接覆盖。
+   - `showIcons` —— 确认第 3 步最终落在了哪种模式。
+   - `configInPluginDir: true` —— 当前生效的配置放在插件目录里,Antigravity CLI 1.1.28+ 下一次 `agy plugin install` 就会把它删掉。请告诉用户,征得同意后把它移到 `userConfigPath`:如果那里已有文件就合并进去,然后删除插件目录里的那份——否则它会一直压住新位置的配置,直到某次重装把它悄悄删掉。
+   - `statuslineRunsInstalled: false` —— 状态栏运行的不是 `agy plugin install` 刚写入的那份,这次安装在屏幕上什么都没改变。请让用户运行 `/statusline <installedPlugin.path>/hooks/status-line.sh`,Windows 上用 `.cmd`;不带 `--json` 的 `doctor` 会打印确切的命令。`null` 表示没有可比对的对象:状态栏没有接到 agy-hud(见 `statuslineWired`),或者 `installedPluginStatus` 不是 `found`——Antigravity CLI 1.3.4 之前没有 `agy plugin list --json`,此时为 `unknown`。
+   - `nerdFont` —— **只是提示,绝不是判据。** `not-found` 不代表图标坏了,因为 Ghostty、WezTerm、kitty 自带字形回退;`found` 也不代表图标能用,因为终端可能在用另一个字族。绝不要仅凭这个字段就去关图标,或去建议装字体。能定论的证据只有第 2 步用户的回答,或者 `doctor` 普通输出里的那行探针。
+
+   不带 `--json` 的 `doctor` 会打印同一份报告外加图标探针,所以对于那些不在 CLI 终端里跟你对话的用户,它也可以充当第 2 步的检查手段。
+
+## Release 归档内容
+
+GitHub release 会发布一个平台无关归档包:
+
+- `agy-hud.tar.gz`
+
+归档包应包含 `plugin.json`、`hooks/status-line.sh`、`hooks/status-line.cmd`、`dist/agy-hud.js`、`config.example.json`、`README.md`、`README.zh-CN.md`、`LICENSE`、`THIRD_PARTY_NOTICES.md` 以及相关文档。运行依赖已打包,无需额外安装。
+
+## CLI
+
+安装插件**不会**在你的 `PATH` 上放一个 `agy-hud` 命令——归档包分发的是 bundle,不是 npm 包。请用 `node` 直接运行 bundle,路径取你的 `statusLine.command` 所指向的插件根目录(新版安装通常是 `~/.gemini/config/plugins/agy-hud`):
+
+```sh
+node <插件根目录>/dist/agy-hud.js statusline < statusline_payload.json
+node <插件根目录>/dist/agy-hud.js version
+node <插件根目录>/dist/agy-hud.js quota refresh
+node <插件根目录>/dist/agy-hud.js doctor
+node <插件根目录>/dist/agy-hud.js doctor --json
+```
+
+下文为了简洁,用 `agy-hud` 指代上面这条命令。如果你经常用,可以自己配一个 alias。
+
+`doctor` 自检一次安装:Node 版本、CLI 的状态栏接到了哪条命令、已安装的插件以及那条命令是否运行它(Antigravity CLI 1.3.4+)、当前生效的配置文件与 `show_icons` 的解析结果、识别到的终端、是否 SSH 会话、启发式字体扫描,以及一行给你读的图标探针。它不改动磁盘上的任何东西。`--json` 输出同一份报告的机器可读 JSON,供刚完成安装、需要自查的 agent 使用;各字段该怎么处理见[面向 AI Agent](#面向-ai-agent)。
+
+`statusline` 从标准输入以及本地配置/缓存文件渲染。标准输入里一旦有完整的 JSON 对象就开始渲染,不等 CLI 关闭管道;1 秒内仍没有收到,就不再等待。原因是 Antigravity CLI 有时不关闭这个管道([antigravity-cli#698](https://github.com/google-antigravity/antigravity-cli/issues/698)),而状态栏超时未退出会被它杀掉。当 `agent_state` 从 active work 回到 `idle` 时,它会先做一次本地 loopback `quota refresh` 再渲染,让同一次 redraw 就能反映本轮回答后的配额。重绘最多为这次刷新等 2 秒:本地服务到时仍未应答,就用已缓存的配额渲染,取消这次探测,改由后台继续刷新。每个 loopback 请求从发出起 1.5 秒内没完成就放弃;查找服务用的 `ps` 和 `lsof` 各自最多运行 1 秒。这两个命令是同步执行的,2 秒的等待打断不了它们,只能靠它们各自的时限。缺失或过期缓存仍会用后台刷新作为兜底。`quota refresh` 会向正在运行的 Antigravity 本地服务请求 `GetUserStatus`,写入脱敏后的配额缓存;如果找不到可用的本地服务,会以非零状态退出。在 Antigravity CLI 1.2.2 及以后,本地服务会拒绝这个请求,此时跳过同帧刷新,`quota refresh` 改为执行官方的 `agy -p /usage`,且只在后台运行;见[配额缓存](#配额缓存)。
+
+## 配置
+
+`agy-hud` 会按以下顺序查找配置:
+
+- `AGY_HUD_CONFIG`
+- `AGY_HUD_GIT_BRANCH`,用于显式覆盖 git 分支显示
+- 打包脚本旁边或插件根目录下的 `config.json`
+- `$XDG_CONFIG_HOME/agy-hud/config.json`
+- `$HOME/.config/agy-hud/config.json`
+
+建议使用用户级路径。插件目录里的 `config.json` 仍然有效,但 Antigravity CLI 1.1.28+ 在 `agy plugin install` 时会把插件目录原样替换,下一次重装就会不加提示地删掉它。生效配置处在这个位置时,`doctor` 会给出提示。
+
+默认配置:
+
+```json
+{
+  "show_model": true,
+  "show_progress_bar": true,
+  "multiline": true,
+  "color": true,
+  "debug": false,
+  "show_git_branch": true,
+  "show_cwd": true,
+  "show_agent_state": true,
+  "show_cost": true,
+  "show_title": false,
+  "show_mode": true,
+  "show_icons": true,
+  "context_value": "percent",
+  "usage_value": "remaining"
+}
+```
+
+`show_progress_bar` 和 `multiline` 默认为 `true`,对应推荐的紧凑两行 HUD。`debug` 默认为 `false`;正常使用时请保持关闭,以免污染状态栏输出。`AGY_HUD_GIT_BRANCH` 适用于 Antigravity 不提供分支、且 hook 进程无法从工作区解析出分支的环境。
+当 workspace 路径可用时,git 分支显示会优先从当前 workspace/worktree 解析,再回退到 Antigravity 的 VCS branch payload。
+
+显示选项:
+
+- `show_agent_state`:显示来自标准输入的 `agent_state`,例如 `Idle`、`Thinking` 或 `Auth`。
+- `show_cost`:显示 Antigravity CLI 1.1.21+ 提供的会话费用 `cost.total_usd`,位于首行末尾(单行模式则在该行末尾)。`estimated: true` 时加 `~`,例如 `~$0.02`。零显示为 `$0.00`,小于 $0.001 的正数显示为 `<$0.001`;缺失、负数或非有限数不显示。HUD 不额外累加 `subagent_usd`,也不自行计算订阅扣费;该值不是账单或实际收费承诺。
+- `show_mode`:在模型段末尾、目录之前显示用 `Shift+Tab` 切换的 agent 模式(Antigravity CLI 1.3.5+):`Plan`、`Accept Edits` 或 `Auto`,分别为青色、黄色、橙色。默认模式不显示。自定义状态栏会替换 CLI 的内置状态栏,而开始打字后,内置状态栏是唯一还显示模式的地方。默认开启。
+- `show_title`:显示 Antigravity CLI 1.1.27+ 提供的会话标题 `conversation_title`,位于分支与 agent 状态之间(单行模式在状态之前)。默认关闭。标题会被整理成单行纯文本、去掉控制字符,最多占 24 列;一行放不下时它最先被省略,早于费用。
+- `show_icons`:显示 Nerd Font 图标。如果你的终端字体把图标渲染成方框,设为 `false` 可回退到纯文本。跑 `doctor` 可以看到图标探针和确切的修复方式;完整说明见[图标显示成方块](#图标显示成方块)。
+- `context_value`:`percent`、`tokens` 或 `both`。默认为 `percent`,即上下文显示当前输入侧窗口占用率。存在 token 总量时,百分比和进度条会由 `total_input_tokens / context_window_size` 计算,避免最近一次长输出让 HUD 跳动。
+- `usage_value`:`remaining` 或 `percent`。默认为 `remaining`,即配额文字和进度条都显示剩余量。当 Antigravity 提供 5 小时和周两个窗口时,HUD 会按顺序分开显示各自的刷新倒计时,例如 `Usage ████████░░ 82% (↻ 1h 52m) |  █░░░░░░░░░ 13% (↻ 4d 21h)`。
+
+空间不足时先隐藏费用,再按原有顺序降级其他信息。中文、emoji 和组合字符按终端列宽计算,截断不会拆开字素簇。emoji 的实际外观仍取决于终端和字体。
+
+套餐徽标兼容 `Pro`、`Ultra`、`Free` 及其 `Google AI` 前缀形式。未知或缺失套餐显示 `Plan ?`,不会误标为 `Free`。
+
+## 配额缓存
+
+在 Antigravity CLI 1.0.8 及更新版本中,`agy-hud` 会优先读取 status-line payload 里的官方 `quota` 对象。如果 payload 同时包含 5 小时和周两个窗口,HUD 会按顺序分别显示,不再折叠成一个容易误解的数字。Gemini 模型读 Gemini 的配额桶,Claude 和 GPT-OSS 读第三方模型的配额桶。Pro 套餐下 Gemini 4 Argon 有单独的周额度(Antigravity CLI 1.4.x,`gemini-argon-wtu-weekly`),没有 5 小时额度,所以只显示这一个窗口。有没有这个桶,在 payload 带有 Gemini 配额时以 payload 为准:payload 有 Gemini 配额桶但没有 Argon 桶时(例如 Ultra 套餐),读 Gemini 的配额桶,即使 Pro 套餐时留下的 `/usage` 缓存里还有 Argon 桶。payload 不带 Gemini 配额时,交给缓存判断。如果这个官方 bucket 仍然看起来完全未消耗,但新鲜的 active-model 缓存已经显示有消耗,`agy-hud` 会使用新鲜缓存,避免显示过期的 `100% left`。旧版 CLI 或没有官方配额数据的 payload,会回退到本地配额缓存。默认缓存路径为:
+
+```text
+$XDG_CACHE_HOME/agy-hud/quota_cache.json
+$HOME/.cache/agy-hud/quota_cache.json   # 未设置 XDG_CACHE_HOME 时
+```
+
+你可以用 `AGY_HUD_QUOTA_CACHE` 覆盖该路径,覆盖后读写都只使用这一个路径。
+
+0.1.8 之前,缓存位于 `$HOME/.gemini/antigravity-cli/scratch/agy-hud/quota_cache.json`,而那个目录在
+Antigravity CLI 1.1.0 之后已被官方弃用。升级无需任何操作:新缓存还不存在时,HUD 仍会读取旧文件,
+第一次刷新就会写出新缓存。旧文件会原样保留,所以降级回旧版本同样可以正常工作。
+
+如果新缓存存在但解析不出来(比如一次写入被崩溃打断),HUD 会改用旧缓存渲染,并强制触发一次刷新去
+重写这个损坏的文件,而不是让它一直被掩盖着。
+
+Antigravity 运行时,可以手动刷新这份回退缓存:
+
+```sh
+node <插件根目录>/dist/agy-hud.js quota refresh
+```
+
+刷新命令兼容两种已知的 Antigravity 本地服务形态:当前的 `agy` loopback 服务,以及旧版 `language_server --csrf_token ...` 进程,按这个顺序尝试。如果存在 CSRF token,它只会被用于 loopback `GetUserStatus` 请求。命令最终只保存下面这种脱敏缓存。正常的 `statusline` 渲染会读取该缓存,并在 active work 结束时刷新;同时保留过期缓存刷新作为兜底。如果缓存仍然看起来完全未消耗(所有模型都是 `100% left`),新的会话或 agent 状态变化也会触发一次带去抖的即时后台刷新。
+
+从 0.1.9 开始,配额刷新可复用配额缓存旁的 `quota_cache.json.server.json`(或 `<AGY_HUD_QUOTA_CACHE>.server.json`)。它只记录 PID、本地端口、进程身份(启动时间和可执行文件路径)及发现时间。每次复用前通过定向 `ps` 校验身份,省去全量进程扫描和 `lsof`;提示缓存五分钟后过期。请求失败或配额格式异常时,同一次刷新立即重新发现服务。需要 CSRF 的旧服务不写入提示缓存。配额刷新间隔、后台刷新和 working-to-idle 同帧校正均保持不变。
+
+从 Antigravity CLI 1.2.2 起(版本边界由 [CodexBar](https://github.com/steipete/CodexBar/pull/3685) 实测,本项目在 1.2.11、1.2.14、1.2.16、1.3.5、1.4.5 和 1.5.1 上验证),`agy` loopback 服务对 `GetUserStatus` 返回 `401 missing CSRF token`,而 CLI 不会把这个 token 交给状态栏命令。状态栏 payload 里仍有官方配额,但会滞后:一轮进行中完全不动;如果一轮的消耗在 CLI 结束时那次拉取之后才入账,就要等到下一轮结束才显示。在 1.2.11 上实测,一个空闲会话显示的 5 小时额度落后了 25 分钟。
+
+Windows 上没有查找 loopback 服务所需的 `ps` 和 `lsof`,所以 `quota refresh` 一开始就按 loopback 被拒处理,直接走 `/usage`,节流和退避与下文相同。
+
+在这样的 CLI 上,`quota refresh` 会改用官方只读命令 `agy -p /usage --output-format json`。它不启动 agent turn,不消耗 token 或配额,但会另起一个短暂的 `agy` 进程:约 7 秒,大部分时间在等 Google 的接口,CPU 约 1 秒,瞬时内存约 160 MB。HUD 从不在重绘时同步执行它,只在后台执行,并按下面的节奏:
+
+| 时机 | 缓存超过多久才执行 |
+| --- | --- |
+| 一轮进行中,或刚结束 | 60 秒 |
+| CLI 空闲(例如打字引起的重绘) | 5 分钟 |
+
+所有会话同一时间最多只有一个在执行:缓存旁的锁文件记录持有者,只有持有者会执行 `/usage` 并删除它,超过 2 分钟的锁视为失效并被接管。失败后等待 60 秒再试,每次翻倍,最多 10 分钟。它启动的 `agy` 也会渲染状态栏;agy-hud 给这个子进程加上 `AGY_HUD_NESTED=1`,print 模式不显示状态栏,所以 `hooks/status-line.sh` 见到这个标记直接退出、不启动 Node;直接用 bundle 接入时,bundle 什么也不输出。这个子进程还带有 `AGY_CLI_DISABLE_AUTO_UPDATE=true`,跳过 agy 自己的更新检查:否则距上次检查超过 15 分钟时,它会启动 `agy --bg-updater`,在 Windows 上会闪一下终端窗口。你自己的 `agy` 会话和 `agy update` 照常更新。
+
+被拒的情况记在 `quota_cache.json.auth-rejected.json`(或 `<AGY_HUD_QUOTA_CACHE>.auth-rejected.json`)里,包括状态栏 payload 中的 CLI `version` 和失败退避。只要 payload 报的还是这个版本,刷新就直接走 `/usage`。CLI 升级后,下一次刷新会重新尝试 loopback,loopback 成功就删除这个文件。payload 里没有版本号时从不算被拒,手动执行 `quota refresh` 也总是先试 loopback。其他 loopback 失败(比如没有正在运行的服务)从不改走 `/usage`,所以旧版 CLI 的行为完全不变。
+
+`/usage` 缓存里的配额桶和 payload 的 `quota` 字段结构相同。HUD 对 5 小时和周窗口分别取两份读数中更新的那份。`reset_time` 已过的读数属于已结束的窗口:缓存里的直接忽略,payload 里的让位给缓存。两份都未过期时一定是同一个窗口,而同一窗口内额度只减不增,所以剩余更少的是更新的读数。(未被消耗的桶,`reset_time` 会随每次查询后移,不能用来判断新旧。)
+
+期望的(已脱敏)缓存结构:
+
+```json
+{
+  "timestamp": "2026-05-19T12:00:00Z",
+  "plan_name": "Pro",
+  "models": {
+    "Gemini 3.5 Flash (Medium)": {
+      "remainingFraction": 0.2,
+      "resetTime": "2026-05-19T12:44:00Z"
+    }
+  }
+}
+```
+
+`/usage` 刷新写入的则是 payload 的配额桶结构:
+
+```json
+{
+  "timestamp": "2026-09-25T14:20:28Z",
+  "source": "usage",
+  "models": {},
+  "quota": {
+    "gemini-5h": { "remaining_fraction": 0.867, "reset_time": "2026-09-25T14:51:03Z" },
+    "gemini-weekly": { "remaining_fraction": 0.853, "reset_time": "2026-09-30T06:16:21Z" }
+  }
+}
+```
+
+如果配额数据缺失,HUD 会直接省略 usage 区块,不会显示伪造的 limit。官方 quota payload 可以提供实时的 `reset_in_seconds`,所以双窗口配额会显示每个窗口自己的相对刷新倒计时。本地 fallback cache 仍然来自本地 API 的 `resetTime` 字段,并以本地时钟时间显示。
+
+## 隐私与安全
+
+`agy-hud statusline` 从标准输入以及本地可选的配置/缓存文件渲染。它不会向外部传输状态栏 payload 数据。配额刷新只会访问本地 Antigravity loopback 服务。
+
+`agy-hud quota refresh` 只访问 loopback 上的本地 Antigravity 服务,或执行 `agy -p /usage`;不会打印 CSRF token、cookie、原始 probe 响应或 `/usage` 的错误文本。`/usage` 由 agy 用你自己的登录访问 Google,和 CLI 平时做的一样,agy-hud 本身不发任何网络请求。
+
+渲染器刻意不打印敏感的状态栏字段,包括邮箱、session ID、会话 ID、transcript 路径、token、CSRF 值、cookie、密钥以及完整的工作区路径。git 分支检测直接读取 `.git/HEAD`,不会调用 `git`。
+
+`PATH` 上没有 `node` 时,`hooks/status-line.sh` 会读取[找不到 Node](#找不到-node)所列版本管理器位置下的目录名,以及 nvm 的 alias 文件和 nodenv 的 `version` 文件,用来找到一个可启动的 Node。它不写入任何文件,除了这个 Node 之外也不启动任何程序。
+
+`agy-hud doctor` 只读取本地文件、只打印本地事实,不向任何地方发送数据,也不写入任何文件。它唯一运行的程序是 `agy plugin list --json`,即本地列出已安装插件。由于它的输出正是你会贴进 bug 报告的内容,家目录下的路径会缩写成 `~/…`,从而去掉你的账户名。`doctor --json` 保留绝对路径,因为它面向的是同一台机器上的 agent——把这份输出贴到别处之前请先自己过一遍。
+
+请勿在 issue 或 pull request 中放入原始 Antigravity probe 负载、日志、cookie、token、邮箱或本机路径。
+
+## 开发
+
+```sh
+npm ci
+npm run build
+npm test
+```
+
+`npm run build` 会把 `src/main.ts` bundle 到 `dist/agy-hud.js`。源码变更时请一并提交更新后的 `dist/agy-hud.js`,确保 clone 后无需构建即可运行。
+
+## 限制说明
+
+配额字段依赖本地 Antigravity 的可用性以及一份兼容的本地缓存。如果 Antigravity 未运行,或本地 `GetUserStatus` 端点发生变化,HUD 会省略配额细节。
+
+在配额刷新启动的 `agy -p /usage` 运行中,`hooks/status-line.sh` 和 `hooks/status-line.cmd` 会把状态栏输入读到结束再退出,不启动 Node。如果 CLI 一直不关闭这个管道([antigravity-cli#698](https://github.com/google-antigravity/antigravity-cli/issues/698)),hook 会一直等到被 CLI 终止。这次运行是 print 模式,本来就不显示状态栏;在 Antigravity CLI 1.5.1 上实测,这个管道会正常关闭。
+
+在 Windows 上,`doctor` 按文本比较路径,所以用 8.3 短路径接入的状态栏会被当成已安装目录之外的另一份拷贝。`hooks/status-line.cmd` 没有[找不到 Node](#找不到-node) 里描述的查找逻辑。`/usage` 超时或输出超限时用 `taskkill /T` 结束,`agy` 还在运行时它启动的辅助进程会一并结束;`agy` 已经退出后才遗留下来的辅助进程这样找不到。CI 只在 Linux 上运行。贡献者提交的 hook 在 Windows 11 + Antigravity CLI 1.4.4 上手动验证过;之后针对 Windows 的改动(`/usage` 路径及其启动和结束 `agy` 的方式、doctor 的 Windows 路径、加固后的 hook)有 Linux 和 macOS 上的测试覆盖,但还没有在 Windows 上实际运行过。

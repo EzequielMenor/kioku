@@ -16,8 +16,18 @@ export const NATIVE_PROVIDERS: Record<string, { baseUrl?: string; label: string 
   ollama: { baseUrl: "http://localhost:11434/v1", label: "Ollama" },
   custom: { label: "endpoint compatible con OpenAI" },
   openrouter: { baseUrl: "https://openrouter.ai/api/v1", label: "OpenRouter" },
+  "opencode-go": { label: "OpenCode Go" },
   deepseek: { baseUrl: "https://api.deepseek.com/v1", label: "DeepSeek" },
 };
+
+function modelsEndpoint(base: string): string {
+  const url = new URL(base);
+  if (url.origin === "https://opencode.ai") {
+    url.pathname = url.pathname.replace(/^(\/inference(?:\/go)?)\/openai\/v1$/, "$1/v1") + "/models";
+    return url.href;
+  }
+  return `${base}/models`;
+}
 
 export interface NativeOptions {
   /** Raíz del espacio Kioku (la carpeta que contiene `.kioku/`). */
@@ -318,7 +328,7 @@ export class NativeEngine implements AssistantEngine {
   /** Modelos que ofrece el endpoint (`GET /models`), para elegir sin teclear el nombre. */
   async models(): Promise<string[]> {
     const { base, headers } = await this.settings();
-    const r = await this.fetch(`${base}/models`, { headers, signal: AbortSignal.timeout(4000) });
+    const r = await this.fetch(modelsEndpoint(base), { headers, signal: AbortSignal.timeout(4000) });
     if (!r.ok) throw new Error(`El endpoint respondió ${r.status} al listar modelos`);
     const j = (await r.json()) as { data?: { id?: unknown }[] };
     return (j.data ?? []).map((m) => m.id).filter((x): x is string => typeof x === "string").sort();
@@ -334,7 +344,7 @@ export class NativeEngine implements AssistantEngine {
     if (fresh) return this.probe!.result;
     let result: { ok: boolean; reason?: string };
     try {
-      const r = await this.fetch(`${cfg.base}/models`, { headers: cfg.headers, signal: AbortSignal.timeout(4000) });
+      const r = await this.fetch(modelsEndpoint(cfg.base), { headers: cfg.headers, signal: AbortSignal.timeout(4000) });
       if (!r.ok) result = { ok: false, reason: this.explainStatus(r.status, "", cfg) };
       else {
         const ids = (((await r.json().catch(() => ({}))) as { data?: { id?: unknown }[] }).data ?? []).map((m) => String(m.id));
@@ -678,13 +688,20 @@ export class NativeEngine implements AssistantEngine {
       const numCtx = this.o.numCtx ?? (Number((this.o.env ?? process.env).KIOKU_OLLAMA_NUM_CTX) || OLLAMA_NUM_CTX);
       const thinkEnv = (this.o.env ?? process.env).KIOKU_OLLAMA_THINK;
       const think = thinkOverride ?? this.o.think ?? (thinkEnv === "0" ? false : thinkEnv === "1" ? true : undefined);
+      const openCode = new URL(cfg.base).origin === "https://opencode.ai";
+      const headers = { ...cfg.headers };
+      if (openCode) {
+        const id = createHash("sha256").update(JSON.stringify([this.stateDir(i.session), i.conversation])).digest("hex");
+        headers["x-opencode-session"] = `ses_${id}`;
+        headers["user-agent"] = "Kioku";
+      }
       const r = ollama
         ? await this.fetch(`${cfg.base.replace(/\/v1$/, "")}/api/chat`, {
           method: "POST", headers: cfg.headers, signal: ac.signal,
           body: JSON.stringify({ model: cfg.settings.model, messages: toOllamaMessages(messages), stream: true, options: { num_ctx: numCtx }, ...(think === undefined ? {} : { think }), ...(tools ? { tools } : {}) }),
         })
         : await this.fetch(`${cfg.base}/chat/completions`, {
-          method: "POST", headers: cfg.headers, signal: ac.signal,
+          method: "POST", headers, signal: ac.signal, ...(openCode ? { redirect: "error" } : {}),
           body: JSON.stringify({ model: cfg.settings.model, messages: messages.map(({ name: _n, ...m }) => m), stream: true, ...(tools ? { tools } : {}) }),
         });
       if (!r.ok) {

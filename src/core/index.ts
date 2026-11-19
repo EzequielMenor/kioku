@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS notes(
   fm_json TEXT NOT NULL, fm_error INTEGER NOT NULL DEFAULT 0, tags_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS notes_type ON notes(type);
+CREATE INDEX IF NOT EXISTS notes_uid ON notes(uid);
 CREATE TABLE IF NOT EXISTS links(
   src TEXT NOT NULL, dst_raw TEXT NOT NULL, dst_key TEXT NOT NULL, dst_path TEXT,
   anchor TEXT, alias TEXT, embed INTEGER NOT NULL DEFAULT 0
@@ -319,11 +320,24 @@ export class Index {
     }));
   }
 
+  focusMovedPath(startedAt: string, type: "task" | "project"): string | null {
+    const row = this.db.prepare(`SELECT path FROM events
+      WHERE kind = 'focus.move' AND ts >= ? AND json_extract(data, '$.startedAt') = ? AND json_extract(data, '$.type') = ?
+        AND id > (SELECT max(id) FROM events WHERE kind = 'focus.start' AND ts = ?)
+      ORDER BY ts DESC, id DESC LIMIT 1`).get(startedAt, startedAt, type, startedAt);
+    return typeof row?.path === "string" ? row.path : null;
+  }
+
   /* ---------- lectura ---------- */
 
   getNote(rel: string): NoteRow | null {
     const r = this.db.prepare("SELECT * FROM notes WHERE path=?").get(rel) as Record<string, unknown> | undefined;
     return r ? this.toNote(r) : null;
+  }
+
+  getNoteByUid(uid: string): NoteRow | null {
+    const rows = this.db.prepare("SELECT * FROM notes WHERE uid=? LIMIT 2").all(uid) as Record<string, unknown>[];
+    return rows.length === 1 ? this.toNote(rows[0]) : null;
   }
 
   private toNote(r: Record<string, unknown>): NoteRow {

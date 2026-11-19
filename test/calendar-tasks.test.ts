@@ -7,7 +7,7 @@ import path from "node:path";
 import { Kioku } from "../src/core/kioku.ts";
 import { startServer } from "../src/server/server.ts";
 import { loadOrCreateMobileKey } from "../src/server/key.ts";
-import { dropStart, minuteStamp, pendingTasks, taskChanges, taskDraftBlock, taskInput, TASK_MIME } from "../web/src/calendar-model.ts";
+import { pendingTasks, taskInput } from "../web/src/calendar-model.ts";
 import type { CalendarEntry, CalendarTask } from "../web/src/types.ts";
 import { tmpVault } from "./helpers.ts";
 
@@ -588,39 +588,10 @@ test("API: completar una tarea la quita de pendientes sin cambiar su bloque enla
   } finally { await t.done(); }
 });
 
-test("panel: completar es una acción accesible que reutiliza la escritura existente", () => {
-  const ui = src("calendar.tsx");
-  const row = ui.slice(ui.indexOf("function TaskRow("), ui.indexOf("/** Tareas pendientes junto al calendario"));
-  assert.match(row, /aria-label=\{`Completar «\$\{task.title\}»`\}/);
-  assert.match(row, /onComplete\(task.path\)/);
-  assert.match(ui, /<TaskPanel[^>]*onComplete=\{completeTask\}/);
-  assert.equal((ui.match(/\/api\/task\/status/g) ?? []).length, 1);
-});
-
-test("panel: fechas legibles relativas al día real, con límites y cambio de año", async () => {
-  const model = await import("../web/src/calendar-model.ts");
-  const label = (model as unknown as { taskDueLabel(due: string, today: string): string }).taskDueLabel;
-  assert.equal(label("2026-12-30", "2026-12-31"), "vencida · 30 de diciembre de 2026");
-  assert.equal(label("2026-12-31", "2026-12-31"), "vence hoy");
-  assert.equal(label("2027-01-01", "2026-12-31"), "vence mañana");
-  assert.equal(label("2027-01-06", "2026-12-31"), "vence miércoles");
-  assert.equal(label("2027-01-07", "2026-12-31"), "vence 7 de enero de 2027");
-  const ui = src("calendar.tsx");
-  assert.match(ui, /<TaskPanel[^>]*today=\{today\}/);
-  assert.match(ui, /taskDueLabel\(task.due, today\)/);
-});
-
-// ───────────── Interfaz: lógica pura ─────────────
-
-const task = (over: Partial<CalendarTask> & { path: string }): CalendarTask => ({
-  title: "Tarea", status: "todo", projectPath: null, projectTitle: null, due: null, priority: null, doneAt: null, mtime: 0, focus: null, estimate: 30, hash: "h", ...over,
-});
-const act = (from: string, to: string, over: Partial<CalendarEntry> = {}): CalendarEntry => ({
-  path: `Calendario/${from}.md`, title: "A", kind: "block", hash: "h", state: "pending", taskPath: null, projectPath: null, projectTitle: null,
-  start: `2026-10-28T${from}`, end: `2026-10-28T${to}`, ...over,
-});
-
-test("panel: solo pendientes, las que vencen antes primero y sin fecha al final", () => {
+test("selector para enlazar tareas: solo pendientes, las que vencen antes primero y sin fecha al final", () => {
+  const task = (over: Partial<CalendarTask> & { path: string }): CalendarTask => ({
+    title: "Tarea", status: "todo", projectPath: null, projectTitle: null, due: null, priority: null, doneAt: null, mtime: 0, focus: null, estimate: 30, hash: "h", ...over,
+  });
   const list = pendingTasks([
     task({ path: "c", title: "C" }), task({ path: "d", status: "done" }), task({ path: "x", status: "dropped" }),
     task({ path: "b", title: "B", due: "2026-11-02" }), task({ path: "a", title: "A", due: "2026-11-02", priority: 1 }), task({ path: "e", title: "E", status: "doing", due: "2026-10-30" }),
@@ -646,67 +617,20 @@ test("formulario de tarea: el título basta; fecha, estimación y proyecto se va
   assert.equal((taskInput({ title: "a\nb", due: "", estimate: "", projectPath: "" }) as { ok: false }).ok, false);
 });
 
-test("edición en el sitio: solo viaja lo que cambió; vaciar un campo lo quita", () => {
-  const t = task({ path: "Tareas/A.md", title: "A", due: "2026-11-05", estimate: 30, projectPath: "Proyectos/P.md" });
-  const same = { title: "A", due: "2026-11-05", estimate: "30", projectPath: "Proyectos/P.md" };
-  assert.deepEqual(taskChanges(t, same), { ok: true, value: {} });
-  assert.deepEqual(taskChanges(t, { ...same, title: " B " }), { ok: true, value: { title: "B" } });
-  assert.deepEqual(taskChanges(t, { title: "A", due: "", estimate: "", projectPath: "" }), { ok: true, value: { due: null, estimate: null, projectPath: null } });
-  assert.deepEqual(taskChanges(t, { ...same, estimate: "45", projectPath: "Proyectos/Q.md" }), { ok: true, value: { estimate: 45, projectPath: "Proyectos/Q.md" } });
-  assert.equal(taskChanges(t, { ...same, title: "" }).ok, false);
-  assert.equal(taskChanges(t, { ...same, estimate: "-3" }).ok, false);
-});
-
-test("arrastrar una tarea a la agenda: bloque con su estimación (30 min si no tiene) y la tarea enlazada", () => {
-  assert.equal(TASK_MIME, "application/x-kioku-task");
-  assert.deepEqual(taskDraftBlock(task({ path: "Tareas/A.md", title: "A", estimate: 45 }), "2026-10-28T14:00"),
-    { kind: "block", title: "A", start: "2026-10-28T14:00", end: "2026-10-28T14:45", taskPath: "Tareas/A.md" });
-  assert.equal(taskDraftBlock(task({ path: "Tareas/A.md", estimate: null }), "2026-10-28T14:00").end, "2026-10-28T14:30");
-  assert.equal(taskDraftBlock(task({ path: "Tareas/A.md", estimate: 60 }), "2026-10-28T23:30").end, "2026-10-29T00:30", "puede cruzar medianoche");
-});
-
-test("soltar en la cuadrícula: el minuto bajo el puntero da la hora de inicio, sin llegar a medianoche", () => {
-  assert.equal(minuteStamp("2026-10-28", 14 * 60 + 15), "2026-10-28T14:15");
-  assert.equal(minuteStamp("2026-10-28", 7 * 60), "2026-10-28T07:00");
-  assert.equal(minuteStamp("2026-10-28", 24 * 60), "2026-10-28T23:45");
-  assert.equal(minuteStamp("2026-10-28", -30), "2026-10-28T00:00");
-});
-
-test("soltar en un día sin hora: el primer hueco libre donde cabe; si no cabe, la hora inicial por defecto", () => {
-  const day = "2026-10-29";
-  const busy = (from: string, to: string) => act(from, to, { start: `${day}T${from}`, end: `${day}T${to}`, path: `Calendario/${from}.md` });
-  assert.equal(dropStart([busy("07:00", "09:00"), busy("09:30", "12:00")], day, NOW, 30), `${day}T09:00`);
-  assert.equal(dropStart([busy("07:00", "09:00"), busy("09:30", "12:00")], day, NOW, 60), `${day}T12:00`, "salta el hueco de 30 min");
-  assert.equal(dropStart([], day, NOW, 60), `${day}T07:00`);
-  assert.equal(dropStart([busy("07:00", "22:00")], day, NOW, 30), `${day}T09:00`, "día lleno: la hora por defecto, con aviso de cruce");
-  assert.equal(dropStart([], "2026-10-28", NOW, 30), "2026-10-28T10:20", "hoy: desde ahora");
-  assert.equal(dropStart([], "2026-10-27", NOW, 30), "2026-10-27T09:00", "día pasado: la hora por defecto");
-});
-
 // ───────────── Interfaz: contrato estático ─────────────
 
 const src = (f: string) => readFileSync(path.join(import.meta.dirname, "..", "web", "src", f), "utf8");
 
-test("interfaz: panel de pendientes con crear/editar en el sitio, alternativa de teclado y táctil y enlace dentro de la actividad", () => {
-  const ui = src("calendar.tsx"), grid = src("calendar-grid.tsx"), css = src("calendar.css");
-  assert.match(ui, /aria-label="Tareas pendientes"/);
-  assert.match(ui, /\/api\/task\/create/);
-  assert.match(ui, /\/api\/task\/update/);
+test("Calendario ofrece tareas dentro de la actividad y mantiene el movimiento de actividades", () => {
+  const ui = src("calendar.tsx"), grid = src("calendar-grid.tsx");
+  assert.doesNotMatch(ui, /aria-label="Tareas pendientes"/);
+  assert.doesNotMatch(ui, /\/api\/task\/(create|update)/);
+  assert.match(ui, /<TaskLinker/);
   assert.match(ui, /\/api\/calendar\/link/);
-  assert.match(ui, /draggable/, "las tareas se arrastran");
-  assert.match(ui, /TASK_MIME/);
-  assert.match(ui, />Programar</, "alternativa sin arrastrar (teclado y táctil)");
-  assert.match(ui, /isMobile\(\)/, "las escrituras nuevas son de escritorio");
-  assert.match(grid, /onDropTask/, "la cuadrícula del día acepta tareas");
-  assert.match(grid, /TASK_MIME/);
-  assert.match(grid, /onPointerDown=\{down\}/, "el movimiento con puntero de la cuadrícula sigue igual");
-  assert.match(css, /\.cal-tasks\b/);
+  assert.match(ui, /onCompleteTask=\{\(p\) => void completeTask\(p\)\}/);
+  assert.equal((ui.match(/\/api\/task\/status/g) ?? []).length, 1);
+  assert.match(ui, /draggable=\{scope === "semana"\}/);
+  assert.match(grid, /onPointerDown=\{down\}/);
   assert.doesNotMatch(ui, /offline\/(runtime|store|queue)/);
-  // `min=1` con `step=5` haría inválido «20»: el navegador bloquearía el envío sin decir nada.
   assert.doesNotMatch(ui, /type="number"[^>]*\bstep=/);
-  // Esc en «Editar» desmonta el botón que abrió el formulario: el foco vuelve al botón nuevo de la misma fila, sin temporizadores.
-  const row = ui.slice(ui.indexOf("function TaskRow("), ui.indexOf("/** Tareas pendientes junto al calendario"));
-  assert.match(row, /editButton/, "la fila guarda una referencia a su botón Editar");
-  assert.match(row, /useEffect\(/);
-  assert.doesNotMatch(row, /setTimeout|requestAnimationFrame/);
 });

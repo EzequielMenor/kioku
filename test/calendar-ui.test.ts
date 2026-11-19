@@ -293,7 +293,7 @@ test("calendario: sin peticiones externas, sin cola sin conexión y solo con las
   const ui = src("calendar.tsx");
   assert.doesNotMatch(ui, /offline\/(runtime|store|queue)/, "las escrituras del calendario no pasan por la cola sin conexión");
   const routes = [...ui.matchAll(/["'`](\/api\/[^"'`?$]+)/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(routes)].sort(), ["/api/calendar", "/api/calendar/area", "/api/calendar/areas/create", "/api/calendar/areas/update", "/api/calendar/create", "/api/calendar/delete", "/api/calendar/finish", "/api/calendar/link", "/api/calendar/move", "/api/calendar/projects", "/api/calendar/restore", "/api/calendar/update", "/api/task/create", "/api/task/status", "/api/task/update"]);
+  assert.deepEqual([...new Set(routes)].sort(), ["/api/calendar", "/api/calendar/area", "/api/calendar/areas/create", "/api/calendar/areas/update", "/api/calendar/create", "/api/calendar/delete", "/api/calendar/finish", "/api/calendar/link", "/api/calendar/move", "/api/calendar/projects", "/api/calendar/restore", "/api/calendar/update", "/api/task/status"]);
 });
 
 // ───────── Hoja modal: el teclado sigue funcionando aunque el control enfocado desaparezca ─────────

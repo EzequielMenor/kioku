@@ -1,0 +1,485 @@
+# agy-hud: Antigravity CLI Status-Line HUD Plugin
+
+**English** | [简体中文](README.zh-CN.md)
+
+`agy-hud` is a compact Antigravity CLI status-line HUD plugin written in TypeScript for Node.js.
+
+It reads Antigravity status-line JSON from stdin and renders a short terminal HUD:
+
+<img src="docs/hud-preview.png" alt="agy-hud status-line HUD preview" width="700">
+
+## Requirements
+
+- Antigravity CLI 1.1.0 or newer. Install, status-line wiring, rendering and the `/usage` fallback are verified through 1.4.5, and install and the `/usage` fallback on 1.5.3; the loopback quota probe is verified through 1.1.26 and is refused from 1.2.2 on, where quota refreshes run the official `agy -p /usage` in the background instead (see [Quota Cache](#quota-cache)). The status line is wired with the CLI's native `/statusline` command, which 0.1.8 relies on: the `components` hook that older `plugin.json` files declared is not honored by 1.1.x, so it has been dropped. On a 1.0.x CLI that predates `/statusline` there is no way to activate this version — stay on 0.1.7 or update the CLI.
+- Node.js 18+. `node` does not have to be on the `PATH` the CLI starts the status line with: `hooks/status-line.sh` also looks where nvm, fnm, Volta, mise, asdf, nodenv, n and Homebrew install it (see [Node Is Not Found](#node-is-not-found))
+- macOS, Linux, or Windows. On macOS/Linux `hooks/status-line.sh` is used; on Windows `hooks/status-line.cmd` is provided, and the CLI has to be a release that runs the status line through `cmd.exe`, likely 1.1.2 or newer (see [Install From GitHub Release](#install-from-github-release)).
+- A terminal font that carries Nerd Font glyphs, if you want the icons. Without one the four HUD icons render as boxes or `[?]`, which looks like a broken plugin but is not — see [Icons Render As Boxes](#icons-render-as-boxes). Setting `"show_icons": false` gives a plain-text HUD that needs no font at all.
+
+`agy-hud` is distributed as an Antigravity plugin archive, not as an npm package. The archive includes the bundled runtime script at `dist/agy-hud.js`, so plugin users do not need to run `npm install`.
+
+## Install From GitHub Release
+
+Download the platform-independent archive from the [latest release](https://github.com/franksde/agy-hud/releases/latest):
+
+```sh
+curl -fsSL -o agy-hud.tar.gz \
+  https://github.com/franksde/agy-hud/releases/latest/download/agy-hud.tar.gz
+tar -xzf agy-hud.tar.gz
+agy plugin install ./agy-hud
+```
+
+On Windows, Windows PowerShell aliases `curl` to `Invoke-WebRequest`, which does not take these flags, so call `curl.exe` (Windows 10 and later ship it, and `tar`):
+
+```powershell
+curl.exe -fsSL -o agy-hud.tar.gz https://github.com/franksde/agy-hud/releases/latest/download/agy-hud.tar.gz
+tar -xzf agy-hud.tar.gz
+agy plugin install .\agy-hud
+```
+
+The extracted directory is a complete plugin (`plugin.json`, `hooks/`, `dist/`), so it can be passed straight to `agy plugin install`. It runs with Node.js 18+ and does not require `npm install` after extraction.
+
+**Important: After installation, you must run the following slash command inside your Antigravity CLI to enable the HUD:**
+```
+/statusline ~/.gemini/config/plugins/agy-hud/hooks/status-line.sh
+```
+
+On Windows:
+```
+/statusline %USERPROFILE%\.gemini\config\plugins\agy-hud\hooks\status-line.cmd
+```
+
+The CLI runs the status line through `cmd.exe` on Windows, which earlier releases did not: they ran it with `sh -c` and failed without a `sh` ([antigravity-cli#344](https://github.com/google-antigravity/antigravity-cli/issues/344), closed on 2026-07-11; the CLI changelog does not name the release, and the first one after that date is 1.1.2). Do not put quotes in the command. The CLI escapes them to `\"`, which `cmd.exe` does not read as quoting, and the status line then fails on every redraw until the CLI turns it off ([tightship#89](https://github.com/ATNexusLab/tightship/issues/89)). If a path in the command contains a space, as a profile like `C:\Users\Jane Doe` does (and then `%USERPROFILE%` too), use its 8.3 short form instead, which `for %I in ("C:\Users\Jane Doe") do @echo %~sI` prints in `cmd.exe`. That needs 8.3 names on the volume, which Windows can turn off; the command prints the long path unchanged then.
+
+## Install From Local Path
+
+Do not pass a git clone straight to `agy plugin install`. The command copies the *entire* directory, so it would drag `.git/`, `src/`, `test/`, and everything else into the plugin directory — and if the clone has git's fsmonitor enabled, the copy aborts outright on `.git/fsmonitor--daemon.ipc`, because it is a socket rather than a file.
+
+Stage the same file set the release archive ships, then install that:
+
+```sh
+npm ci && npm run build && npm test
+
+stage=$(mktemp -d)/agy-hud
+mkdir -p "$stage/hooks" "$stage/dist" "$stage/docs"
+cp plugin.json config.example.json README.md README.zh-CN.md LICENSE THIRD_PARTY_NOTICES.md SECURITY.md CONTRIBUTING.md CHANGELOG.md "$stage/"
+cp hooks/status-line.sh hooks/status-line.cmd "$stage/hooks/"
+cp dist/agy-hud.js "$stage/dist/"
+cp docs/hud-preview.png "$stage/docs/"
+
+agy plugin validate "$stage"
+agy plugin install "$stage"
+```
+
+A local install lands in the same plugin directory as a release install, so the `/statusline` step above is required here too.
+
+## Upgrading
+
+**Installing a new version is not the same as upgrading.** The CLI's `statusLine.command` points at a specific file, and `agy plugin install` does not update it. If your command still points at an older copy of `dist/agy-hud.js`, that older copy keeps running: the HUD looks fine, nothing errors, and you are simply not on the new version.
+
+Start by finding out what you are actually running:
+
+```sh
+grep -A2 '"statusLine"' ~/.gemini/antigravity-cli/settings.json
+```
+
+The command is one of these two shapes. Either way, **the plugin root is the `agy-hud` directory in that path** — not the `hooks` directory the command names, and not `dist`:
+
+```text
+/Users/you/.gemini/config/plugins/agy-hud/hooks/status-line.sh
+                                   ^^^^^^^ plugin root
+
+node /Users/you/.gemini/config/plugins/agy-hud/dist/agy-hud.js statusline
+                                       ^^^^^^^ plugin root
+```
+
+On Antigravity CLI 1.3.4 or newer, `doctor` (see [Icons Render As Boxes](#icons-render-as-boxes)) does this comparison for you: its `installed` row names the copy `agy plugin install` wrote, and warns when the status line runs a different one.
+
+Confirm the version that root is on:
+
+```sh
+node <plugin-root>/dist/agy-hud.js version
+```
+
+**If the HUD is currently working**, the smallest upgrade is to overwrite the bundle inside that root. The wiring does not change and no slash command is needed:
+
+```sh
+curl -fsSL -o agy-hud.tar.gz \
+  https://github.com/franksde/agy-hud/releases/latest/download/agy-hud.tar.gz
+tar -xzf agy-hud.tar.gz
+cp agy-hud/dist/agy-hud.js <plugin-root>/dist/agy-hud.js
+node <plugin-root>/dist/agy-hud.js version   # confirm it now reports the new version
+```
+
+**If your HUD disappeared after updating the Antigravity CLI to 1.1.x**, you were relying on the old `components` hook, which the CLI no longer registers. Install the new version normally and wire it up once with `/statusline`, as in the install sections above. This step is unavoidable: a plugin has no install hook that can write the status-line setting for you — `components` *was* that mechanism, and it is gone.
+
+**Reinstalling deletes a `config.json` kept inside the plugin directory.** Since Antigravity CLI 1.1.28, `agy plugin install` replaces the plugin's directory exactly, so a config next to the bundle or in the plugin root does not survive it. Move it to `~/.config/agy-hud/config.json` before reinstalling; `doctor` warns when the config in effect sits in that position. Overwriting only the bundle, as above, leaves it alone.
+
+The quota cache needs no action either way. See [Quota Cache](#quota-cache).
+
+## Icons Render As Boxes
+
+The HUD draws four icons from the Nerd Font Private Use Area: model (U+EE9C), plan (U+F0A3), git branch (U+E725), and directory (U+F07C). A terminal font without those glyphs draws each one as a box or `[?]`. The quota reset arrow `↻` is plain Unicode (U+21BB), so it keeps rendering — a status line like `[?] 3.8 Flash High | [?] Pro | [?] dev` with a working `↻` is exactly this, and not a broken install.
+
+Run the built-in check:
+
+```sh
+node <plugin-root>/dist/agy-hud.js doctor
+```
+
+It prints the resolved config, the terminal it detected, a font scan, and an icon probe. **The probe is the part that answers the question**, because nothing else can: a terminal never reports back which glyphs it actually drew, so no program can tell whether your screen is showing icons or boxes. Read the probe line yourself.
+
+If the probe shows boxes, pick one.
+
+**A. Turn the icons off.** Works everywhere, takes effect on the next redraw, needs no font:
+
+```sh
+mkdir -p ~/.config/agy-hud
+echo '{"show_icons": false}' > ~/.config/agy-hud/config.json   # merge the key if the file already exists
+```
+
+On Windows, in PowerShell (`mkdir -p` does not exist in cmd, and Windows PowerShell 5.1 writes UTF-16 through `>`, which the HUD cannot read):
+
+```powershell
+New-Item -ItemType Directory -Force -Path "~\.config\agy-hud" | Out-Null
+Set-Content -Encoding ascii -Path "~\.config\agy-hud\config.json" -Value '{"show_icons": false}'
+```
+
+The HUD then renders as plain text: `3.8 Flash High | Pro | dev`.
+
+Check the `config` line in `doctor` output first. If it already names a file, edit **that** one instead: a `config.json` next to the bundle or in the plugin root outranks `~/.config/agy-hud/config.json` (see [Config](#config) for the full order), so a new file under `~/.config` would sit there shadowed while nothing on screen changes.
+
+**B. Keep the icons.** Two steps, and only the second one changes what you see:
+
+1. Install a Nerd Font, for example `brew install --cask font-hack-nerd-font` on macOS, or Hack Nerd Font from <https://www.nerdfonts.com> on Windows.
+2. Point the terminal at that family — iTerm2 → Settings → Profiles → Text → Font, VS Code's `terminal.integrated.fontFamily`, `font-family` in `~/.config/ghostty/config`, Windows Terminal → Settings → Profiles → Defaults → Appearance → Font face, and so on. `doctor` prints the location for the terminal it detects.
+
+Installing the font alone changes nothing, because the terminal keeps drawing with whatever family its own profile names.
+
+Two limits on the font scan, which is why `doctor` reports it as a heuristic and never as a verdict. An installed Nerd Font is not necessarily the one your terminal draws with. And Ghostty, WezTerm and kitty ship their own Nerd Font symbol fallback, so a scan that finds nothing can still be a terminal that renders every icon correctly.
+
+Over SSH the glyphs are drawn by the terminal on your local machine, so a font installed on the remote host cannot change them. Take option B on the local machine, or option A on the remote one.
+
+## Node Is Not Found
+
+The CLI can start the status line without loading your shell profile. If a version manager is set up only in `.zshrc` or `.bashrc`, `node` is then missing from `PATH` even though it works in your terminal. Before 0.1.12 the HUD did not appear in that case.
+
+Since 0.1.12, `hooks/status-line.sh` looks for Node itself when `node` is not on `PATH`, in this order:
+
+| Where | What it picks |
+| --- | --- |
+| Volta | highest installed version |
+| nvm | the `default` alias, including `lts/*` and partial versions such as `22`; otherwise the highest installed version |
+| fnm | the `default` alias; otherwise the highest installed version |
+| mise, asdf | highest installed version |
+| nodenv | the global `version` file; otherwise the highest installed version |
+| n | `$N_PREFIX/bin`, `~/n/bin`, `~/.n/bin` |
+| Homebrew | `<prefix>/bin`, then keg-only formulas such as `node@22` |
+| System | `~/.local/bin`, `/usr/bin`, `/snap/bin` |
+
+Installs older than Node 18 are skipped. The directory it finds is added to the end of `PATH`, so nothing your `PATH` already resolves changes. When `node` is already on `PATH`, none of this runs.
+
+For Volta and mise the hook uses an installed Node directly and not the manager's shim, so it takes the highest installed version, which may not be the default you configured. Any Node 18+ runs the HUD the same way.
+
+To check what the hook does with a bare `PATH`:
+
+```sh
+env -i HOME="$HOME" PATH=/usr/bin:/bin <plugin-root>/hooks/status-line.sh < /dev/null; echo "exit $?"
+```
+
+`agy-hud` and `exit 0` mean it found Node. `agy-hud: node not found on PATH or in a known version-manager directory` and `exit 127` mean it did not. In that case wire the status line to your Node by its full path, which needs no lookup:
+
+```text
+/statusline /full/path/to/node <plugin-root>/dist/agy-hud.js statusline
+```
+
+`command -v node` in your terminal prints that path.
+
+On Windows, `hooks/status-line.cmd` does no lookup of its own: it runs the first `node.exe` on the `PATH` the CLI starts it with, which must be Node 18 or newer. A `node.cmd` shim without a `node.exe` next to it is not used. Unlike a bare command in `cmd.exe`, the lookup skips the current directory, which is your workspace, unless `PATH` itself lists it as `.` or another relative entry. When there is none, it prints `agy-hud: node not found on PATH` and exits 127. Wire the status line to `node.exe` by its full path in the same way. `(Get-Command node.exe).Source` in PowerShell prints that path; `where node` in `cmd.exe` looks in the current directory first, so run it from a directory you trust:
+
+```text
+/statusline <full path to node.exe> <plugin-root>\dist\agy-hud.js statusline
+```
+
+The default install is `C:\Program Files\nodejs\node.exe`, whose space breaks the command; use the 8.3 short path described under [Install From GitHub Release](#install-from-github-release), without quotes.
+
+## Uninstalling
+
+The `/statusline` command stores its configuration separately from the plugin files. Clear that
+configuration before uninstalling so the CLI does not retain a command that points at the removed
+plugin:
+
+```text
+/statusline delete
+```
+
+Then uninstall the plugin:
+
+```sh
+agy plugin uninstall agy-hud
+```
+
+## For AI Agents
+
+If you are an AI agent installing `agy-hud` for someone, do not install silently, and do not assume the icons will render. Icons showing up as boxes is the most common complaint after an agent-run install, and it is a font condition on the user's machine that you cannot observe from a text stream.
+
+**First check whether they already have it**, by reading `statusLine.command` in `~/.gemini/antigravity-cli/settings.json`. If it already points at an `agy-hud.js`, this is an upgrade, not an install: follow [Upgrading](#upgrading) and overwrite that exact file. Do not `agy plugin install` into the new plugin directory and stop there — the CLI would keep running the old copy, the HUD would look perfectly healthy, and the user would never learn they are still on the old version.
+
+For a genuinely new install:
+
+1. Send the user this preview of a fully-populated HUD, so they see every element before anything is installed:
+
+   ```
+    3.5 Flash High |  Pro │  agy-hud │  main
+   Context ░░░░░░░░░░ 0% │ Usage ████████░░ 82% (↻ 1h 52m) |  █░░░░░░░░░ 13% (↻ 4d 21h)
+   ```
+
+   Tell them what they are looking at: model and plan tier, working directory, git branch, a context bar with token detail (`context_value: both`), quota remaining as a continuous bar, local reset time, and agent state. The default config shows a more compact `percent` context, and the HUD degrades cleanly on narrow terminals.
+
+2. In the same message, send the icon probe and ask about it directly:
+
+   ```
+    model     plan     branch     folder
+   ```
+
+   > Does each of those four labels have its own distinct icon in front of it, or do you see boxes, `[?]`, or blanks?
+
+   Wait for the answer. You cannot answer this one yourself: you are reading a character stream, and the question is about what their font draws. The probe also only counts when your output lands in the same terminal they run the Antigravity CLI in. If they are reading you through a web UI or a different terminal, say so and have them run `doctor` themselves after step 4 — it prints the same probe inside their own terminal, which is the only place the answer means anything.
+
+3. If they report boxes, write the config **before** installing, so the first HUD they ever see is a working one:
+
+   ```sh
+   mkdir -p ~/.config/agy-hud
+   echo '{"show_icons": false}' > ~/.config/agy-hud/config.json
+   ```
+
+   On Windows, use the PowerShell lines from [Icons Render As Boxes](#icons-render-as-boxes) instead; the commands above fail in cmd and write an unreadable file in Windows PowerShell 5.1.
+
+   If the file already exists, merge the key in — read it, set `show_icons`, write it back. Do not overwrite a config the user has already tuned. And if `doctor` reports a `configPath` other than this one, write to that path instead: a config next to the bundle outranks the home one, and a file written here would be shadowed.
+
+   **Do not install a font on their behalf unless they ask for it.** It is a system-level change, and on its own it fixes nothing: the terminal keeps drawing with the family named in its own profile, and that setting is not reliably scriptable. Over SSH it is worse than useless, because the glyphs are drawn by the terminal on their local machine and a font installed on the remote host cannot change them. If they do want icons, give them the two steps from [Icons Render As Boxes](#icons-render-as-boxes) and let them do the second one.
+
+4. Ask whether they want to adjust `multiline`, `context_value`, or `usage_value` (see [Config](#config)). Then download `https://github.com/franksde/agy-hud/releases/latest/download/agy-hud.tar.gz`, extract it, and run `agy plugin install <extracted-dir>`. Pass the extracted archive directory, never a git clone (see [Install From Local Path](#install-from-local-path) for why). If it fails, show the user the error instead of retrying silently.
+
+5. Verify the install with `node <plugin-root>/dist/agy-hud.js doctor --json`, which reports it as machine-readable JSON:
+
+   ```json
+   {
+     "version": "0.1.17",
+     "homedir": "/home/u",
+     "nodeVersion": "v22.14.0",
+     "nodeOk": true,
+     "platform": "linux",
+     "statuslineCommand": "/home/u/.gemini/config/plugins/agy-hud/hooks/status-line.sh",
+     "statuslineWired": true,
+     "configPath": "/home/u/.config/agy-hud/config.json",
+     "suggestedConfigPath": "/home/u/.config/agy-hud/config.json",
+     "userConfigPath": "/home/u/.config/agy-hud/config.json",
+     "configInPluginDir": false,
+     "showIcons": false,
+     "terminal": "iTerm.app",
+     "remoteSession": false,
+     "nerdFont": "not-found",
+     "nerdFontMatches": [],
+     "installedPlugin": { "version": "0.1.17", "path": "/home/u/.gemini/config/plugins/agy-hud", "enabled": true },
+     "installedPluginStatus": "found",
+     "statuslineRunsInstalled": true
+   }
+   ```
+
+   Act on it as follows:
+
+   - `nodeOk: false` — the runtime is older than 18. Report it; the HUD will not run.
+   - `nodeOk` describes the Node that ran `doctor`, which is the one on your shell's `PATH`. The CLI may start the status line with a shorter `PATH`. If `doctor` passes and the HUD still does not appear, run the check in [Node Is Not Found](#node-is-not-found).
+   - `statuslineWired: false` — the CLI is not running this plugin. Tell the user to run `/statusline <plugin-root>/hooks/status-line.sh` (`\hooks\status-line.cmd` when `platform` is `win32`), because the HUD does not appear until they do. A `statuslineCommand` that is set but not wired means something else owns their status line; say what it is rather than overwriting it.
+   - `showIcons` — confirms which mode step 3 actually landed in.
+   - `configInPluginDir: true` — the config in effect lives inside the plugin directory, and the next `agy plugin install` on Antigravity CLI 1.1.28+ deletes it. Tell the user, and with their agreement move it to `userConfigPath`: merge it into any file already there, then remove the plugin-directory copy, which would otherwise keep outranking it until the reinstall silently drops it.
+   - `statuslineRunsInstalled: false` — the status line runs a copy other than the one `agy plugin install` just wrote, so the install changed nothing on screen. Tell the user to run `/statusline <installedPlugin.path>/hooks/status-line.sh`, or the `.cmd` on Windows; plain `doctor` prints the exact command. `null` means there is nothing to compare: the status line is not wired to agy-hud (see `statuslineWired`), or `installedPluginStatus` is not `found` — `unknown` before Antigravity CLI 1.3.4, which added `agy plugin list --json`.
+   - `nerdFont` — **a hint, never a decision.** `not-found` does not mean the icons are broken, because Ghostty, WezTerm and kitty ship their own glyph fallback. `found` does not mean they work either, because the terminal may draw with a different family. Never turn icons off, and never propose a font install, on the strength of this field alone. The user's answer in step 2, or the probe printed by plain `doctor`, is the only evidence that settles it.
+
+   Plain `doctor`, without `--json`, prints the same report plus the icon probe, so it also serves as the step 2 check for a user who was reading you somewhere other than their CLI terminal.
+
+## Expected Release Install Shape
+
+GitHub releases are expected to publish one platform-independent archive:
+
+- `agy-hud.tar.gz`
+
+The archive should contain `plugin.json`, `hooks/status-line.sh`, `hooks/status-line.cmd`, `dist/agy-hud.js`, `config.example.json`, `README.md`, `README.zh-CN.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and supporting docs. Runtime dependencies are bundled, so no extra installation is required.
+
+## CLI
+
+Installing the plugin does **not** put an `agy-hud` command on your `PATH` — the archive ships a bundle, not an npm package. Run the bundle with `node`, using the plugin root that your `statusLine.command` points into (`~/.gemini/config/plugins/agy-hud` for a current install):
+
+```sh
+node <plugin-root>/dist/agy-hud.js statusline < statusline_payload.json
+node <plugin-root>/dist/agy-hud.js version
+node <plugin-root>/dist/agy-hud.js quota refresh
+node <plugin-root>/dist/agy-hud.js doctor
+node <plugin-root>/dist/agy-hud.js doctor --json
+```
+
+The examples below use `agy-hud` as shorthand for that. If you use these often, alias it.
+
+`doctor` self-checks an install: Node version, which command the CLI has wired to its status line, the installed plugin and whether that command runs it (Antigravity CLI 1.3.4+), which config file is in effect and what `show_icons` resolves to, the terminal it detects, whether this is an SSH session, a heuristic font scan, and an icon probe for you to read. It changes nothing on disk. `--json` prints the same report as machine-readable JSON, for an agent that needs to check an install it just performed; see [For AI Agents](#for-ai-agents) for how to act on each field.
+
+`statusline` renders from stdin plus local config/cache files. It starts as soon as stdin holds a complete JSON object, without waiting for the CLI to close the pipe, and gives up on a stdin that has produced none after 1 second, since Antigravity CLI can leave the pipe open ([antigravity-cli#698](https://github.com/google-antigravity/antigravity-cli/issues/698)) and kills a status line that does not exit in time. When `agent_state` settles from active work back to `idle`, it performs one local loopback `quota refresh` before rendering so the same redraw can reflect post-response quota. The redraw waits at most 2 seconds for that refresh: if the local server has not answered by then, it renders the cached quota, cancels the probe, and leaves the refresh to the background. Each loopback request is abandoned 1.5 seconds after it starts, and the `ps` and `lsof` calls that find the server are each stopped after 1 second. Those two run synchronously, so the 2-second wait cannot cut one short; their own limits are what bound them. Missing or stale cache data can still refresh in the background as a fallback. `quota refresh` asks the running Antigravity local server for `GetUserStatus`, writes the sanitized quota cache, and exits non-zero if no local server can be reached. On Antigravity CLI 1.2.2+, where that server refuses the request, the same-frame refresh is skipped and `quota refresh` falls back to the official `agy -p /usage`, run only in the background; see [Quota Cache](#quota-cache).
+
+## Config
+
+`agy-hud` looks for config in:
+
+- `AGY_HUD_CONFIG`
+- `AGY_HUD_GIT_BRANCH` for an explicit git branch display override
+- `config.json` next to the bundled script or plugin root
+- `$XDG_CONFIG_HOME/agy-hud/config.json`
+- `$HOME/.config/agy-hud/config.json`
+
+Prefer the user-level path. A `config.json` inside the plugin directory still works, but Antigravity CLI 1.1.28+ replaces that directory exactly on `agy plugin install`, so the next reinstall deletes it without a warning. `doctor` flags a config in that position.
+
+Default config:
+
+```json
+{
+  "show_model": true,
+  "show_progress_bar": true,
+  "multiline": true,
+  "color": true,
+  "debug": false,
+  "show_git_branch": true,
+  "show_cwd": true,
+  "show_agent_state": true,
+  "show_cost": true,
+  "show_title": false,
+  "show_mode": true,
+  "show_icons": true,
+  "context_value": "percent",
+  "usage_value": "remaining"
+}
+```
+
+`show_progress_bar` and `multiline` default to `true`, matching the preferred compact two-line HUD. `debug` defaults to `false`; keep it disabled for normal use so status-line output stays clean. `AGY_HUD_GIT_BRANCH` is intended for environments where Antigravity does not provide a branch and the hook process cannot resolve one from the workspace.
+When workspace paths are available, git branch display is resolved from the current workspace/worktree before falling back to Antigravity's VCS branch payload.
+
+Display options:
+
+- `show_agent_state`: shows stdin `agent_state` such as `Idle`, `Thinking`, or `Auth`.
+- `show_cost`: shows the session cost supplied as `cost.total_usd` by Antigravity CLI 1.1.21+, at the end of the top line (or the single line). `estimated: true` adds `~`, for example `~$0.02`. Zero displays as `$0.00`, positive amounts below $0.001 as `<$0.001`; missing, negative or non-finite values are omitted. The HUD does not separately add `subagent_usd` or calculate subscription charges; this is not an invoice or a promise of actual billing.
+- `show_mode`: shows the agent mode chosen with `Shift+Tab` (Antigravity CLI 1.3.5+) at the end of the model segment, before the directory: `Plan`, `Accept Edits` or `Auto`, in cyan, yellow and orange respectively. The default mode shows nothing. A custom status line replaces the CLI's built-in one, which is otherwise the only place the mode stays visible once you start typing. On by default.
+- `show_title`: shows the conversation title supplied as `conversation_title` by Antigravity CLI 1.1.27+, between the branch and the agent state (before the state on the single line). Off by default. It is reduced to one plain line with control characters removed, clipped to 24 columns, and is the first segment dropped when the line does not fit, before cost.
+- `show_icons`: shows Nerd Font icons. Set to `false` to fall back to plain text if your terminal font renders boxes. Run `doctor` to see the icon probe and the exact fix; [Icons Render As Boxes](#icons-render-as-boxes) covers the whole question.
+- `context_value`: `percent`, `tokens`, or `both`. Default is `percent`, so context shows current input-side window occupancy. When token totals are available, the percentage and bar are derived from `total_input_tokens / context_window_size` so a large latest response does not make the HUD jump.
+- `usage_value`: `remaining` or `percent`. Default is `remaining`, so quota text and bar show what is left. When Antigravity provides both windows, the HUD shows them separately with per-window reset durations, for example `Usage ████████░░ 82% (↻ 1h 52m) |  █░░░░░░░░░ 13% (↻ 4d 21h)`.
+
+Cost is hidden before any existing segment when space is tight; the remaining layout then follows the usual degradation order. CJK, emoji and combining marks are measured in terminal columns, and clipping does not split grapheme clusters. Exact emoji appearance still depends on your terminal and font.
+
+Plan badges recognize `Pro`, `Ultra`, `Free` and their `Google AI`-prefixed forms. Unknown or missing tiers show `Plan ?`, not `Free`.
+
+## Quota Cache
+
+On Antigravity CLI 1.0.8 and newer, `agy-hud` reads the official `quota` object from the status-line payload first. If the payload includes both 5-hour and weekly windows, the HUD renders both in order instead of collapsing them into one ambiguous number. Gemini models read the Gemini buckets, and Claude and GPT-OSS models the third-party ones. Gemini 4 Argon has a weekly limit of its own on Pro plans (Antigravity CLI 1.4.x, `gemini-argon-wtu-weekly`) and no 5-hour one, so it shows that single window. Whether there is one is read from the payload when it carries Gemini quota: one with Gemini buckets but no Argon bucket, as on Ultra plans, reads the Gemini buckets even if a `/usage` cache from a Pro plan still holds an Argon one. A payload without Gemini quota leaves the question to the cache. If an official bucket still looks untouched while a fresh active-model cache already shows consumption, `agy-hud` uses the fresh cache to avoid showing a stale `100% left`. Older CLI versions, or payloads without official quota data, fall back to the local quota cache. The default cache path is:
+
+```text
+$XDG_CACHE_HOME/agy-hud/quota_cache.json
+$HOME/.cache/agy-hud/quota_cache.json   # when XDG_CACHE_HOME is unset
+```
+
+You can override it with `AGY_HUD_QUOTA_CACHE`, which then becomes the only path used for both reads
+and writes.
+
+Before 0.1.8 the cache lived at `$HOME/.gemini/antigravity-cli/scratch/agy-hud/quota_cache.json`,
+inside a directory the Antigravity CLI abandoned in 1.1.0. Upgrading needs no action: the HUD still
+reads that old file when no new cache exists yet, and the first refresh writes the new one. The old
+file is left in place, so downgrading keeps working too.
+
+If the new cache exists but cannot be parsed — a write interrupted by a crash, say — the HUD renders
+from the old cache and forces a refresh to rewrite the damaged file, rather than leaving it masked.
+
+Refresh the fallback cache manually when Antigravity is running:
+
+```sh
+node <plugin-root>/dist/agy-hud.js quota refresh
+```
+
+The refresh command supports both known Antigravity local-server shapes: the current `agy` loopback server and the older `language_server --csrf_token ...` process, in that order. If a CSRF token is present, it is used only for the loopback `GetUserStatus` request. The command stores only the sanitized cache shape below. Normal `statusline` rendering reads this cache and refreshes it when active work settles. It also uses stale-cache refreshes as a fallback. If the cache still looks untouched (`100% left` for every model), status-line activity such as a new conversation or agent state change can trigger an immediate debounced background refresh.
+
+Since 0.1.9, quota refreshes can reuse `quota_cache.json.server.json` next to the quota cache (or `<AGY_HUD_QUOTA_CACHE>.server.json`). It holds only a PID, local port, process identity (start time and executable path), and discovery timestamp. Each reuse checks the process identity with a targeted `ps` call, avoiding a full process scan and `lsof`; hints expire after five minutes. Failure or malformed quota causes discovery in the same refresh. Legacy servers requiring CSRF are never cached in this hint. Quota refresh intervals, background refreshes and working-to-idle same-frame correction are unchanged.
+
+From Antigravity CLI 1.2.2 on (boundary measured by [CodexBar](https://github.com/steipete/CodexBar/pull/3685); verified here on 1.2.11, 1.2.14, 1.2.16, 1.3.5, 1.4.5 and 1.5.1), the `agy` loopback server answers `GetUserStatus` with `401 missing CSRF token`, and the CLI does not give the status-line command that token. The status-line payload still carries the official quota, but it lags: during a turn it does not move at all, and a turn's usage booked after the CLI's end-of-turn fetch stays invisible until the next turn ends. Measured on 1.2.11, an idle session showed a 5h value 25 minutes out of date.
+
+Windows has neither `ps` nor `lsof`, which finding the loopback server takes, so there `quota refresh` treats the loopback as refused from the start and goes straight to `/usage`, paced and backed off as below.
+
+On such a CLI, `quota refresh` falls back to the official read-only command `agy -p /usage --output-format json`. It starts no agent turn and spends no tokens or quota, but it does start a separate, short-lived `agy` process: about 7 s, most of it waiting on Google's API, about 1 s of CPU and a transient 160 MB. The HUD never runs it during a redraw, only in the background, and paces it:
+
+| When | Runs if the cache is older than |
+| --- | --- |
+| A turn is running, or has just settled | 60 s |
+| The CLI sits idle (a redraw from typing, for example) | 5 minutes |
+
+Only one run happens at a time across every session: a lock next to the cache names its owner, only that owner runs `/usage` and removes the lock, and one older than 2 minutes is taken over. A failing run backs off for 60 s, doubling to 10 minutes. The `agy` it starts renders the status line too; agy-hud marks that child with `AGY_HUD_NESTED=1`, and Print mode never shows a status line, so on that mark `hooks/status-line.sh` exits without starting Node, and the bundle, when wired directly, prints nothing. The child also gets `AGY_CLI_DISABLE_AUTO_UPDATE=true`, so it skips agy's own update check: otherwise, once the last check is 15 minutes old, it starts `agy --bg-updater`, which on Windows flashes a terminal window. Your own `agy` sessions, and `agy update`, still update as before.
+
+The refusal is recorded in `quota_cache.json.auth-rejected.json` (or `<AGY_HUD_QUOTA_CACHE>.auth-rejected.json`) together with the CLI `version` from the status-line payload, plus the backoff. While the payload reports that version, refreshes go straight to `/usage`. After a CLI update the next refresh tries loopback again, and a loopback success deletes the file. A payload without a version never counts as refused, and a manual `quota refresh` always tries loopback first. Any other loopback failure, such as no running server, never falls back to `/usage`, so older CLIs behave exactly as before.
+
+A `/usage` cache holds the same buckets as the payload's `quota` field. For each window, 5h and weekly, the HUD shows the fresher of the two readings. A reading whose `reset_time` has passed belongs to an ended window: a cached one is ignored, and a payload one yields to the cache. Two live readings are the same window, and quota only goes down within a window, so the lower remainder is the newer reading. (An untouched bucket's `reset_time` moves with each query, so it cannot order readings.)
+
+Expected sanitized cache shape:
+
+```json
+{
+  "timestamp": "2026-05-19T12:00:00Z",
+  "plan_name": "Pro",
+  "models": {
+    "Gemini 3.5 Flash (Medium)": {
+      "remainingFraction": 0.2,
+      "resetTime": "2026-05-19T12:44:00Z"
+    }
+  }
+}
+```
+
+A `/usage` refresh writes the payload's bucket shape instead:
+
+```json
+{
+  "timestamp": "2026-09-25T14:20:28Z",
+  "source": "usage",
+  "models": {},
+  "quota": {
+    "gemini-5h": { "remaining_fraction": 0.867, "reset_time": "2026-09-25T14:51:03Z" },
+    "gemini-weekly": { "remaining_fraction": 0.853, "reset_time": "2026-09-30T06:16:21Z" }
+  }
+}
+```
+
+If quota data is missing, the HUD omits the usage segment instead of showing a fake limit. Official quota payloads can include live `reset_in_seconds`, so dual-window quota displays show per-window relative reset durations. The local fallback cache still derives reset from the local API's `resetTime` field and displays it as a local clock time.
+
+## Privacy And Security
+
+`agy-hud statusline` renders from stdin plus local optional config/cache files. It does not transmit status-line payload data externally. Quota refreshes contact only the local Antigravity loopback server, or, where the CLI refuses that, run the official `agy -p /usage` command, which talks to Google with your own sign-in exactly as the CLI always does. agy-hud itself makes no network request.
+
+`agy-hud quota refresh` contacts only the local Antigravity server on loopback, or runs `agy -p /usage`, and does not print CSRF tokens, cookies, raw probe responses, or `/usage` error text.
+
+The renderer intentionally avoids printing sensitive status-line fields, including email, session IDs, conversation IDs, transcript paths, tokens, CSRF values, cookies, keys, and full workspace paths. Git branch detection reads `.git/HEAD` directly and does not run `git`.
+
+When `node` is not on `PATH`, `hooks/status-line.sh` reads directory names under the version-manager locations listed in [Node Is Not Found](#node-is-not-found), plus nvm's alias files and nodenv's `version` file, to find a Node to start. It writes nothing and starts no program other than that Node.
+
+`agy-hud doctor` reads only local files and prints only local facts; it sends nothing anywhere and writes nothing. The one program it runs is `agy plugin list --json`, a local listing of installed plugins. Because its output is what you would paste into a bug report, paths under your home directory are abbreviated to `~/…`, which drops your account name. `doctor --json` keeps them absolute, since it is meant for an agent acting on the same machine — review that output before pasting it anywhere.
+
+Do not put raw Antigravity probe payloads, logs, cookies, tokens, emails, or local machine paths in issues or pull requests.
+
+## Development
+
+```sh
+npm ci
+npm run build
+npm test
+```
+
+`npm run build` bundles `src/main.ts` into `dist/agy-hud.js`. Commit the updated `dist/agy-hud.js` with any source changes so cloned plugins can run without a build step.
+
+## Limitations
+
+Quota fields depend on local Antigravity availability and a compatible local cache. If Antigravity is not running, or its local `GetUserStatus` endpoint changes, the HUD omits quota details.
+
+Inside the `agy -p /usage` run that a quota refresh starts, `hooks/status-line.sh` and `hooks/status-line.cmd` read the status-line input to its end before exiting, without starting Node. Should the CLI hold that pipe open ([antigravity-cli#698](https://github.com/google-antigravity/antigravity-cli/issues/698)), the hook waits until the CLI stops it. That run is print mode and never shows a status line, and on Antigravity CLI 1.5.1 the pipe was measured to close normally there.
+
+On Windows, `doctor` compares paths as text, so a status line wired through an 8.3 short path reads as a copy other than the installed one. `hooks/status-line.cmd` has none of the Node lookup described in [Node Is Not Found](#node-is-not-found). A `/usage` run that times out or exceeds its output cap is ended with `taskkill /T`, which also ends the helpers `agy` started while `agy` is still running; a helper left behind after `agy` has already exited is not found this way. CI runs on Linux only. The contributed hook was verified by hand on Windows 11 with Antigravity CLI 1.4.4; the later changes for Windows (the `/usage` route and how it starts and ends `agy`, doctor's Windows paths and the hardened hook) are covered by tests on Linux and macOS but have not yet been run on Windows.

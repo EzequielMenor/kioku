@@ -11,7 +11,7 @@ import type { ModelManagement } from "./model-management.ts";
 import { NATIVE_PROVIDERS, type NativeEngine } from "./native-engine.ts";
 
 export type EngineChoice = "auto" | "native" | "hermes";
-const AUTO_NATIVE = new Set(["ollama", "custom"]);
+const AUTO_NATIVE = new Set(["ollama", "custom", "opencode-go"]);
 
 /** Lee `engine` de assistant.json. Ausente o fichero inexistente = auto; un valor desconocido falla cerrado. */
 export async function readEngineChoice(homeDir: string): Promise<EngineChoice> {
