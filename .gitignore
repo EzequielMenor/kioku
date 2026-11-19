@@ -10,3 +10,4 @@ __pycache__/
 # Compilación de la app de macOS (Swift)
 macos/.build/
 macos/.swiftpm/
+.commandcode/
