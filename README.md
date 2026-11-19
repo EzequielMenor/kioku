@@ -49,7 +49,17 @@ Además trae **bases de datos** (tabla, tablero y lista sobre tus propias notas)
 
 ## Instalación
 
-### Instalación rápida desde cero (macOS y Linux)
+### macOS (Apple Silicon · sin terminal)
+
+1. Descarga **[Kioku-0.8.0-macos-arm64.dmg](https://github.com/EzequielMenor/kioku/releases/latest/download/Kioku-0.8.0-macos-arm64.dmg)** desde la [última release](https://github.com/EzequielMenor/kioku/releases/latest).
+2. Ábrelo y arrastra **`Kioku.app`** a **`Aplicaciones`** (`/Applications`).
+3. La primera vez, abre `Kioku.app` con **clic derecho → Abrir** (o en *Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente*, ya que la app usa firma local sin notarizar).
+4. En la ventana **Estado y configuración** que aparece al abrirla:
+   - **Carpeta de notas:** elige una carpeta local (recomendado fuera de iCloud Drive, por ejemplo `~/Kioku`; si usas `~/Documents/Kioku` con iCloud Drive activado, haz *clic derecho → Mantener descargado* en Finder para que macOS no desaloje los archivos).
+   - **Servicio y arranque:** activa el servicio en segundo plano (`launchd`) con un clic. Si alguna vez tuviste más de una copia de `Kioku.app`, la propia ventana ofrece **Usar esta copia** para alinear el servicio.
+   - **Kio (asistente local):** instala [Ollama](https://ollama.com), descarga un modelo (recomendado: `qwen3.5:9b`) y selecciónalo en la app; Kio responde al momento desde el chat y desde la barra superior de macOS.
+
+### Linux o macOS Intel (un comando)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash
@@ -57,13 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/in
 
 Instala Kioku completo con la app de escritorio, **Kio** integrado, **Conexiones y sincronización** por Tailscale y el **motor nativo del agente** (listo para Ollama y modelos locales o compatibles con OpenAI sin Docker).
 
-- **macOS (sin usar terminal si prefieres):**
-  - Puedes descargar el [ZIP de `main`](https://codeload.github.com/EzequielMenor/kioku/zip/main), extraerlo y hacer doble clic en **`Instalar Kioku.command`** (o ejecutar el comando de arriba). Descarga un Node 24+ oficial verificado y crea `~/Applications/Kioku.app` (si tienes un `Kioku.dmg`, simplemente arrastra `Kioku.app` a `/Applications`).
-  - La primera vez que abras `Kioku.app` desde Finder, macOS puede pedir confirmación (*clic derecho → Abrir* o *Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente*) porque la app usa firma local sin notarizar.
-  - Al abrirla, la ventana **Estado y configuración** te guía paso a paso desde la interfaz:
-    1. **Carpeta de notas:** elige una carpeta local (recomendado fuera de iCloud Drive, por ejemplo `~/Kioku`; si usas `~/Documents/Kioku` con iCloud Drive activado, haz *clic derecho → Mantener descargado* en Finder para que macOS no desaloje los archivos).
-    2. **Servicio y arranque:** activa el servicio en segundo plano (`launchd`) con un clic. Si alguna vez tuviste más de una copia de `Kioku.app`, la propia ventana te ofrece **Usar esta copia** para alinear el servicio.
-    3. **Kio (asistente local):** instala [Ollama](https://ollama.com), descarga un modelo (recomendado: `qwen3.5:9b`) y selecciónalo en la app; Kio responde al momento desde el chat y desde la barra superior de macOS.
+- **macOS (Intel o compilación local):** también puedes descargar el [ZIP de `main`](https://codeload.github.com/EzequielMenor/kioku/zip/main), extraerlo y hacer doble clic en **`Instalar Kioku.command`**. Descarga un Node 24+ oficial verificado y crea `~/Applications/Kioku.app`.
 - **Linux:** instala en `~/.local/share/kioku`, añade el comando `kioku` en `~/.local/bin` (incluyendo un Node 24 privado si no lo tienes instalado), ofrece activar el servicio de usuario `systemd` y abre **Conexiones y sincronización**.
 
 ### Actualizar
