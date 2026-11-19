@@ -443,7 +443,7 @@ export function CalendarView({ rev, guard, say }: { rev: number; guard: Guard; s
             <button onClick={() => setDay(today)}>Hoy</button>
             <button aria-label={scope === "dia" ? "Día siguiente" : "Semana siguiente"} onClick={() => setDay(shiftView(scope, day, 1))}>›</button>
           </div>
-          {!readOnly && <button onClick={() => setPanel({ kind: "areas" })}>Áreas</button>}
+          <button onClick={() => setPanel({ kind: "areas" })}>Áreas</button>
           <button class="primary" onClick={() => compose()}>{readOnly ? "+ Actividad" : "Nueva actividad"}</button>
         </div>
       </header>
@@ -583,7 +583,7 @@ function ActivityRow({ item, day, continued, taskTitle, now, draggable, onOpen, 
 }) {
   const cd = countdown(item, now), area = areaLabel(item), times = rowTimes(item, day);
   return (
-    <li class={`cal-item st-${item.state} ${item.kind} ${continued ? "carried" : ""}`} style={{ borderLeft: `5px solid ${area.color ?? "var(--line2)"}` }}>
+    <li class={`cal-item st-${item.state} ${item.kind} ${continued ? "carried" : ""}`} style={{ borderLeft: `1px solid ${area.color ?? "var(--line2)"}` }}>
       <button type="button" class="cal-main" aria-haspopup="dialog" draggable={draggable} onClick={onOpen} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <span class="cal-time"><b class={continued ? "word" : ""}>{times.big}</b><small>{times.small}</small></span>
         <span class="cal-act">

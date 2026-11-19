@@ -11,3 +11,4 @@ __pycache__/
 macos/.build/
 macos/.swiftpm/
 .commandcode/
+.impeccable/

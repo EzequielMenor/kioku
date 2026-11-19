@@ -14,7 +14,7 @@
 .cal-warn a { text-decoration: underline; }
 .cal-free { margin: 12px 0; color: var(--fg2); }
 .cal-legend { margin: 8px 0 14px; color: var(--muted); font-size: 12.5px; }
-.cal-ticker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 10px 0 14px; padding: 10px 16px; border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 6px; background: var(--surface); overflow-wrap: anywhere; }
+.cal-ticker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 10px 0 14px; padding: 10px 16px; border: 1px solid var(--line); border-left: 1px solid var(--accent); border-radius: 6px; background: var(--surface); overflow-wrap: anywhere; }
 .cal-ticker b { font-size: 15px; }
 
 /* Etiquetas: letra + nombre (el color nunca es el único indicador) y estado con glifo y texto */
@@ -53,10 +53,10 @@
 .cal-gbody { position: relative; flex: 1 1 0; min-width: 0; touch-action: pan-y; user-select: none; border-left: 1px solid var(--line); }
 .cal-hline { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); pointer-events: none; }
 .cal-gnow { position: absolute; left: 0; right: 0; border-top: 2px solid var(--accent); z-index: 2; pointer-events: none; }
-.cal-ev { position: absolute; display: block; box-sizing: border-box; min-width: 0; padding: 2px 6px; overflow: hidden; border: 1px solid var(--line2); border-left: 4px solid var(--line2); border-radius: 6px; background: var(--surface); color: var(--fg); text-align: left; font: inherit; }
+.cal-ev { position: absolute; display: block; box-sizing: border-box; min-width: 0; padding: 2px 6px; overflow: hidden; border: 1px solid var(--line2); border-left: 1px solid var(--line2); border-radius: 6px; background: var(--surface); color: var(--fg); text-align: left; font: inherit; }
 .cal-ev b, .cal-ev small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .cal-ev small { font-size: 12px; }
-.cal-ev.event { border-style: double; border-width: 3px 3px 3px 4px; }
+.cal-ev.event { border-style: double; border-width: 3px; }
 .cal-ev.st-active { background: var(--accent); color: var(--accent-fg); }
 .cal-ev.st-done, .cal-ev.st-past { color: var(--muted); }
 .cal-ev.st-unfinished { border-style: dashed; }
