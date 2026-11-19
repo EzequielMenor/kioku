@@ -60,9 +60,10 @@ Estos pasos son instrucciones: el desarrollo no los ejecuta sobre tu máquina ni
 
 ## Desconectar móviles
 
-`kioku pair --revoke` revoca la **clave compartida de todos los móviles**, no solo uno. El acceso al servidor se rechaza desde ese momento; lo ya descargado puede permanecer en cada dispositivo. La app intenta limpiar su réplica al recibir el rechazo, pero no es un borrado remoto garantizado. Desinstala la app y elimina los datos del sitio si necesitas retirarlos del teléfono, después de resolver cualquier cambio pendiente.
+- **Un solo dispositivo:** abre **Conexiones y sincronización → Tus dispositivos → Desconectar** junto al dispositivo que emparejaste por QR. Para volver a conectarlo, genera un QR nuevo con **Añadir dispositivo**.
+- **Emparejamiento manual por terminal:** `kioku pair --revoke` revoca la **clave móvil compartida** y afecta a todos los móviles conectados con esa clave. Para recuperar el acceso manual, vuelve a emparejarlos con `kioku pair`.
 
-Para volver a conectar, ejecuta `kioku pair` y empareja de nuevo los dispositivos deseados. No hay inventario ni revocación individual por dispositivo en esta versión.
+Revocar el acceso al servidor no garantiza el borrado remoto de lo que ya se descargó. Si aún tienes el dispositivo y necesitas quitar la copia local, resuelve primero cualquier cambio pendiente; después elimina los datos del sitio.
 
 ## Comprobación final con datos de prueba
 

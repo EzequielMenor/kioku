@@ -196,16 +196,24 @@ export function serializeModelOverride(o: ModelOverride): string {
 /** Override de la interfaz: `null` si no existe; si existe y no es válido (o no es un fichero normal) falla cerrado. */
 export async function readModelOverride(homeDir: string): Promise<ModelOverride | null> {
   const file = path.join(homeDir, ".kioku", MODEL_OVERRIDE_FILE);
+  let text: string;
   try {
     const st = await fs.lstat(file);
     if (!st.isFile()) throw new ModelConfigError(`${OVERRIDE_WHERE} debe ser un fichero normal (no un enlace ni una carpeta)`);
+    text = await fs.readFile(file, "utf8");
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     if (e instanceof ModelConfigError) throw e;
-    throw new ModelConfigError(`No puedo leer ${MODEL_OVERRIDE_FILE}: revisa sus permisos`);
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    if (code === "EACCES" || code === "EPERM") {
+      const macHint = process.platform === "darwin" ? " Si está en Documentos, revisa Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas." : "";
+      throw new ModelConfigError(`Kioku no tiene acceso a ${OVERRIDE_WHERE} (${code}). Revisa el acceso a esa carpeta y al archivo desde la cuenta que ejecuta Kioku.${macHint}`);
+    }
+    if (code === "ENOTDIR") throw new ModelConfigError(`No se puede acceder a ${OVERRIDE_WHERE}: verifica que la bóveda y .kioku sean carpetas.`);
+    throw new ModelConfigError(`No se pudo leer ${OVERRIDE_WHERE}. Comprueba que la bóveda esté disponible y vuelve a intentarlo.`);
   }
-  const text = await readText(file);
-  return text === null ? null : parseModelOverride(text);
+  if (text.length > MAX_FILE) throw new ModelConfigError(`${MODEL_OVERRIDE_FILE} es demasiado grande`);
+  return parseModelOverride(text);
 }
 
 async function readText(file: string): Promise<string | null> {

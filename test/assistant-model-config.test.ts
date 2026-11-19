@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmdirSync, rmSync, symlinkSync, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -300,6 +300,35 @@ test("override: un fichero demasiado grande o un enlace simbólico se rechazan",
     symlinkSync(path.join(link.root, "otro.json"), path.join(link.homeDir, ".kioku", MODEL_OVERRIDE_FILE));
     await assert.rejects(resolve(link), (err: Error) => err instanceof ModelConfigError && /assistant-model\.json/.test(err.message));
   } finally { big.done(); link.done(); }
+});
+
+test("override: una ruta incorrecta no se diagnostica como falta de permisos ni usa otro modelo", async () => {
+  const e = env();
+  try {
+    const configDir = path.join(e.homeDir, ".kioku");
+    rmdirSync(configDir);
+    writeFileSync(configDir, "no es un directorio");
+    await assert.rejects(resolve(e), {
+      name: "ModelConfigError",
+      message: "No se puede acceder a .kioku/assistant-model.json: verifica que la bóveda y .kioku sean carpetas.",
+    });
+  } finally { e.done(); }
+});
+
+test("override: al faltar acceso indica la ruta relativa y no muestra el error interno ni usa otro modelo", async (t) => {
+  const e = withOverride(overrideText({ provider: "openrouter" }));
+  try {
+    for (const [operation, code] of [["lstat", "EPERM"], ["readFile", "EACCES"]] as const) {
+      const stub = t.mock.method(fs, operation, () => Promise.reject(Object.assign(new Error(SECRET), { code })));
+      try {
+        const macHint = process.platform === "darwin" ? " Si está en Documentos, revisa Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas." : "";
+        await assert.rejects(resolve(e), {
+          name: "ModelConfigError",
+          message: `Kioku no tiene acceso a .kioku/assistant-model.json (${code}). Revisa el acceso a esa carpeta y al archivo desde la cuenta que ejecuta Kioku.${macHint}`,
+        });
+      } finally { stub.mock.restore(); }
+    }
+  } finally { e.done(); }
 });
 
 test("override: serializar y volver a leer conserva exactamente la selección, con la marca y sin claves", () => {

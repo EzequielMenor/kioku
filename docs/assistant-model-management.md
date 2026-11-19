@@ -60,9 +60,11 @@ Se exige la clave completa de Kioku **antes** de leer o escribir nada: el rol m�
 
 La pestaña **Estado** informa de que Kioku responde y de qué requisitos se **detectan** (binarios y credenciales presentes). **No es una prueba de ejecución**: no lanza Hermes ni Docker ni envía nada a un modelo; solo una pregunta real lo confirma. La compatibilidad real con Mac/Docker/iPhone sigue siendo una prueba externa aparte.
 
+Si Kio dice que no tiene acceso a `.kioku/assistant-model.json`, comprueba que la cuenta que ejecuta Kioku pueda entrar a la carpeta de la bóveda y leer el fichero. Si la bóveda está en Documentos en macOS, revisa **Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas** para Kioku y vuelve a abrir la app. Si Kio indica que la ruta no es una carpeta, comprueba la ubicación de la bóveda y de `.kioku`. No hace falta cambiar de modelo ni borrar el fichero para diagnosticarlo.
+
 ## iPhone
 
-La pestaña **iPhone** repite el flujo existente: `kioku pair` (la dirección con la clave del móvil la imprime la terminal; el panel no la muestra), Safari → Compartir → «Añadir a pantalla de inicio» y `kioku pair --revoke` para desemparejar. No genera QR ni enlaces.
+Usa **Conexiones y sincronización → Añadir dispositivo** para emparejar por QR y **Tus dispositivos** para desconectar solo ese iPhone. Consulta [Conexiones y sincronización](connections.md) para configurar el acceso privado y comprobarlo.
 
 ## Fuera de alcance
 
