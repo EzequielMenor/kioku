@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Kioku } from "../src/core/kioku.ts";
@@ -11,7 +11,7 @@ import { mobileAllowed } from "../src/server/mobile.ts";
 import { loadOrCreateMobileKey } from "../src/server/key.ts";
 import { HermesEngine, type AssistantEngine } from "../src/assistant/engine.ts";
 import { FakeEngine } from "../src/assistant/fake-engine.ts";
-import { MODEL_OVERRIDE_FILE } from "../src/assistant/model-config.ts";
+import { MODEL_OVERRIDE_FILE, kiokuCredentialsPath } from "../src/assistant/model-config.ts";
 import { tmpVault } from "./helpers.ts";
 
 const KEY = "b".repeat(64);
@@ -53,7 +53,8 @@ async function setup(o: { engine?: "hermes" | "fake" | "none"; assistant?: strin
   const file = path.join(root, ".kioku", MODEL_OVERRIDE_FILE);
   const read = (f: string) => (existsSync(f) ? readFileSync(f, "utf8") : null);
   const internal = () => readdirSync(path.join(root, ".kioku")).sort();
-  return { j, srv, root, userHome, call, file, read, internal, mobileKey, spawned: () => spawned, done: async () => { await srv.close(); j.close(); cleanup(); rmSync(base, { recursive: true, force: true }); } };
+  const credFile = kiokuCredentialsPath(userHome, {});
+  return { j, srv, root, userHome, call, file, credFile, read, internal, mobileKey, spawned: () => spawned, done: async () => { await srv.close(); j.close(); cleanup(); rmSync(base, { recursive: true, force: true }); } };
 }
 
 const URL_MODEL = "/api/assistant/model";
@@ -287,4 +288,149 @@ test("gestión API (compatibilidad): sin override, estado del asistente y pregun
     assert.equal(s.read(s.file), null);
     assert.equal((await s.call("GET", "/api/session", undefined, s.mobileKey)).json.role, "mobile");
   } finally { await s.done(); }
+});
+
+// ---------- Clave de API pegada en la interfaz (almacén de Kioku, fuera de la bóveda) ----------
+
+const URL_CRED = "/api/assistant/model/credential";
+const noValue = (text: string) => assert.ok(!text.includes(SECRET) && !text.includes(ENV_SECRET), text);
+const everyFile = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? everyFile(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+
+test("clave API: guardar → estado «kioku» sin valor → el asistente ya está listo sin reiniciar → quitar", async () => {
+  const s = await setup({ dotenv: "" });
+  try {
+    await s.call("PUT", URL_MODEL, { provider: "opencode-go", model: "glm-5" });
+    const before = await s.call("GET", URL_MODEL);
+    assert.deepEqual(before.json.credentials, { required: true, names: ["OPENCODE_GO_API_KEY"], state: "missing" });
+    assert.equal(before.json.readiness.ok, false);
+
+    const put = await s.call("PUT", URL_CRED, { provider: "opencode-go", value: SECRET });
+    assert.equal(put.status, 200);
+    noValue(put.text);
+    assert.deepEqual(put.json.credentials, { required: true, names: ["OPENCODE_GO_API_KEY"], state: "found", name: "OPENCODE_GO_API_KEY", source: "kioku" });
+    assert.equal(put.json.readiness.ok, true, "la clave nueva cuenta sin reiniciar el daemon");
+    assert.equal(put.json.effective.provider, "opencode-go");
+    assert.deepEqual(before.json.storedKeys, []);
+    assert.deepEqual(put.json.storedKeys, ["opencode-go"], "solo ids de proveedor, nunca nombres de variable ni valores");
+    assert.deepEqual((await s.call("GET", URL_MODEL)).json, put.json, "releer devuelve lo mismo, sin valor");
+    noValue((await s.call("GET", URL_MODEL)).text);
+
+    assert.equal(readFileSync(s.credFile, "utf8"), `OPENCODE_GO_API_KEY=${SECRET}\n`);
+    assert.equal(statSync(s.credFile).mode & 0o777, 0o600);
+    assert.equal(statSync(path.dirname(s.credFile)).mode & 0o777, 0o700);
+    for (const f of everyFile(s.root)) assert.ok(!readFileSync(f, "utf8").includes(SECRET), `la clave no debe estar en la bóveda: ${f}`);
+
+    const del = await s.call("DELETE", URL_CRED, { provider: "opencode-go" });
+    assert.equal(del.status, 200);
+    noValue(del.text);
+    assert.deepEqual(del.json.credentials, { required: true, names: ["OPENCODE_GO_API_KEY"], state: "missing" });
+    assert.deepEqual(del.json.storedKeys, []);
+    assert.equal(del.json.readiness.ok, false);
+    assert.equal(existsSync(s.credFile), false);
+    assert.equal((await s.call("DELETE", URL_CRED, { provider: "opencode-go" })).status, 200, "borrar es idempotente");
+    assert.equal(s.spawned(), 0);
+  } finally { await s.done(); }
+});
+
+test("clave API: la de Kioku manda sobre ~/.hermes/.env; al quitarla vuelve la de .env; borrar no toca el .env", async () => {
+  const s = await setup();
+  try {
+    await s.call("PUT", URL_MODEL, { provider: "openrouter", model: "a/b" });
+    assert.equal((await s.call("GET", URL_MODEL)).json.credentials.source, "hermes-env");
+    const put = await s.call("PUT", URL_CRED, { provider: "openrouter", value: SECRET });
+    assert.equal(put.json.credentials.source, "kioku");
+    noValue(put.text);
+    const del = await s.call("DELETE", URL_CRED, { provider: "openrouter" });
+    assert.equal(del.json.credentials.source, "hermes-env");
+    assert.equal(readFileSync(path.join(s.userHome, ".hermes/.env"), "utf8"), `OPENROUTER_API_KEY=${ENV_SECRET}\n`);
+    noValue(del.text);
+  } finally { await s.done(); }
+});
+
+test("clave API: entradas inválidas → 400 sin eco del valor y sin crear el almacén; el nombre de la variable no lo elige el cliente", async () => {
+  const s = await setup();
+  try {
+    const bad = [
+      { provider: "openrouter", value: "" },
+      { provider: "openrouter", value: `${SECRET}\nPATH=/tmp` },
+      { provider: "openrouter", value: `${SECRET}\0` },
+      { provider: "openrouter", value: SECRET.repeat(200) },
+      { provider: "openrouter", value: { clave: SECRET } },
+      { provider: "openrouter", value: SECRET, name: "PATH" },
+      { provider: "openrouter", value: SECRET, env: "AWS_SECRET_ACCESS_KEY" },
+      { provider: "openai-codex", value: SECRET },
+      { provider: SECRET, value: SECRET },
+      { provider: "__proto__", value: SECRET },
+      { value: SECRET },
+      { provider: ["openrouter"], value: SECRET },
+    ];
+    for (const body of bad) {
+      const r = await s.call("PUT", URL_CRED, body);
+      assert.equal(r.status, 400, JSON.stringify(Object.keys(body)));
+      assert.deepEqual(Object.keys(r.json), ["error"]);
+      noValue(r.text);
+    }
+    for (const body of [{}, { provider: "openai-codex" }, { provider: SECRET }, { provider: "openrouter", value: SECRET }]) {
+      const r = await s.call("DELETE", URL_CRED, body);
+      assert.equal(r.status, 400);
+      noValue(r.text);
+    }
+    const raw = await fetch(s.srv.url + URL_CRED, { method: "PUT", headers: { "x-kioku-key": KEY, "content-type": "application/json" }, body: `{"provider":"openrouter","value":"${SECRET}` });
+    assert.equal(raw.status, 400);
+    noValue(await raw.text());
+    assert.equal(existsSync(s.credFile), false);
+    assert.equal(readFileSync(path.join(s.userHome, ".hermes/.env"), "utf8"), `OPENROUTER_API_KEY=${ENV_SECRET}\n`);
+  } finally { await s.done(); }
+});
+
+test("clave API: móvil → 403, sin clave o solo Bearer → 401, origen ajeno → 403; nada se escribe ni se filtra", async () => {
+  const s = await setup();
+  try {
+    const body = { provider: "openrouter", value: SECRET };
+    for (const [m, b] of [["PUT", body], ["DELETE", { provider: "openrouter" }], ["GET", undefined], ["POST", body]] as const) {
+      const r = await s.call(m, URL_CRED, b, s.mobileKey);
+      assert.equal(r.status, 403, `${m}: ${r.text}`);
+      assert.deepEqual(Object.keys(r.json), ["error"]);
+      noValue(r.text);
+      assert.doesNotMatch(r.text, /openrouter|OPENROUTER|source|kioku/i);
+    }
+    for (const m of ["GET", "PUT", "POST", "DELETE", "PATCH"]) assert.equal(mobileAllowed(m, URL_CRED), false, m);
+    const sess = s.srv.sessions.open();
+    for (const headers of [{} as Record<string, string>, { authorization: `Bearer ${sess.token}` }]) {
+      assert.equal((await s.call("PUT", URL_CRED, body, null, headers)).status, 401);
+      assert.equal((await s.call("DELETE", URL_CRED, { provider: "openrouter" }, null, headers)).status, 401);
+    }
+    assert.equal((await s.call("PUT", URL_CRED, body, KEY, { origin: "https://evil.example.com" })).status, 403);
+    assert.equal(existsSync(s.credFile), false);
+    // Y con el rol completo, solo PUT y DELETE.
+    for (const m of ["GET", "POST", "PATCH"]) assert.equal((await s.call(m, URL_CRED, m === "GET" ? undefined : body)).status, 405, m);
+    assert.equal(existsSync(s.credFile), false);
+  } finally { await s.done(); }
+});
+
+test("clave API: motor sin gestión (FakeEngine) o sin motor → 503 y no se crea el almacén", async () => {
+  for (const engine of ["fake", "none"] as const) {
+    const s = await setup({ engine });
+    try {
+      assert.equal((await s.call("PUT", URL_CRED, { provider: "openrouter", value: SECRET })).status, 503);
+      assert.equal((await s.call("DELETE", URL_CRED, { provider: "openrouter" })).status, 503);
+      assert.equal(existsSync(s.credFile), false);
+    } finally { await s.done(); }
+  }
+});
+
+test("clave API: el valor no sale por el log del daemon ni por la salida del asistente", async () => {
+  const logs: string[] = [];
+  const grab = (...a: unknown[]) => { logs.push(a.map((x) => (x instanceof Error ? x.message : typeof x === "string" ? x : JSON.stringify(x))).join(" ")); };
+  const { log, error, warn, info } = console;
+  Object.assign(console, { log: grab, error: grab, warn: grab, info: grab });
+  const s = await setup();
+  try {
+    await s.call("PUT", URL_CRED, { provider: "openrouter", value: SECRET });
+    await s.call("PUT", URL_CRED, { provider: "openrouter", value: `${SECRET}\nx` });
+    await s.call("DELETE", URL_CRED, { provider: "openrouter" });
+    const status = await s.call("GET", "/api/assistant/status");
+    noValue(status.text);
+  } finally { Object.assign(console, { log, error, warn, info }); await s.done(); }
+  assert.ok(!logs.join("\n").includes(SECRET), "ni un fragmento en los logs");
 });

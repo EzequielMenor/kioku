@@ -103,7 +103,8 @@ textarea { width: 100%; resize: vertical; }
 .sidebar a { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; color: var(--fg2); font-size: 13.5px; }
 .sidebar a svg { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
 .sidebar a:hover { background: var(--hover); color: var(--fg); }
-.sidebar a.active { background: var(--sel); color: var(--fg); font-weight: 550; }
+.sidebar a.active { background: color-mix(in srgb, var(--accent) 18%, var(--side)); color: var(--fg); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.sidebar a.active:hover { background: color-mix(in srgb, var(--accent) 24%, var(--side)); }
 .sidebar a.active svg { color: var(--accent); opacity: 1; }
 .sidebar a span { flex: 1; }
 .badge { background: var(--accent-soft); color: var(--accent); border-radius: 6px; font-size: 11px; padding: 0 7px; font-weight: 650; line-height: 18px; }
@@ -786,3 +787,8 @@ button.small { padding: 4px 9px; font-size: 12px; min-height: 0; }
 .base-rows-hint { margin: 4px 0 10px; }
 .base-rows-hint a { color: var(--accent); }
 .base-rows-hint a:hover { text-decoration: underline; }
+
+/* App de Mac: la ventana usa la barra de título transparente (`.fullSizeContentView`) y el semáforo flota sobre la web;
+   la app marca `data-shell="macos"` al cargar. Se deja libre la franja de la barra (28 px, también la de arrastre nativo). */
+:root[data-shell="macos"] .sidebar { padding-top: 40px; }
+:root[data-shell="macos"] .content { padding-top: 28px; }

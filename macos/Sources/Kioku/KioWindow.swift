@@ -120,26 +120,6 @@ enum KioPainter {
         default: break
         }
     }
-
-    /// Icono de la barra de menús: el cuerpo de Kio con los ojos huecos (plantilla: macOS lo tiñe).
-    static func menuBarIcon() -> NSImage {
-        let img = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { rect in
-            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            let S = rect.width
-            ctx.setFillColor(.black)
-            roundRect(ctx, S * 0.08, S * 0.08, S * 0.84, S * 0.84, S * 0.84 * 0.26)
-            ctx.fillPath()
-            ctx.setBlendMode(.clear)
-            for s in [-1.0, 1.0] {
-                let cx = S / 2 + s * S * 0.17
-                roundRect(ctx, cx - S * 0.075, S * 0.47 - S * 0.125, S * 0.15, S * 0.25, S * 0.075)
-            }
-            ctx.fillPath()
-            return true
-        }
-        img.isTemplate = true
-        return img
-    }
 }
 
 /// La vista de Kio: dibuja, recibe solo los clics sobre su cuerpo y gestiona clic, arrastre y clic derecho.

@@ -1,12 +1,13 @@
 // Gestión del modelo desde la interfaz de escritorio: lee el estado real y guarda/restablece el override
-// `.kioku/assistant-model.json`. Nunca toca `assistant.json` (exclusiones) ni acepta claves; las credenciales
-// solo se describen (nombre de la variable y de dónde sale), jamás se devuelven.
+// `.kioku/assistant-model.json`. Nunca toca `assistant.json` (exclusiones) ni acepta claves en el override. La clave de API
+// se guarda aparte, en el almacén de Kioku fuera de la bóveda (`saveCredential`); de ella solo se describe el nombre de la
+// variable y de dónde sale, jamás el valor.
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { Vault } from "../core/vault.ts";
 import {
-  MODEL_OVERRIDE_FILE, MODEL_OVERRIDE_OWNER, ModelConfigError, apiModes, checkModelOverride, describeCredentials, describeProviders, readModelOverride,
-  rejectFields, resolveModel, serializeModelOverride,
+  MODEL_OVERRIDE_FILE, MODEL_OVERRIDE_OWNER, ModelConfigError, apiModes, checkModelOverride, describeCredentials, describeProviders, listKiokuSecretProviders, readModelOverride,
+  rejectFields, removeKiokuSecret, resolveModel, saveKiokuSecret, serializeModelOverride,
   type CredentialStatus, type ModelSource, type ProviderInfo,
 } from "./model-config.ts";
 
@@ -31,6 +32,8 @@ export interface ModelState {
   effective: { provider: string; model: string | null; baseOrigin: string | null; apiMode: string | null; source: ModelSource } | null;
   error: string | null;
   credentials: CredentialStatus | null;
+  /** Proveedores con clave guardada en Kioku (solo ids; sirve para ofrecer «Quitar» aunque el proveedor aún no esté en uso). */
+  storedKeys: string[];
 }
 
 const INPUT_FIELDS = ["provider", "model", "base_url", "api_mode", "confirm_origin"];
@@ -43,6 +46,14 @@ function optionalText(o: Record<string, unknown>, field: string): string | undef
   if (v === undefined || v === null || v === "") return undefined;
   if (typeof v !== "string") throw new ModelConfigError(`${WHERE}: «${field}» debe ser texto`);
   return v;
+}
+
+/** Cuerpo de las rutas de clave: solo los campos esperados; cualquier otro (p. ej. el nombre de la variable) se rechaza sin eco. */
+function credentialBody(input: unknown, allowed: string[]): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new ModelConfigError(`${WHERE}: se esperaba un objeto con ${allowed.join(" y ")}`);
+  const body = input as Record<string, unknown>;
+  if (Object.keys(body).some((k) => !allowed.includes(k))) throw new ModelConfigError(`${WHERE}: campo no permitido. Solo ${allowed.join(", ")}`);
+  return body;
 }
 
 export class ModelManagement {
@@ -59,7 +70,7 @@ export class ModelManagement {
 
   async state(): Promise<ModelState> {
     const userHome = this.o.userHome();
-    const base = { providers: describeProviders(), apiModes: apiModes() };
+    const base = { providers: describeProviders(), apiModes: apiModes(), storedKeys: await listKiokuSecretProviders({ userHome, env: this.o.env }) };
     let override: OverrideView = { state: "none" };
     try {
       const ov = await readModelOverride(this.o.homeDir);
@@ -94,6 +105,20 @@ export class ModelManagement {
       await this.vault.writeInternal(MODEL_OVERRIDE_FILE, serializeModelOverride(checked));
       return this.state();
     });
+  }
+
+  /** Guarda la clave del proveedor en el almacén de Kioku (fuera de la bóveda). El valor no se devuelve ni se repite en errores. */
+  async saveCredential(input: unknown): Promise<ModelState> {
+    const body = credentialBody(input, ["provider", "value"]);
+    await saveKiokuSecret(body.provider, body.value, { userHome: this.o.userHome(), env: this.o.env });
+    return this.state();
+  }
+
+  /** Quita la clave guardada en Kioku; no toca `~/.hermes/.env` ni el entorno. */
+  async removeCredential(input: unknown): Promise<ModelState> {
+    const body = credentialBody(input, ["provider"]);
+    await removeKiokuSecret(body.provider, { userHome: this.o.userHome(), env: this.o.env });
+    return this.state();
   }
 
   /** «Heredar»: quita el override, y solo si es un fichero que creó la interfaz. */

@@ -363,7 +363,7 @@ function buildCalendarDto(e: ParsedEntry, entries: ParsedEntry[], nowStr: string
   }
 }
 
-export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: string, body?: unknown): Promise<T> {
+export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT" | "DELETE", rawPath: string, body?: unknown): Promise<T> {
   const st = getState();
   const entries = allEntries(st);
   const now = new Date();
@@ -1342,8 +1342,12 @@ export async function handleDemoApi<T>(method: "GET" | "POST" | "PUT", rawPath: 
     saveState();
     return { ok: true } as T;
   }
+  if (route === "/api/assistant/model/credential") {
+    throw new ApiError(403, "En el modo Demo no se guardan claves de API");
+  }
   if (route === "/api/assistant/model") {
     return {
+      storedKeys: [],
       effective: {
         provider: "openai-codex",
         model: "Modo Demo Interactivo",

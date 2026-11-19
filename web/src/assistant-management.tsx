@@ -1,9 +1,10 @@
 // Gestión del asistente (solo escritorio): modelo de Hermes, estado honesto y guía para instalar Kioku en el iPhone.
-// Es un panel de gestión web, no una app nativa. Nunca pide ni muestra claves: solo dice dónde se definen.
+// Es un panel de gestión web, no una app nativa. La clave de API solo entra (campo de contraseña → almacén de Kioku): el servidor
+// nunca la devuelve, así que aquí solo se ve su estado (guardada en Kioku, en ~/.hermes/.env, en el entorno o ausente).
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import type { ModelState } from "../../src/assistant/model-management.ts";
-import { api } from "./api.ts";
+import { ApiError, api } from "./api.ts";
 import { isMobile } from "./role.ts";
 import "./assistant-management.css";
 
@@ -202,11 +203,7 @@ function ModelSection({ data, onData }: { data: ModelResponse; onData(d: ModelRe
             {data.apiModes.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>}
-        <p class="am-keys muted small">
-          {info && info.keys.length > 0
-            ? <>Kioku no pide ni guarda la clave. Define <code>{info.keys[0]}</code> en <code>~/.hermes/.env</code> o en el entorno con el que arranca Kioku{info.keylessLocal ? " (con un endpoint local es opcional)" : ""}.</>
-            : <>Codex usa tu suscripción de Hermes (<code>~/.hermes/auth.json</code>); no necesita clave de API.</>}
-        </p>
+        {!(info && info.keys.length > 0) && <p class="am-keys muted small">Codex usa tu suscripción de Hermes (<code>~/.hermes/auth.json</code>); no necesita clave de API.</p>}
         <div class="row">
           <button type="submit" class="primary" disabled={busy || !confirmed}>{busy ? "Guardando…" : "Guardar"}</button>
           {ov && <button type="button" disabled={busy} onClick={() => void send({ inherit: true }, "Restablecido: vuelve la configuración anterior (assistant.json, Hermes o Codex).")}>Heredar la configuración anterior</button>}
@@ -215,21 +212,72 @@ function ModelSection({ data, onData }: { data: ModelResponse; onData(d: ModelRe
         {result && <p class={`notice ${result.bad ? "bad" : ""}`} role={result.bad ? "alert" : "status"}>{result.text}</p>}
         <p class="muted small">Cambiar de modelo no cambia los permisos del asistente: lo destructivo sigue pasando por propuestas que apruebas tú.</p>
       </form>
+
+      {info && info.keys.length > 0 && <CredentialForm key={provider} data={data} provider={provider} label={PROVIDER_LABEL[provider] ?? provider} onData={onData} />}
     </div>
   );
 }
 
+const CREDENTIAL_URL = "/api/assistant/model/credential";
+
+const removeCredential = (provider: string) => api<ModelResponse>("DELETE", CREDENTIAL_URL, { provider });
+
+const CREDENTIAL_WHERE: Record<string, string> = { kioku: "Kioku (guardada aquí)", "hermes-env": "~/.hermes/.env", environment: "el entorno de Kioku" };
+
 function CredentialLine({ data }: { data: ModelResponse }) {
   const c = data.credentials;
   if (!c) return <>No se puede comprobar hasta corregir la configuración</>;
-  const where = c.source === "hermes-env" ? "~/.hermes/.env" : "el entorno de Kioku";
   switch (c.state) {
     case "not-needed": return <>No necesita clave (suscripción de Hermes)</>;
-    case "found": return <><code>{c.name}</code> encontrada en {where}</>;
-    case "invalid": return <><code>{c.name}</code> no es válida (vacía, con saltos de línea o demasiado larga)</>;
+    case "found": return <><code>{c.name}</code> encontrada en {CREDENTIAL_WHERE[c.source ?? ""] ?? "el entorno de Kioku"}</>;
+    case "invalid": return <><code>{c.name}</code> no es válida (vacía, con saltos de línea o demasiado larga): pega otra</>;
     case "local-keyless": return <>Endpoint local: la clave es opcional</>;
-    default: return <>Falta <code>{c.names[0]}</code>: defínela en <code>~/.hermes/.env</code></>;
+    default: return <>Falta <code>{c.names[0]}</code>: pégala abajo o defínela en <code>~/.hermes/.env</code></>;
   }
+}
+
+/**
+ * Clave de API del proveedor elegido: se pega aquí y queda en el almacén de Kioku (fuera de la bóveda). El campo se vacía al
+ * guardar; el servidor no devuelve el valor, solo el estado. Es un formulario aparte para que Intro no envíe el del modelo.
+ */
+function CredentialForm({ data, provider, label, onData }: { data: ModelResponse; provider: string; label: string; onData(d: ModelResponse): void }) {
+  const info = data.providers.find((p) => p.id === provider);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ text: string; bad?: boolean } | null>(null);
+  const stored = (data.storedKeys ?? []).includes(provider);
+  const effective = data.effective?.provider === provider;
+
+  const run = async (call: () => Promise<ModelResponse>, ok: string, clear = false) => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const d = await call();
+      if (clear) setValue("");
+      onData(d);
+      setResult({ text: ok });
+    } catch (e) { setResult({ text: errText(e), bad: true }); }
+    setBusy(false);
+  };
+
+  return (
+    <form class="am-form am-cred" aria-label={`Clave de API de ${label}`} onSubmit={(e) => { e.preventDefault(); if (!busy && value.trim()) void run(() => api<ModelResponse>("PUT", CREDENTIAL_URL, { provider, value }), effective ? "Clave guardada en Kioku. La próxima pregunta al asistente ya la usa." : `Clave guardada en Kioku. Se usará cuando guardes ${label} como modelo.`, true); }}>
+      <h3>Clave de API</h3>
+      <p class="am-keys" role="status">
+        {effective ? <CredentialLine data={data} /> : stored ? <>Hay una clave de {label} guardada en Kioku</> : <>Aún no hay clave de {label} guardada en Kioku (también se busca <code>{info?.keys[0]}</code> en <code>~/.hermes/.env</code> y en el entorno)</>}
+        {info?.keylessLocal ? " (con un endpoint local es opcional)" : ""}
+      </p>
+      <label>Pegar la clave de {label}
+        <input type="password" value={value} autocomplete="off" spellcheck={false} maxLength={4096} placeholder={stored ? "Pega otra para reemplazar la guardada" : "Pega aquí la clave"} onInput={(e) => setValue(e.currentTarget.value)} />
+        <span class="muted small">Se guarda en este equipo, fuera de tu bóveda, con permisos solo para ti. Kioku no la vuelve a mostrar ni la envía a nadie salvo al proveedor elegido en cada pregunta.</span>
+      </label>
+      <div class="row">
+        <button type="submit" class="primary" disabled={busy || !value.trim()}>{busy ? "Guardando…" : "Guardar clave"}</button>
+        {stored && <button type="button" disabled={busy} onClick={() => void run(() => removeCredential(provider), "Clave quitada de Kioku.")}>Quitar</button>}
+      </div>
+      {result && <p class={`notice ${result.bad ? "bad" : ""}`} role={result.bad ? "alert" : "status"}>{result.text}</p>}
+    </form>
+  );
 }
 
 function StatusSection({ data, reload }: { data: ModelResponse | null; reload(): Promise<void> }) {

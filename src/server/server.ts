@@ -282,18 +282,22 @@ export async function startServer(
   }
 
   /**
-   * Modelo del asistente (solo escritorio): estado real, guardar y «heredar». Rol completo comprobado antes de leer o escribir
-   * nada; la lista blanca del móvil ya la deniega, y el token Bearer de sesión no abre esta ruta. Nunca devuelve ni acepta claves.
+   * Modelo del asistente (solo escritorio): estado real, guardar y «heredar»; y, en `/credential`, pegar o quitar la clave de API
+   * del proveedor (almacén de Kioku fuera de la bóveda). Rol completo comprobado antes de leer o escribir nada; la lista blanca
+   * del móvil y la del compañero ya lo deniegan, y el token Bearer de sesión no abre esta ruta. La clave solo entra (PUT): ninguna
+   * respuesta, error ni log lleva el valor, solo el estado (nombre de la variable y de dónde sale).
    */
-  async function assistantModel(method: string, role: Role, body: Record<string, unknown>, res: http.ServerResponse): Promise<void> {
+  async function assistantModel(method: string, role: Role, body: Record<string, unknown>, res: http.ServerResponse, credential = false): Promise<void> {
     if (role !== "full") throw new HttpError(403, "El modelo del asistente se gestiona solo desde el portátil");
-    if (method !== "GET" && method !== "PUT") throw new HttpError(405, "Método no permitido");
+    if (credential ? method !== "PUT" && method !== "DELETE" : method !== "GET" && method !== "PUT") throw new HttpError(405, "Método no permitido");
     const engine = opts.assistant?.engine;
     if (!engine) throw new HttpError(503, "El asistente no está configurado en este daemon");
     const management = engine.modelManagement;
     if (!management) throw new HttpError(503, "Este motor del asistente no permite gestionar el modelo desde Kioku: fíjalo en .kioku/assistant.json o en ~/.hermes/config.yaml");
     try {
-      const state = method === "GET" ? await management.state() : Object.keys(body).length === 1 && body.inherit === true ? await management.reset() : await management.save(body);
+      const state = credential
+        ? method === "PUT" ? await management.saveCredential(body) : await management.removeCredential(body)
+        : method === "GET" ? await management.state() : Object.keys(body).length === 1 && body.inherit === true ? await management.reset() : await management.save(body);
       // Solo lo detectado (binarios y credenciales presentes): no ejecuta Hermes ni Docker.
       const readiness = await engine.available().catch(() => ({ ok: false, reason: "No se pudieron comprobar los requisitos del asistente" }));
       return sendJson(res, 200, { ...state, readiness });
@@ -375,6 +379,7 @@ export async function startServer(
     }
 
     if (p === "/api/assistant/model") return assistantModel(m, role, body, res);
+    if (p === "/api/assistant/model/credential") return assistantModel(m, role, body, res, true);
 
     if (m === "GET") {
       switch (p) {

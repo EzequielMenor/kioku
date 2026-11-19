@@ -14,7 +14,7 @@ export const UNAUTHORIZED_EVENT = "kioku:unauthorized";
 type OfflineReader = (path: string) => Promise<unknown | undefined>;
 let offlineReader: OfflineReader | null = null;
 
-type DemoApiHandler = <T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown) => Promise<T>;
+type DemoApiHandler = <T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown) => Promise<T>;
 type DemoEventSubscriber = (cb: (e: ChangeEvent) => void) => () => void;
 let demoApiHandler: DemoApiHandler | null = null;
 let demoEventSubscriber: DemoEventSubscriber | null = null;
@@ -44,7 +44,7 @@ export function setDemoTransport(apiFn: DemoApiHandler | null, eventFn: DemoEven
   }
 }
 
-export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+export async function api<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
   if (demoApiHandler) return demoApiHandler<T>(method, path, body);
   // El daemon exige JSON en toda escritura: un POST sin datos (aplicar propuesta…) envía `{}`.
   const payload = method === "GET" ? undefined : JSON.stringify(body ?? {});

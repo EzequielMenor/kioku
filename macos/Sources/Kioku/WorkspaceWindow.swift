@@ -52,6 +52,8 @@ final class WorkspaceWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, W
     private func makeWindow() -> NSWindow {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        // La web sabe que corre dentro de la app de Mac (el semáforo flota sobre su esquina superior): `[data-shell="macos"]` en app.css.
+        config.userContentController.addUserScript(WKUserScript(source: "document.documentElement.dataset.shell = 'macos';", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let web = WKWebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 820), configuration: config)
         web.navigationDelegate = self
         web.uiDelegate = self
@@ -62,7 +64,15 @@ final class WorkspaceWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, W
         w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false
         w.minSize = NSSize(width: 720, height: 480)
-        w.contentView = web
+        // El WKWebView se come los clics de la franja de la barra de título: una vista nativa transparente encima la devuelve a la ventana.
+        let container = NSView(frame: web.frame)
+        web.frame = container.bounds
+        web.autoresizingMask = [.width, .height]
+        container.addSubview(web)
+        let strip = TitlebarDragView(frame: NSRect(x: 0, y: container.bounds.height - TitlebarDragView.height, width: container.bounds.width, height: TitlebarDragView.height))
+        strip.autoresizingMask = [.width, .minYMargin]
+        container.addSubview(strip, positioned: .above, relativeTo: web)
+        w.contentView = container
         w.delegate = self
         w.center()
         w.setFrameAutosaveName("KiokuWorkspace")
@@ -97,5 +107,40 @@ final class WorkspaceWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, W
     func snapshot(_ done: @escaping (NSImage?) -> Void) {
         guard let web = webView else { done(nil); return }
         web.takeSnapshot(with: nil) { image, _ in done(image) }
+    }
+}
+
+/// Franja transparente sobre la web, en la altura de la barra de título: arrastra la ventana y, con doble clic, hace lo que
+/// el usuario tenga elegido en el sistema. Los botones del semáforo viven en la barra de título (por encima del contenido),
+/// así que siguen recibiendo sus clics; el sidebar y el área principal de la web dejan esta franja libre (`data-shell="macos"`).
+final class TitlebarDragView: NSView {
+    static let height: CGFloat = 28
+    /// Margen en los bordes para no tapar la zona de redimensionado de la ventana.
+    private static let edge: CGFloat = 4
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override var acceptsFirstResponder: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let p = convert(point, from: superview)
+        guard bounds.insetBy(dx: Self.edge, dy: 0).contains(p), p.y < bounds.height - Self.edge else { return nil }
+        return self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        if event.clickCount == 2 { Self.doubleClick(window) } else { window.performDrag(with: event) }
+    }
+
+    /// Preferencia del sistema (Ajustes > Escritorio y Dock): `AppleActionOnDoubleClick` = Maximize (zoom) | Minimize | None.
+    static func doubleClick(_ window: NSWindow) {
+        let d = UserDefaults.standard
+        let action = d.string(forKey: "AppleActionOnDoubleClick") ?? (d.bool(forKey: "AppleMiniaturizeOnDoubleClick") ? "Minimize" : "Maximize")
+        switch action {
+        case "Minimize": window.performMiniaturize(nil)
+        case "None": break
+        default: window.performZoom(nil)
+        }
     }
 }

@@ -232,7 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.autosaveName = "local.kioku.status"
         item.isVisible = true
-        item.button?.image = KioPainter.menuBarIcon()
+        item.button?.image = SealPainter.menuBarIcon()
         item.button?.toolTip = "Kioku"
         let menu = NSMenu()
         menu.delegate = self

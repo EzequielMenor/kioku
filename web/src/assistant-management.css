@@ -24,6 +24,7 @@
 .am-form .notice p { margin: 6px 0 10px; }
 .am-form .row { margin-top: 2px; }
 .am-keys { margin: 0; }
+.am-cred { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
 
 .am-rows { list-style: none; margin: 0 0 12px; padding: 0; border-top: 1px solid var(--line); }
 .am-rows li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }

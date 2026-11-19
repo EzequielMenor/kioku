@@ -379,7 +379,7 @@ export class NativeEngine implements AssistantEngine {
   private explainStatus(status: number, detail: string, cfg: { base: string; settings: ModelSettings }): string {
     const where = this.where(cfg);
     const d = detail.replace(/\s+/g, " ").slice(0, 200);
-    if (status === 401) return `${where} rechaza la clave: revisa la variable del proveedor en ~/.hermes/.env o en el entorno de Kioku.`;
+    if (status === 401) return `${where} rechaza la clave: revisa la clave en Gestión del asistente → Modelo (o la variable del proveedor en ~/.hermes/.env o en el entorno de Kioku).`;
     if (status === 403) return `${where} rechaza la petición (403). Si es Ollama detrás de un proxy, no acepta ese nombre de host: publícalo con OLLAMA_HOST en la IP de Tailscale (docs/assistant-local.md).`;
     if (status === 404) return /model/i.test(d) ? `El modelo «${cfg.settings.model}» no existe en ${where}.${cfg.settings.provider === "ollama" ? ` Descárgalo con: ollama pull ${cfg.settings.model}` : ""}` : `${where} no ofrece la API «chat completions» en esa dirección (404): revisa que «base_url» termine en /v1.`;
     if (status === 400 && /tool/i.test(d)) return `El modelo «${cfg.settings.model}» no admite herramientas (tool calling): elige uno que sí (p. ej. un Qwen con «tools»).`;

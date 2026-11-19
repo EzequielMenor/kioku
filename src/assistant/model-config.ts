@@ -4,6 +4,7 @@
 // Todo falla cerrado con errores accionables que nunca repiten el valor recibido (podría ser una clave pegada por error),
 // y las credenciales se resuelven una a una: jamás se copian a ficheros del vault ni se reenvía el entorno entero.
 import { promises as fs } from "node:fs";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
@@ -135,7 +136,7 @@ const SECRET_SHAPE = /^(?:(?:sk|pk|rk|gsk|xai|hf|ghp|gho|pplx|oc_sk)[-_][A-Za-z0
 /** Solo campos conocidos; los que parecen una clave se rechazan sin repetir el valor (el nombre solo si es corto y neutro). */
 export function rejectFields(o: Record<string, unknown>, allowed: string[], where: string): void {
   for (const k of Object.keys(o)) {
-    if (/key|token|secret|password/i.test(k)) throw new ModelConfigError(`${where}: no pongas claves aquí (${/^[a-z_]{1,32}$/.test(k) ? `«${k}»` : "ese campo"} no está permitido). Guarda la clave en ~/.hermes/.env o en el entorno de Kioku`);
+    if (/key|token|secret|password/i.test(k)) throw new ModelConfigError(`${where}: no pongas claves aquí (${/^[a-z_]{1,32}$/.test(k) ? `«${k}»` : "ese campo"} no está permitido). Guarda la clave en Gestión del asistente → Modelo (o en ~/.hermes/.env o el entorno de Kioku)`);
     if (!allowed.includes(k)) throw new ModelConfigError(`${where}: campo no permitido. Solo ${allowed.join(", ")}`);
   }
 }
@@ -148,7 +149,7 @@ export function checkModelOverride(raw: { provider?: unknown; model?: unknown; b
   const o: ModelOverride = { provider: checkProvider(raw.provider, where) };
   if (raw.model !== undefined) {
     o.model = checkModelName(raw.model, where, "default");
-    if (SECRET_SHAPE.test(o.model)) throw new ModelConfigError(`${where}: «default» parece una clave de API; ahí va el nombre del modelo, y la clave en ~/.hermes/.env`);
+    if (SECRET_SHAPE.test(o.model)) throw new ModelConfigError(`${where}: «default» parece una clave de API; ahí va el nombre del modelo, y la clave en Gestión del asistente → Modelo (o en ~/.hermes/.env)`);
   }
   if (raw.api_mode !== undefined) o.apiMode = checkApiMode(raw.api_mode, where);
   const own = PROVIDERS[o.provider].ownBaseUrl;
@@ -263,7 +264,7 @@ async function readVault(homeDir: string): Promise<Raw> {
   if (typeof m !== "object" || Array.isArray(m)) throw new ModelConfigError(`${where}: «model» debe ser el nombre del modelo o un objeto { "provider", "default", "base_url", "api_mode" }`);
   const o = m as Record<string, unknown>;
   for (const k of Object.keys(o)) {
-    if (/key|token|secret|password/i.test(k)) throw new ModelConfigError(`${where}: no pongas claves en este fichero (${/^[a-z_]{1,32}$/.test(k) ? `«${k}»` : "ese campo"} no está permitido). Guarda la clave en ~/.hermes/.env o en el entorno de Kioku`);
+    if (/key|token|secret|password/i.test(k)) throw new ModelConfigError(`${where}: no pongas claves en este fichero (${/^[a-z_]{1,32}$/.test(k) ? `«${k}»` : "ese campo"} no está permitido). Guarda la clave en Gestión del asistente → Modelo (o en ~/.hermes/.env o el entorno de Kioku)`);
     if (!MODEL_FIELDS.includes(k)) throw new ModelConfigError(`${where}: campo de «model» no permitido. Solo ${MODEL_FIELDS.join(", ")}`);
   }
   const where2 = `${where} → model`;
@@ -371,24 +372,70 @@ function parseDotenv(text: string): Map<string, string> {
   return out;
 }
 
-interface FoundSecret { name: string; value: string; source: "hermes-env" | "environment" }
+export type SecretSource = "kioku" | "hermes-env" | "environment";
 
-/** Primera variable del proveedor con valor: de `~/.hermes/.env` o, si no, del entorno del daemon. El valor solo lo ve quien lo inyecta. */
+interface FoundSecret { name: string; value: string; source: SecretSource }
+
+/** Nombre del fichero de claves propio de Kioku (formato `NOMBRE=valor`, una por línea). */
+export const KIOKU_CREDENTIALS_FILE = "credentials.env";
+
+/**
+ * Almacén de claves de Kioku: FUERA de la bóveda (puede estar en iCloud) y derivado del home del usuario. En macOS,
+ * `~/Library/Application Support/Kioku`; en el resto, `$XDG_CONFIG_HOME/kioku` (si es absoluto) o `~/.config/kioku`.
+ */
+export function kiokuCredentialsPath(userHome: string, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  if (platform === "darwin") return path.join(userHome, "Library", "Application Support", "Kioku", KIOKU_CREDENTIALS_FILE);
+  const xdg = env.XDG_CONFIG_HOME;
+  return path.join(xdg && path.isAbsolute(xdg) ? xdg : path.join(userHome, ".config"), "kioku", KIOKU_CREDENTIALS_FILE);
+}
+
+/** Formato propio, sin comillas ni comentarios en el valor: lo que se guarda es exactamente lo que se lee. */
+function parseKiokuEnv(text: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const raw of text.split("\n")) {
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)=([^\r\n\u2028\u2029]*)$/.exec(raw.replace(/\r$/, ""));
+    if (m) out.set(m[1], m[2]);
+  }
+  return out;
+}
+
+/** Fichero de claves de Kioku: `null` si no existe, no es un fichero normal (un enlace no se sigue) o no se puede leer. */
+async function readKiokuEnv(o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<Map<string, string> | null> {
+  const file = kiokuCredentialsPath(o.userHome, o.env);
+  try {
+    const st = await fs.lstat(file);
+    if (!st.isFile() || st.size > MAX_FILE) return null;
+    return parseKiokuEnv(await fs.readFile(file, "utf8"));
+  } catch { return null; }
+}
+
+/** Proveedores cuya clave está guardada en el almacén de Kioku. Solo ids: ni nombres de variable ni valores. */
+export async function listKiokuSecretProviders(o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<string[]> {
+  const own = await readKiokuEnv(o);
+  if (!own) return [];
+  return Object.entries(PROVIDERS).filter(([, p]) => p.keys.length > 0 && !!own.get(p.keys[0])).map(([id]) => id);
+}
+
+/** Primera variable del proveedor con valor: de Kioku, de `~/.hermes/.env` o del entorno del daemon. El valor solo lo ve quien lo inyecta. */
 async function findSecret(spec: ProviderSpec, o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<FoundSecret | null> {
   const env = o.env ?? process.env;
+  const own = (await readKiokuEnv(o)) ?? new Map<string, string>();
   const dotenv = parseDotenv((await readText(path.join(o.userHome, ".hermes", ".env")).catch(() => null)) ?? "");
   for (const name of spec.keys) {
+    const fromKioku = own.get(name);
     const fromFile = dotenv.get(name);
-    const value = fromFile || env[name];
-    if (value) return { name, value, source: fromFile ? "hermes-env" : "environment" };
+    const value = fromKioku || fromFile || env[name];
+    if (value) return { name, value, source: fromKioku ? "kioku" : fromFile ? "hermes-env" : "environment" };
   }
   return null;
 }
 
-const badSecret = (value: string) => value.length > MAX_SECRET || /[\r\n\0]/.test(value);
+const badSecret = (value: string) => value.length === 0 || value.length > MAX_SECRET || /[\r\n\0\u2028\u2029]/.test(value);
+
+const SECRETS_HINT = "pégala en Gestión del asistente → Modelo, o defínela en ~/.hermes/.env (o en el entorno con el que arranca Kioku)";
 
 /**
- * Credenciales que necesita el proveedor, solo esas: de `~/.hermes/.env` o, si no están, del entorno del daemon.
+ * Credenciales que necesita el proveedor, solo esas: del almacén de Kioku, de `~/.hermes/.env` o, si no están, del entorno del daemon.
  * Devuelve `{ NOMBRE: valor }` para inyectar en el proceso aislado; Codex y los endpoints locales no necesitan ninguna.
  */
 export async function resolveProviderSecrets(s: ModelSettings, o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<Record<string, string>> {
@@ -397,12 +444,97 @@ export async function resolveProviderSecrets(s: ModelSettings, o: { userHome: st
   const found = await findSecret(spec, o);
   if (found) {
     if (badSecret(found.value)) {
-      throw new ModelConfigError(`La clave ${found.name} no es válida (vacía, con saltos de línea o demasiado larga): corrígela en ~/.hermes/.env o en el entorno de Kioku`);
+      throw new ModelConfigError(`La clave ${found.name} no es válida (vacía, con saltos de línea o demasiado larga): corrígela (${SECRETS_HINT})`);
     }
     return { [found.name]: found.value };
   }
   if (spec.keylessLocal && s.baseUrl && isTrustedHost(new URL(s.baseUrl).hostname)) return {};
-  throw new ModelConfigError(`Falta la clave de ${s.provider}: define ${spec.keys[0]} en ~/.hermes/.env (o en el entorno con el que arranca Kioku)`);
+  throw new ModelConfigError(`Falta la clave de ${s.provider}: ${spec.keys[0]} ${SECRETS_HINT}`);
+}
+
+// ---------- Escritura del almacén de claves de Kioku ----------
+
+/** Variable que Kioku escribe para un proveedor: la fija el servidor (`keys[0]`); el cliente solo elige el proveedor. */
+function credentialName(provider: unknown): string {
+  const spec = typeof provider === "string" && Object.hasOwn(PROVIDERS, provider) ? PROVIDERS[provider] : undefined;
+  if (!spec || spec.keys.length === 0) throw new ModelConfigError("Ese proveedor no usa clave de API: elige uno que la necesite");
+  return spec.keys[0];
+}
+
+/** Las lecturas-modificaciones-escrituras del fichero van de una en una (varias peticiones no pisan las variables de las otras). */
+let credentialQueue: Promise<unknown> = Promise.resolve();
+function exclusiveCredentials<T>(fn: () => Promise<T>): Promise<T> {
+  const run = credentialQueue.then(fn);
+  credentialQueue = run.catch(() => undefined);
+  return run;
+}
+
+/** Texto actual del fichero (`null` si no existe); un enlace o una carpeta no se siguen ni se pisan. */
+async function readKiokuEnvText(file: string): Promise<string | null> {
+  try {
+    const st = await fs.lstat(file);
+    if (!st.isFile()) throw new ModelConfigError("El fichero de claves de Kioku debe ser un fichero normal (no un enlace ni una carpeta): revísalo o bórralo a mano");
+    if (st.size > MAX_FILE) throw new ModelConfigError("El fichero de claves de Kioku es demasiado grande");
+    return await fs.readFile(file, "utf8");
+  } catch (e) {
+    if (e instanceof ModelConfigError) throw e;
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new ModelConfigError("No se pudo leer el almacén de claves de Kioku. Revisa el acceso a su carpeta y vuelve a intentarlo.");
+  }
+}
+
+/** Sustituye la línea de `name` (y sus duplicados) por `value`, o la quita con `null`; conserva todo lo demás. */
+function withVariable(text: string, name: string, value: string | null): string {
+  const lines = text.length ? text.split("\n") : [];
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  const own = (l: string) => l.replace(/\r$/, "").startsWith(`${name}=`);
+  const out: string[] = [];
+  let placed = false;
+  for (const l of lines) {
+    if (!own(l)) { out.push(l); continue; }
+    if (value !== null && !placed) { out.push(`${name}=${value}`); placed = true; }
+  }
+  if (value !== null && !placed) out.push(`${name}=${value}`);
+  return out.length ? out.join("\n") + "\n" : "";
+}
+
+async function writeKiokuEnv(file: string, text: string): Promise<void> {
+  const dir = path.dirname(file);
+  const tmp = path.join(dir, `.${KIOKU_CREDENTIALS_FILE}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
+  try {
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    await fs.chmod(dir, 0o700);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*=/m.test(text)) { // sin ninguna variable no se deja un fichero vacío
+      await fs.rm(file, { force: true });
+      return;
+    }
+    await fs.writeFile(tmp, text, { mode: 0o600, flag: "wx" });
+    await fs.chmod(tmp, 0o600);
+    await fs.rename(tmp, file);
+  } catch {
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    throw new ModelConfigError("No se pudo guardar el almacén de claves de Kioku. Revisa el acceso a su carpeta y vuelve a intentarlo.");
+  }
+}
+
+/** Guarda la clave del proveedor en el almacén de Kioku. Valida el valor sin repetirlo en ningún error. */
+export async function saveKiokuSecret(provider: unknown, value: unknown, o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<void> {
+  const name = credentialName(provider);
+  if (typeof value !== "string") throw new ModelConfigError("La clave debe ser texto");
+  const clean = value.trim();
+  if (badSecret(clean)) throw new ModelConfigError(`La clave no es válida (vacía, con saltos de línea o de más de ${MAX_SECRET} caracteres)`);
+  const file = kiokuCredentialsPath(o.userHome, o.env);
+  await exclusiveCredentials(async () => writeKiokuEnv(file, withVariable((await readKiokuEnvText(file)) ?? "", name, clean)));
+}
+
+/** Quita del almacén de Kioku la clave del proveedor (si no estaba, no hace nada). No toca `~/.hermes/.env` ni el entorno. */
+export async function removeKiokuSecret(provider: unknown, o: { userHome: string; env?: NodeJS.ProcessEnv }): Promise<void> {
+  const name = credentialName(provider);
+  const file = kiokuCredentialsPath(o.userHome, o.env);
+  await exclusiveCredentials(async () => {
+    const text = await readKiokuEnvText(file);
+    if (text !== null) await writeKiokuEnv(file, withVariable(text, name, null));
+  });
 }
 
 export interface CredentialStatus {
@@ -410,7 +542,7 @@ export interface CredentialStatus {
   names: string[];
   state: "not-needed" | "found" | "missing" | "invalid" | "local-keyless";
   name?: string;
-  source?: "hermes-env" | "environment";
+  source?: SecretSource;
 }
 
 /** Cómo se proporciona la clave del proveedor, solo con metadatos (nombre de la variable y de dónde sale): jamás el valor. */
