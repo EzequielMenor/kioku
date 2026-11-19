@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { Kioku } from "../src/core/kioku.ts";
 import { parseCapture } from "../src/core/capture.ts";
@@ -200,6 +200,31 @@ test("el log de actividad es JSONL plano y tolera líneas corruptas", async () =
     writeFileSync(f, readFileSync(f, "utf8") + "esto no es json\n");
     assert.equal(await j.log.reload(), 1);
     j.close();
+  } finally { cleanup(); }
+});
+
+test("un log ilegible (vaciado por iCloud) no impide abrir la bóveda", async () => {
+  const { root, cleanup } = tmpVault();
+  try {
+    const j = await Kioku.open({ root, now: () => new Date("2026-10-26T10:00:00Z") });
+    await j.capture("algo");
+    j.close();
+    // Simula el archivo "dataless" que deja iCloud: leerlo falla con EDEADLK (-11).
+    const readFile = fs.readFile;
+    (fs as typeof fs & { readFile: typeof readFile }).readFile = (async () => {
+      const e = new Error("Unknown system error -11: Unknown system error -11, read") as NodeJS.ErrnoException;
+      e.code = "EDEADLK";
+      e.errno = -11;
+      throw e;
+    }) as typeof readFile;
+    try {
+      const j2 = await Kioku.open({ root, now: () => new Date("2026-10-26T10:00:00Z") });
+      try {
+        assert.equal(await j2.log.reload(), 0);
+      } finally { j2.close(); }
+    } finally {
+      (fs as typeof fs & { readFile: typeof readFile }).readFile = readFile;
+    }
   } finally { cleanup(); }
 });
 

@@ -5,11 +5,27 @@ import { promises as fs, statSync } from "node:fs";
 import path from "node:path";
 
 export class VaultError extends Error {
-  code: "outside-root" | "conflict" | "exists" | "not-found" | "invalid";
+  code: "outside-root" | "conflict" | "exists" | "not-found" | "invalid" | "not-materialized";
   constructor(code: VaultError["code"], message: string) {
     super(message);
     this.code = code;
   }
+}
+
+/**
+ * iCloud (y otros proveedores) pueden dejar archivos "dataless": solo metadatos, sin contenido.
+ * Leerlos falla con EDEADLK (-11) y en macOS el mensaje no dice nada útil; se traduce aquí.
+ */
+const NOT_MATERIALIZED_HINT = "El archivo está solo en la nube (iCloud lo vació de este Mac): abre la carpeta en Finder para descargarlo, o mueve la bóveda fuera de Documentos/Escritorio.";
+
+export function isNotMaterialized(e: unknown): boolean {
+  const err = e as NodeJS.ErrnoException;
+  return err?.code === "EDEADLK" || err?.errno === -11;
+}
+
+function translateReadError(e: unknown, what: string): unknown {
+  if (isNotMaterialized(e)) return new VaultError("not-materialized", `No puedo leer ${what}: ${NOT_MATERIALIZED_HINT}`);
+  return e;
 }
 
 export interface FileInfo {
@@ -75,7 +91,7 @@ export class Vault {
       return { text, hash: hashText(text), mtimeMs: st.mtimeMs };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") throw new VaultError("not-found", `No existe: ${rel}`);
-      throw e;
+      throw translateReadError(e, rel);
     }
   }
 
@@ -159,7 +175,7 @@ export class Vault {
       return await fs.readFile(this.abs(`${INTERNAL_DIR}/${rel}`), "utf8");
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw e;
+      throw translateReadError(e, `${INTERNAL_DIR}/${rel}`);
     }
   }
 

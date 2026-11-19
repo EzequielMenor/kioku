@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
 import { Vault, VaultError, sanitizeFileName } from "../src/core/vault.ts";
 import { tmpVault } from "./helpers.ts";
 
@@ -41,4 +42,26 @@ test("borrar = papelera recuperable; uniquePath evita pisar", async () => {
 test("sanitizeFileName conserva acentos y quita caracteres peligrosos", () => {
   assert.equal(sanitizeFileName("¿Qué/hacer? [[hoy]] #1"), "¿Qué hacer hoy 1");
   assert.equal(sanitizeFileName("..."), "Sin título");
+});
+
+test("un archivo vaciado por iCloud (EDEADLK) da un error que explica qué hacer", async () => {
+  const { root, cleanup } = tmpVault();
+  try {
+    const v = new Vault(root);
+    await v.write("n.md", "contenido local");
+    // Un archivo "dataless" de iCloud falla al leer con EDEADLK (-11) en macOS.
+    const readFile = fs.readFile;
+    (fs as typeof fs & { readFile: typeof readFile }).readFile = (async () => {
+      const e = new Error("Unknown system error -11: Unknown system error -11, read") as NodeJS.ErrnoException;
+      e.code = "EDEADLK";
+      e.errno = -11;
+      throw e;
+    }) as typeof readFile;
+    try {
+      await assert.rejects(v.read("n.md"), (e: VaultError) => e.code === "not-materialized" && /iCloud/.test(e.message));
+      await assert.rejects(v.readInternal("log/2026-11.jsonl"), (e: VaultError) => e.code === "not-materialized");
+    } finally {
+      (fs as typeof fs & { readFile: typeof readFile }).readFile = readFile;
+    }
+  } finally { cleanup(); }
 });

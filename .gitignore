@@ -12,3 +12,4 @@ macos/.build/
 macos/.swiftpm/
 .commandcode/
 .impeccable/
+pi-session-*.html

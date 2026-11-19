@@ -33,7 +33,14 @@ export class ActivityLog {
     const files = (await this.vault.listInternal("log")).filter((f) => f.endsWith(".jsonl")).sort();
     const rows: EventRow[] = [];
     for (const f of files) {
-      const text = (await this.vault.readInternal(`log/${f}`)) ?? "";
+      let text = "";
+      try {
+        text = (await this.vault.readInternal(`log/${f}`)) ?? "";
+      } catch (e) {
+        // Un mes ilegible (p. ej. vaciado por iCloud) no debe impedir abrir la bóveda.
+        if ((e as { code?: string }).code !== "not-materialized") throw e;
+        continue;
+      }
       for (const line of text.split("\n")) {
         if (!line.trim()) continue;
         try {
