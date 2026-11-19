@@ -6,7 +6,7 @@ import SwiftUI
 /// Nada se instala ni se cambia sin que pulses su botón; lo delicado (sustituir un arranque antiguo) pide confirmación.
 @MainActor
 final class SetupModel: ObservableObject {
-    struct Agent: Equatable { var installed = false; var loaded = false }
+    struct Agent: Equatable { var installed = false; var loaded = false; var program: String? = nil }
     struct Legacy: Equatable, Identifiable { let label: String; let path: String; let loaded: Bool; var id: String { label } }
 
     let paths: KiokuPaths
@@ -41,8 +41,15 @@ final class SetupModel: ObservableObject {
         return e.provider == "ollama" && e.model == model && e.local
     }
     /// Lo imprescindible para usar Kio a diario.
-    var essentialsOK: Bool { !paths.looksLikeObsidianVault && daemonRunning && companionRole == true }
-    var everythingOK: Bool { essentialsOK && daemonAgent.loaded && appAgent.installed && legacy.isEmpty && hasModel && kiokuUsesModel }
+    var agentsMatchThisBundle: Bool {
+        guard let b = bundlePath else { return true }
+        let prefix = b.hasSuffix("/") ? b : b + "/"
+        let daemonOk = !daemonAgent.installed || (daemonAgent.program?.hasPrefix(prefix) ?? false)
+        let appOk = !appAgent.installed || (appAgent.program?.hasPrefix(prefix) ?? false)
+        return daemonOk && appOk
+    }
+    var essentialsOK: Bool { !paths.looksLikeObsidianVault && !paths.hasCloudEvictedFiles && daemonRunning && companionRole == true }
+    var everythingOK: Bool { essentialsOK && daemonAgent.loaded && appAgent.installed && agentsMatchThisBundle && legacy.isEmpty && hasModel && kiokuUsesModel }
 
     func refresh() {
         checking = true
@@ -52,8 +59,8 @@ final class SetupModel: ObservableObject {
             cli.run(["service", "status", "--json"]) { [weak self] code, out in
                 guard let self else { return }
                 if code == 0, let j = JSON.parse(out.split(separator: "\n").last.map(String.init) ?? "") {
-                    self.daemonAgent = Agent(installed: j["daemon"]["installed"].bool, loaded: j["daemon"]["loaded"].bool)
-                    self.appAgent = Agent(installed: j["app"]["installed"].bool, loaded: j["app"]["loaded"].bool)
+                    self.daemonAgent = Agent(installed: j["daemon"]["installed"].bool, loaded: j["daemon"]["loaded"].bool, program: j["daemon"]["program"].string)
+                    self.appAgent = Agent(installed: j["app"]["installed"].bool, loaded: j["app"]["loaded"].bool, program: j["app"]["program"].string)
                     self.legacy = j["legacy"].array.map { Legacy(label: $0["label"].string ?? "", path: $0["path"].string ?? "", loaded: $0["loaded"].bool) }
                     self.launchdError = nil
                 } else {
@@ -125,6 +132,10 @@ final class SetupModel: ObservableObject {
 
     func cancelPull() { pull?.cancel() }
 
+    func showVaultInFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([paths.home])
+    }
+
     func chooseVault() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -159,15 +170,22 @@ struct SetupView: View {
                 }
             }
             Divider()
-            row(ok: !setup.paths.looksLikeObsidianVault, title: "Bóveda", detail: setup.paths.looksLikeObsidianVault
+            row(ok: !setup.paths.looksLikeObsidianVault && !setup.paths.hasCloudEvictedFiles, title: "Bóveda", detail: setup.paths.looksLikeObsidianVault
                 ? "\(setup.paths.home.path) parece una bóveda de Obsidian: Kioku no la usa para no modificarla. Elige otra e impórtala con kioku import-obsidian."
-                : setup.paths.home.path) {
-                Button("Cambiar…") { setup.chooseVault() }
+                : setup.paths.hasCloudEvictedFiles
+                    ? "\(setup.paths.home.path) tiene archivos que iCloud Drive dejó solo en la nube (no descargados). En Finder, haz clic derecho sobre la carpeta Kioku y pulsa «Mantener descargado», o elige una carpeta local fuera de iCloud."
+                    : setup.paths.home.path) {
+                HStack(spacing: 6) {
+                    if setup.paths.hasCloudEvictedFiles { Button("Mostrar en Finder") { setup.showVaultInFinder() } }
+                    Button("Cambiar…") { setup.chooseVault() }
+                }
             }
-            row(ok: setup.daemonAgent.loaded && setup.appAgent.installed && setup.legacy.isEmpty, title: "Arranque con macOS",
+            row(ok: setup.daemonAgent.loaded && setup.appAgent.installed && setup.agentsMatchThisBundle && setup.legacy.isEmpty, title: "Arranque con macOS",
                 detail: launchdDetail) {
                 if !setup.legacy.isEmpty {
                     Button("Sustituir…") { confirmLegacy = true }
+                } else if !setup.agentsMatchThisBundle {
+                    Button("Usar esta copia") { setup.installLaunchd(replaceLegacy: false) }.keyboardShortcut(.defaultAction)
                 } else if !(setup.daemonAgent.loaded && setup.appAgent.installed) {
                     Button("Activar") { setup.installLaunchd(replaceLegacy: false) }.keyboardShortcut(.defaultAction)
                 }
@@ -217,6 +235,7 @@ struct SetupView: View {
     private var launchdDetail: String {
         if let e = setup.launchdError { return e }
         if !setup.legacy.isEmpty { return "Ya arranca otra instalación de Kioku: \(setup.legacy.map { $0.label + ($0.loaded ? " (en marcha)" : "") }.joined(separator: ", ")). Sustitúyela para usar esta versión." }
+        if !setup.agentsMatchThisBundle { return "El arranque automático apunta a otra copia de Kioku.app. Pulsa «Usar esta copia» para alinear el servicio con esta aplicación." }
         let d = setup.daemonAgent.loaded ? "el daemon arranca con tu sesión y se relanza si cae" : "el daemon no arranca solo"
         let a = setup.appAgent.installed ? "Kio aparece al iniciar sesión" : "Kio no se abre solo"
         return "\(d); \(a)."

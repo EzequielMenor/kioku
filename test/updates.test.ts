@@ -97,6 +97,23 @@ test("readBuildInfo lee build-info.json cuando existe o resuelve .git/HEAD y pac
     assert.equal(gitInfo.channel, "git");
     assert.equal(gitInfo.commit, SHA_NEW);
     assert.equal(gitInfo.version, "0.8.1");
+
+    // Worktree: .git es un fichero con gitdir y commondir apuntando al repositorio base.
+    const commonGit = path.join(dir, "common.git");
+    const wtGit = path.join(commonGit, "worktrees", "rama");
+    const wtDir = path.join(dir, "worktree");
+    mkdirSync(path.join(commonGit, "refs", "heads"), { recursive: true });
+    mkdirSync(wtGit, { recursive: true });
+    mkdirSync(wtDir, { recursive: true });
+    writeFileSync(path.join(commonGit, "refs", "heads", "main"), `${SHA_OLD}\n`);
+    writeFileSync(path.join(wtGit, "HEAD"), "ref: refs/heads/main\n");
+    writeFileSync(path.join(wtGit, "commondir"), "../..\n");
+    writeFileSync(path.join(wtDir, ".git"), `gitdir: ${wtGit}\n`);
+    writeFileSync(path.join(wtDir, "package.json"), JSON.stringify({ name: "kioku", version: "0.8.2" }));
+    const wtInfo = readBuildInfo(wtDir, { inDocker: false });
+    assert.equal(wtInfo.channel, "git");
+    assert.equal(wtInfo.commit, SHA_OLD);
+    assert.equal(wtInfo.ref, "main");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -212,6 +229,26 @@ test("UpdateManager maneja fallo del instalador sin reiniciar y bloquea auto-act
     assert.equal(restarted, 0);
     assert.equal(failMgr.snapshot().phase, "error");
     assert.match(failMgr.snapshot().error ?? "", /falló la descarga simulada/);
+
+    // En macos-app dentro de /Applications/Kioku.app pasa KIOKU_MAC_APPS_DIR para no duplicar en ~/Applications.
+    const macAppRoot = path.join(root, "SystemApps", "Kioku.app", "Contents", "Resources", "app");
+    mkdirSync(macAppRoot, { recursive: true });
+    writeFileSync(path.join(macAppRoot, "build-info.json"), JSON.stringify({
+      version: "0.8.0", commit: SHA_OLD, ref: "main", repo: "EzequielMenor/kioku", channel: "macos-app", installedAt: "2026-11-19T10:00:00Z",
+    }));
+    let seenAppsDir: string | undefined;
+    const macMgr = new UpdateManager({
+      home: root,
+      appRoot: macAppRoot,
+      autoCheck: false,
+      fetcher: async () => new Response(ATOM_SAMPLE, { status: 200 }),
+      runner: async (req) => { seenAppsDir = req.env.KIOKU_MAC_APPS_DIR; return { ok: true }; },
+      onRestart: () => {},
+      restartDelayMs: 0,
+    });
+    await macMgr.startInstall();
+    await macMgr.waitIdle();
+    assert.equal(seenAppsDir, path.join(root, "SystemApps"));
   } finally {
     cleanup();
   }

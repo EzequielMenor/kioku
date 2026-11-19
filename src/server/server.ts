@@ -24,7 +24,7 @@ import { OpsLedger, validOp } from "./ops.ts";
 import { MobileOperations, operationErrorStatus } from "./mobile-operations.ts";
 import { keyMatches, newKey, presentedKey, readCompanionKey, readMobileKey } from "./key.ts";
 import { credentialDigest, DeviceError, Devices } from "./devices.ts";
-import { ConnectionError, PrivateConnection, savedRemoteHost, type ConnectionRunner } from "./private-connection.ts";
+import { ConnectionError, PrivateConnection, savedRemoteHost, type ConnectionProbeFetch, type ConnectionRunner } from "./private-connection.ts";
 import { UpdateError, UpdateManager } from "./updates.ts";
 import { CompanionHub, companionAllowed } from "./companion.ts";
 import { AssistantError } from "../assistant/policy.ts";
@@ -153,6 +153,8 @@ export async function startServer(
     allowedHosts?: string[];
     /** Adaptador de Tailscale; las pruebas inyectan un ejecutable simulado. */
     connectionRunner?: ConnectionRunner;
+    /** Sonda HTTPS para comprobar el acceso privado; las pruebas pueden inyectarla. */
+    connectionProbeFetch?: ConnectionProbeFetch;
     webDir: string;
     onQuickHide?: () => void | Promise<void>;
     onOpenWorkspace?: (route: string) => void | Promise<void>;
@@ -336,7 +338,11 @@ export async function startServer(
       const host = await privateConnection.configure(boundPort);
       if (previous && !(opts.allowedHosts ?? []).includes(previous)) allowedHosts.delete(previous);
       allowedHosts.add(host);
-      return sendJson(res, 200, await privateConnection.status(boundPort, allowedHosts));
+      return sendJson(res, 200, { ...await privateConnection.status(boundPort, allowedHosts), localAdmin: true });
+    }
+    if (p === "/api/connections/probe" && m === "POST") {
+      if (role !== "full" || !isLocalHost(req.headers.host)) throw new HttpError(403, "Abre Kioku en el propio ordenador para comprobar su acceso privado");
+      return sendJson(res, 200, await privateConnection.probe(boundPort, allowedHosts, opts.connectionProbeFetch));
     }
 
     if (p === "/api/update" || p.startsWith("/api/update/")) {

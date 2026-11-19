@@ -260,7 +260,7 @@ function App() {
     case "grafo": view = <GraphView key={arg} rev={rev} go={setRoute} focus={arg || undefined} />; break;
     case "asistente": view = arg === "actividad" ? <AssistantActivity rev={rev} say={say} /> : arg === "memoria" ? <AssistantMemory rev={rev} say={say} /> : <AssistantView rev={rev} say={say} go={setRoute} />; break;
     case "propuestas": view = <ProposalsView rev={rev} say={say} guard={guard} />; break;
-    case "conexiones": case "ajustes": view = <SettingsView mobile={mobile} demo={demo} theme={theme} setTheme={setTheme} onManageKio={() => setOverlay("assistant-management")}><ConnectionsView mobile={mobile} demo={demo}>{mobile && <OfflineSection off={off} />}</ConnectionsView></SettingsView>; break;
+    case "conexiones": case "ajustes": view = <SettingsView mobile={mobile} demo={demo} theme={theme} setTheme={setTheme} onManageKio={() => setOverlay("assistant-management")} focusConnections={head === "conexiones"}><ConnectionsView mobile={mobile} demo={demo}>{mobile && <OfflineSection off={off} />}</ConnectionsView></SettingsView>; break;
     case "nota": view = <NoteView key={arg} path={arg} rev={rev} go={setRoute} />; break;
     default: view = <TodayScreen onCreateTask={() => setOverlay("capture-task")} rev={rev} go={setRoute} guard={guard} say={say} />;
   }
@@ -287,7 +287,8 @@ function App() {
         <div class="spacer" />
         <button class="side-btn" onClick={() => setOverlay("capture")}>Capturar <kbd>c</kbd></button>
         <button class="side-btn" onClick={() => setOverlay("palette")}>Buscar <kbd>Ctrl K</kbd></button>
-        <a href="#/ajustes" class={`side-link ${activeRoute === "/ajustes" ? "active" : ""}`}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg><span>Ajustes</span></a>
+        <a href="#/conexiones" class={`side-link ${head === "conexiones" ? "active" : ""}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg><span>Conexiones y sincronización</span></a>
+        <a href="#/ajustes" class={`side-link ${activeRoute === "/ajustes" && head !== "conexiones" ? "active" : ""}`}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg><span>Ajustes</span></a>
       </nav>
       <div class="content">
         {demo && <DemoBar onReset={() => { resetDemoState(); say("Datos de prueba restaurados."); }} onLanding={() => setRoute("/inicio")} />}
@@ -906,10 +907,9 @@ function MoreSheet({ onClose, onSearch, onJournal, onCapture }: { onCapture(): v
 }
 
 /** Ajustes: Kio, conexión y dispositivos, apariencia y avisos, en una sola pantalla. */
-function SettingsView({ mobile, demo, theme, setTheme, onManageKio, children }: { mobile: boolean; demo: boolean; theme: string; setTheme(t: string): void; onManageKio(): void; children: preact.ComponentChildren }) {
-  return (
-    <div class="page narrow settings">
-      <h1>Ajustes</h1>
+function SettingsView({ mobile, demo, theme, setTheme, onManageKio, focusConnections = false, children }: { mobile: boolean; demo: boolean; theme: string; setTheme(t: string): void; onManageKio(): void; focusConnections?: boolean; children: preact.ComponentChildren }) {
+  const general = (
+    <>
       {!demo && <KioSettings mobile={mobile} onManage={onManageKio} />}
       <section class="card">
         <div class="eyebrow">Apariencia</div>
@@ -919,7 +919,12 @@ function SettingsView({ mobile, demo, theme, setTheme, onManageKio, children }: 
         {!mobile && !demo && <div class="row"><CompanionModeButton /></div>}
       </section>
       {mobile && !demo && <PushSetting />}
-      {children}
+    </>
+  );
+  return (
+    <div class="page narrow settings">
+      <h1>{focusConnections ? "Conexiones y sincronización" : "Ajustes"}</h1>
+      {focusConnections ? <>{children}{general}</> : <>{general}{children}</>}
     </div>
   );
 }

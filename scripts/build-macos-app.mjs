@@ -101,6 +101,18 @@ try {
     writeFileSync(launcher, '#!/bin/bash\nset -euo pipefail\ncontents="$(cd -- "$(dirname -- "$0")/.." && pwd)"\nexec "$contents/Resources/runtime/node" --no-warnings "$contents/Resources/app/scripts/native-macos.mjs"\n');
   }
   chmodSync(launcher, 0o755);
+  // Permisos estándar (nunca 0700 heredados de carpetas temporales): legibles para Finder y LaunchServices.
+  const executables = new Set([launcher, path.join(contents, "Resources", "runtime", "node")]);
+  const normalizeModes = (p) => {
+    const st = lstatSync(p);
+    if (st.isDirectory()) {
+      chmodSync(p, 0o755);
+      for (const entry of readdirSync(p)) normalizeModes(path.join(p, entry));
+    } else if (st.isFile()) {
+      chmodSync(p, executables.has(p) ? 0o755 : 0o644);
+    }
+  };
+  normalizeModes(out);
   console.log("Aplicación sin firmar creada: " + out + (kio ? " (nativa, con Kio)" : "") + "\nLa cabecera Mach-O no demuestra versión ni compatibilidad: valida el arranque en un Mac antes de distribuir.");
 } catch (e) {
   console.error(e.message);

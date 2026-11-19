@@ -4,3 +4,11 @@
 .private-qr svg { display: block; width: 100%; height: auto; }
 .private-welcome { width: min(100%, 600px); margin: 3rem auto; padding: 1rem; box-sizing: border-box; }
 .private-welcome input { display: block; margin-block: .75rem; max-width: 100%; box-sizing: border-box; }
+.private-checklist { list-style: none; padding: 0; margin: .75rem 0 1rem; display: grid; gap: .5rem; }
+.private-checklist li { display: flex; align-items: flex-start; gap: .6rem; }
+.private-checklist .check-mark { font-weight: 700; width: 1.1rem; flex: none; text-align: center; }
+.private-checklist .check-ok .check-mark { color: var(--good, #4c7a32); }
+.private-checklist .check-missing .check-mark { color: var(--bad, #b3342b); }
+.private-probe-ok { color: var(--good, #4c7a32); font-weight: 500; }
+.private-recovery-steps { margin: .5rem 0 0; padding-left: 1.25rem; display: grid; gap: .35rem; }
+.private-recovery-alert { border-color: var(--bad, #b3342b); }

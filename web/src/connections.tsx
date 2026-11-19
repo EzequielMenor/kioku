@@ -1,7 +1,7 @@
 // Pantalla «Conexión»: estado real del ordenador-centro, ayuda para conectar y, en el móvil, la cola de sincronización.
 // La cola y sus conflictos los pinta quien la integra (children, p. ej. OfflineSection): aquí no se duplica su lógica.
 import { useEffect, useState } from "preact/hooks";
-import { DEMO_NOTICE, connectionGuide, describeHealth, probeHealth, safeOrigin, type HealthState } from "./connections-model.ts";
+import { DEMO_NOTICE, connectionGuide, describeHealth, probeHealth, recoveryChecklist, safeOrigin, type HealthState } from "./connections-model.ts";
 import { formatAgo, useOffline } from "./offline/runtime.ts";
 import { isMobile } from "./role.ts";
 import { PrivateDevicesPanel } from "./device-access.tsx";
@@ -31,9 +31,11 @@ export function ConnectionsView({ demo = false, mobile = isMobile(), children }:
   const health: HealthState = demo ? { state: "simulated" } : probe;
   const view = describeHealth(health);
   const origin = safeOrigin(location);
+  const recovery = recoveryChecklist(mobile);
+  const broken = health.state === "unreachable" || health.state === "error";
   return (
     <div class="connections">
-      <h2 class="settings-title">Conexión y dispositivos</h2>
+      <h2 class="settings-title">Conexiones y sincronización</h2>
       {demo && <p class="card" role="note"><b>{DEMO_NOTICE}</b></p>}
       <section class="card" aria-live="polite">
         <div class="eyebrow">{demo ? "Estado (simulado)" : "Estado"}</div>
@@ -52,6 +54,15 @@ export function ConnectionsView({ demo = false, mobile = isMobile(), children }:
       )}
       {mobile && demo && <p class="muted small">La cola de sincronización no se muestra en la simulación: no hay ordenador al que enviar nada.</p>}
       {!demo && !mobile && <PrivateDevicesPanel />}
+      {!demo && (
+        <section class={`card${broken ? " private-recovery-alert" : ""}`} data-connection-recovery>
+          <div class="eyebrow">Recuperación</div>
+          <h3>{recovery.title}</h3>
+          <ol class="private-recovery-steps">
+            {recovery.steps.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+        </section>
+      )}
       {!demo && !mobile && <UpdateSection />}
       <details><summary>Ayuda avanzada y acceso antiguo</summary>
       {connectionGuide(mobile).map((s) => (

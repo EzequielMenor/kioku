@@ -128,7 +128,12 @@ export class Index {
   constructor(dbPath: string) {
     if (dbPath !== ":memory:") mkdirSync(path.dirname(dbPath), { recursive: true });
     this.db = new DatabaseSync(dbPath);
-    this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = OFF;");
+    try {
+      this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = OFF;");
+    } catch {
+      // En carpetas gestionadas por iCloud Drive / FileProvider, WAL puede devolver disk I/O error.
+      this.db.exec("PRAGMA journal_mode = DELETE; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = OFF;");
+    }
     const row = this.safeGet("SELECT value FROM meta WHERE key='schema_version'");
     if (row && Number(row.value) !== SCHEMA_VERSION) this.reset();
     this.db.exec(DDL);

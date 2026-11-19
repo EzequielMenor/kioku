@@ -27,6 +27,12 @@ final class WorkspaceWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, W
     /// evento `navigate` del daemon; aquí solo se enfoca.
     func show(route: String? = nil) {
         if let w = window, webView?.url != nil {
+            if let route, !route.isEmpty {
+                let target = route.hasPrefix("/") ? route : "/" + route
+                if target.allSatisfy({ $0.isLetter || $0.isNumber || "/_-".contains($0) }) {
+                    webView?.evaluateJavaScript("window.location.hash = '#\(target)'")
+                }
+            }
             if !w.isVisible { onVisibilityChange(true) }
             NSApp.activate(ignoringOtherApps: true)
             w.makeKeyAndOrderFront(nil)

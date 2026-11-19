@@ -9,7 +9,7 @@ Notas en Markdown, tareas, proyectos y bases de datos al estilo Notion, con un a
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-339933)](https://nodejs.org)
 [![Local-first](https://img.shields.io/badge/local--first-sin%20nube-2f6f4f)](#privacidad-y-seguridad)
-[![Tests](https://img.shields.io/badge/tests-267%20OK-brightgreen)](#desarrollo)
+[![Tests](https://img.shields.io/badge/tests-851%20OK-brightgreen)](#desarrollo)
 
 <img src="docs/img/hoy.png" alt="Pantalla Hoy: siguiente paso, capturas sin procesar y proyectos para retomar" width="860">
 
@@ -49,31 +49,36 @@ Además trae **bases de datos** (tabla, tablero y lista sobre tus propias notas)
 
 ## Instalación
 
-### Instalación rápida (un comando, macOS y Linux)
+### Instalación rápida desde cero (macOS y Linux)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash
 ```
 
-Instala Kioku completo con la **gestión de dispositivos por Tailscale**, **Kio** integrado en la app y el **motor nativo del agente** (listo para Ollama y modelos locales o compatibles con OpenAI sin Docker).
+Instala Kioku completo con la app de escritorio, **Kio** integrado, **Conexiones y sincronización** por Tailscale y el **motor nativo del agente** (listo para Ollama y modelos locales o compatibles con OpenAI sin Docker).
 
-- **macOS:** descarga un Node 24+ oficial verificado, compila la app en `~/Applications/Kioku.app` y la abre directamente en **Conexiones y sincronización** (sin necesidad de Node ni Docker previos; la primera vez macOS puede pedir clic derecho > Abrir porque la app no está firmada). También puedes descargar el [ZIP de `main`](https://codeload.github.com/EzequielMenor/kioku/zip/main), extraerlo y hacer doble clic en **`Instalar Kioku.command`**.
+- **macOS (sin usar terminal si prefieres):**
+  - Puedes descargar el [ZIP de `main`](https://codeload.github.com/EzequielMenor/kioku/zip/main), extraerlo y hacer doble clic en **`Instalar Kioku.command`** (o ejecutar el comando de arriba). Descarga un Node 24+ oficial verificado y crea `~/Applications/Kioku.app` (si tienes un `Kioku.dmg`, simplemente arrastra `Kioku.app` a `/Applications`).
+  - La primera vez que abras `Kioku.app` desde Finder, macOS puede pedir confirmación (*clic derecho → Abrir* o *Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente*) porque la app usa firma local sin notarizar.
+  - Al abrirla, la ventana **Estado y configuración** te guía paso a paso desde la interfaz:
+    1. **Carpeta de notas:** elige una carpeta local (recomendado fuera de iCloud Drive, por ejemplo `~/Kioku`; si usas `~/Documents/Kioku` con iCloud Drive activado, haz *clic derecho → Mantener descargado* en Finder para que macOS no desaloje los archivos).
+    2. **Servicio y arranque:** activa el servicio en segundo plano (`launchd`) con un clic. Si alguna vez tuviste más de una copia de `Kioku.app`, la propia ventana te ofrece **Usar esta copia** para alinear el servicio.
+    3. **Kio (asistente local):** instala [Ollama](https://ollama.com), descarga un modelo (recomendado: `qwen3.5:9b`) y selecciónalo en la app; Kio responde al momento desde el chat y desde la barra superior de macOS.
 - **Linux:** instala en `~/.local/share/kioku`, añade el comando `kioku` en `~/.local/bin` (incluyendo un Node 24 privado si no lo tienes instalado), ofrece activar el servicio de usuario `systemd` y abre **Conexiones y sincronización**.
 
 ### Actualizar
 
-Desde el propio ordenador (en **macOS** y en **Linux**), Kioku comprueba automáticamente de forma discreta el historial público de `main` en GitHub (sin enviar ningún dato tuyo). Si hay cambios nuevos, muestra un aviso en la parte superior y en **Conexiones y sincronización** (`Actualizaciones`) con dos botones: **Buscar actualizaciones** y **Actualizar ahora**, que descarga la nueva versión, guarda la copia `.anterior-...` de respaldo y reinicia Kioku por ti.
+Desde el propio ordenador (en **macOS** y en **Linux**), Kioku comprueba automáticamente el historial público de `main` en GitHub (sin enviar ningún dato tuyo). Si hay cambios nuevos, muestra un aviso en la parte superior y en **Conexiones y sincronización → Actualizaciones** con los botones **Buscar actualizaciones** y **Actualizar ahora**.
 
-Si prefieres actualizar desde terminal (o tienes una versión anterior al detector), vuelve a ejecutar el mismo instalador añadiendo `--yes` para aceptar el reemplazo sin confirmación:
+Si prefieres actualizar desde terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EzequielMenor/kioku/main/scripts/install.sh | bash -s -- --yes
 ```
 
 Qué pasa al actualizar:
-- **Tus datos no se tocan:** mantiene intactas tus notas (`~/Library/Application Support/Kioku/Workspace` en macOS o `${KIOKU_HOME:-~/Documents/Kioku}` en Linux), tus claves, tus conversaciones y tus dispositivos emparejados.
-- **Reemplazo seguro:** compila primero la nueva versión en una carpeta temporal y, solo cuando está lista, aparta la anterior como copia de respaldo (`Kioku.app.anterior-...` en macOS o `~/.local/share/kioku.anterior-...` en Linux). Si falla cualquier descarga o comprobación, deja intacta tu versión actual.
-- **Reiniciar la app/servicio si estaba en marcha:** en **macOS**, cierra `Kioku.app` si ya estaba abierta antes de volver a abrirla; en **Linux**, si usabas el servicio automático, reinícialo con `systemctl --user restart kioku.service` (o reinicia tu daemon si lo lanzabas manualmente). Puedes borrar la copia `.anterior-...` cuando compruebes que todo va bien.
+- **Tus datos no se tocan:** mantiene intactas tus notas (tu bóveda elegida, p. ej. `~/Kioku` o `~/Documents/Kioku`), tus claves, tus conversaciones y tus dispositivos emparejados.
+- **En la misma ubicación y con respaldo:** en macOS actualiza `Kioku.app` en la misma carpeta donde ya está instalada (`/Applications` o `~/Applications`) para no duplicar copias, guarda la versión previa como `.anterior-...` y reinicia automáticamente el servicio (`launchd` en macOS, `systemd` en Linux).
 - **Si instalaste desde un clon de Git (`git clone`):** actualiza dentro de tu carpeta con `git pull && npm ci && npm run build:web`. Si administras manualmente una unidad `systemd` en Linux, tienes el procedimiento paso a paso con vuelta atrás en [docs/upgrade-and-recovery.md](docs/upgrade-and-recovery.md).
 
 ### Requisitos (si instalas desde código)
@@ -116,9 +121,12 @@ Si no haces el paso 3, usa `bin/kioku` desde la carpeta del proyecto.
 
 Desde la propia aplicación, abre **Conexiones y sincronización** en la barra lateral (o `kioku open /conexiones`):
 
-1. **Activar acceso privado** con **Tailscale** (con un clic configura `tailscale serve` en HTTPS dentro de tu tailnet, sin abrir puertos del router ni usar Funnel).
-2. **Añadir dispositivo** genera un código QR y un enlace de un solo uso para vincular cada móvil o tablet con su propio nombre.
-3. **Desconectar** permite revocar el acceso de un dispositivo concreto en cualquier momento.
+1. **Comprobar requisitos de Tailscale:** la pantalla muestra paso a paso qué está listo y qué falta (Tailscale instalado, sesión iniciada, MagicDNS, HTTPS y acceso privado).
+2. **Activar acceso privado:** con un clic configura `tailscale serve` en HTTPS dentro de tu tailnet, sin abrir puertos públicos ni usar Funnel.
+3. **Comprobar si conecta:** verifica desde el propio equipo que la dirección privada HTTPS responde antes de escanear nada.
+4. **Añadir dispositivo:** genera un **código QR** y un enlace de un solo uso para vincular cada móvil o tablet con su propio nombre.
+5. **Desconectar** un dispositivo concreto revoca solo su acceso al instante, sin afectar al resto de dispositivos conectados.
+6. **Si se corta la conexión:** la propia vista te indica qué comprobar y cómo recuperarla sin usar terminal.
 
 El ordenador debe permanecer encendido; no hay sincronización garantizada en segundo plano. Más detalles en la [guía de conexiones](docs/connections.md) y en la [API de acceso por dispositivo](docs/device-access-api.md).
 
@@ -136,7 +144,7 @@ El ordenador debe permanecer encendido; no hay sincronización garantizada en se
 
 ### Dónde se guardan tus datos
 
-Por defecto en **`~/Documents/Kioku`**. Cámbialo con la variable `KIOKU_HOME`:
+Por defecto en **`~/Documents/Kioku`**. En la app de **macOS** puedes cambiar la carpeta desde **Estado y configuración → Cambiar…** (recomendado elegir una carpeta local fuera de iCloud Drive, como `~/Kioku`, o marcar *Mantener descargado* en Finder si la dejas en `Documentos` con iCloud Drive activo). Desde la CLI también puedes fijarla con `KIOKU_HOME`:
 
 ```bash
 export KIOKU_HOME=~/mi-cerebro        # por ejemplo, en tu ~/.bashrc
@@ -351,7 +359,7 @@ Diseño completo en [`docs/design`](docs/design) (PRD, arquitectura y decisiones
 ## Desarrollo
 
 ```bash
-npm test               # ~460 pruebas (node:test), todas sobre bóvedas temporales
+npm test               # 850+ pruebas (node:test), todas sobre bóvedas temporales
 npm run typecheck      # tsc --noEmit
 npm run build:web      # empaqueta la interfaz con esbuild en dist/web
 npm run dev            # daemon en primer plano
@@ -372,7 +380,7 @@ Ideas siguientes, sin orden de compromiso:
 
 ## Versiones
 
-Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.7.0**.
+Consulta el [CHANGELOG](CHANGELOG.md). Versión actual: **0.8.0**.
 
 ## Licencia
 

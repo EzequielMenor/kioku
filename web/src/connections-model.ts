@@ -112,3 +112,27 @@ const MOBILE: GuideSection[] = [
 export function connectionGuide(mobile: boolean): GuideSection[] {
   return [HOW_IT_WORKS, ...(mobile ? MOBILE : DESKTOP)];
 }
+
+/** Pasos visuales de recuperación (sin terminal) cuando se corta la conexión o falla Tailscale. */
+export function recoveryChecklist(mobile: boolean): { title: string; steps: string[] } {
+  if (mobile) {
+    return {
+      title: "Si se corta la conexión",
+      steps: [
+        "Comprueba que el Mac esté encendido, sin suspensión y con Kioku abierto.",
+        "Abre Tailscale en este dispositivo y en el Mac: ambos deben estar conectados con la misma cuenta.",
+        "Pulsa «Reintentar» arriba para volver a comprobar si Kioku responde.",
+        "Si este dispositivo se desconectó o perdió el acceso, abre «Conexiones y sincronización» en el Mac, pulsa «Añadir dispositivo» y escanea un QR nuevo (no afecta al resto de dispositivos).",
+      ],
+    };
+  }
+  return {
+    title: "Si se corta la conexión",
+    steps: [
+      "Comprueba que este Mac esté encendido, sin suspensión y con Kioku abierto.",
+      "Abre Tailscale en este Mac y en tu otro dispositivo: ambos deben estar conectados en la misma cuenta.",
+      "Pulsa «Comprobar Tailscale» arriba; si falta el acceso privado, pulsa «Activar acceso privado» y luego «Comprobar si conecta».",
+      "Si un dispositivo concreto dejó de conectar o lo desconectaste antes, pulsa «Añadir dispositivo» y escanea el QR nuevo desde ese dispositivo (el resto sigue conectado).",
+    ],
+  };
+}

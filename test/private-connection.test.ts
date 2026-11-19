@@ -137,3 +137,81 @@ test("private setup: otras publicaciones de Tailscale (8443, Funnel ajeno) no bl
     assert.match(s.problem ?? "", /443/);
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
+
+test("private setup: checks detallan qué falta de Tailscale y /api/connections/probe verifica el acceso privado HTTPS", async () => {
+  const { root, cleanup } = tmpVault();
+  const web = mkdtempSync(path.join(os.tmpdir(), "kioku-private-probe-"));
+  const j = await Kioku.open({ root });
+  let tsStatus: Record<string, unknown> = { BackendState: "NeedsLogin", Self: { DNSName: "" } };
+  let serveCfg: Record<string, unknown> = {};
+  let port = 0;
+  let probeMode: "ok" | "tls" | "http" = "ok";
+  const connectionRunner = async (args: string[]) => {
+    if (args[0] === "status") return JSON.stringify(tsStatus);
+    if (args[1] === "status") return JSON.stringify(serveCfg);
+    serveCfg = { TCP: { "443": { HTTPS: true } }, Web: { [host + ":443"]: { Handlers: { "/": { Proxy: `http://127.0.0.1:${port}` } } } } };
+    return "";
+  };
+  const connectionProbeFetch = async (url: string) => {
+    assert.equal(url, `https://${host}/api/health`);
+    if (probeMode === "tls") throw new Error("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
+    if (probeMode === "http") return new Response("bad gateway", { status: 502 });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const srv = await startServer(j, { port: 0, webDir: web, key: "a".repeat(64), connectionRunner, connectionProbeFetch });
+  port = srv.port;
+  const call = (method: string, route: string, body?: unknown, key = srv.key, headers: Record<string, string> = {}): Promise<Response> => new Promise((resolve, reject) => {
+    const req = http.request(srv.url + route, { method, headers: { "x-kioku-key": key, ...(body ? { "content-type": "application/json" } : {}), ...headers } }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode })));
+    });
+    req.on("error", reject);
+    req.end(body ? JSON.stringify(body) : undefined);
+  });
+  try {
+    // 1. Falta iniciar sesión en Tailscale
+    let st = await (await call("GET", "/api/connections/status")).json() as { checks: { id: string; ok: boolean }[]; canConfigure: boolean };
+    assert.equal(st.checks.find((c) => c.id === "installed")?.ok, true);
+    assert.equal(st.checks.find((c) => c.id === "signed_in")?.ok, false);
+    assert.equal(st.canConfigure, false);
+
+    // 2. Sesión iniciada, pero sin certificados HTTPS
+    tsStatus = { BackendState: "Running", Self: { DNSName: host + "." }, CurrentTailnet: { MagicDNSEnabled: true }, CertDomains: [] };
+    st = await (await call("GET", "/api/connections/status")).json();
+    assert.equal(st.checks.find((c) => c.id === "signed_in")?.ok, true);
+    assert.equal(st.checks.find((c) => c.id === "magic_dns")?.ok, true);
+    assert.equal(st.checks.find((c) => c.id === "https")?.ok, false);
+    assert.equal(st.canConfigure, false);
+
+    // 3. Antes de activar acceso privado, probe devuelve not-ready
+    const preProbe = await (await call("POST", "/api/connections/probe", {})).json() as { ok: boolean; reason: string };
+    assert.equal(preProbe.ok, false);
+    assert.equal(preProbe.reason, "not-ready");
+
+    // 4. Con CertDomains activo, configurar y comprobar acceso privado
+    tsStatus = { BackendState: "Running", Self: { DNSName: host + "." }, CurrentTailnet: { MagicDNSEnabled: true }, CertDomains: [host] };
+    assert.equal((await call("POST", "/api/connections/configure", { confirm: true })).status, 200);
+    const okProbe = await (await call("POST", "/api/connections/probe", {})).json() as { ok: boolean; origin: string; ms: number };
+    assert.equal(okProbe.ok, true);
+    assert.equal(okProbe.origin, `https://${host}`);
+    assert.equal(typeof okProbe.ms, "number");
+
+    probeMode = "tls";
+    const tlsProbe = await (await call("POST", "/api/connections/probe", {})).json() as { ok: boolean; reason: string; detail: string };
+    assert.equal(tlsProbe.ok, false);
+    assert.equal(tlsProbe.reason, "tls");
+    assert.match(tlsProbe.detail, /HTTPS|certificado/i);
+
+    probeMode = "http";
+    const httpProbe = await (await call("POST", "/api/connections/probe", {})).json() as { ok: boolean; reason: string; status: number };
+    assert.equal(httpProbe.ok, false);
+    assert.equal(httpProbe.reason, "http-error");
+    assert.equal(httpProbe.status, 502);
+
+    // 5. El móvil o acceso remoto no pueden lanzar la sonda local
+    const mobile = loadOrCreateMobileKey(root);
+    assert.equal((await call("POST", "/api/connections/probe", {}, mobile)).status, 403);
+    assert.equal((await call("POST", "/api/connections/probe", {}, srv.key, { host })).status, 403);
+  } finally { await srv.close(); j.close(); cleanup(); rmSync(web, { recursive: true, force: true }); }
+});

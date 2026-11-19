@@ -193,6 +193,32 @@ export function serializeModelOverride(o: ModelOverride): string {
   return JSON.stringify({ managed_by: MODEL_OVERRIDE_OWNER, model, ...(o.acknowledgedOrigin ? { acknowledged_origin: o.acknowledgedOrigin } : {}) }, null, 2) + "\n";
 }
 
+/** Detecta lecturas fallidas de archivos desalojados en iCloud Drive (`dataless`, macOS `EDEADLK` / errno -11). */
+export function isCloudDatalessReadError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  const err = e as NodeJS.ErrnoException;
+  return err.errno === -11
+    || err.code === "EDEADLK"
+    || err.code === "Unknown system error -11"
+    || err.code === "ETIMEDOUT";
+}
+
+function describeConfigReadError(e: unknown, where: string): ModelConfigError {
+  if (e instanceof ModelConfigError) return e;
+  if (isCloudDatalessReadError(e)) {
+    return new ModelConfigError(
+      `No se pudo descargar ${where} desde iCloud Drive (archivo solo en la nube). En Finder, haz clic derecho sobre la carpeta de tu bóveda y elige «Mantener descargado», o cambia la bóveda a una carpeta local fuera de iCloud.`,
+    );
+  }
+  const code = (e as NodeJS.ErrnoException).code;
+  if (code === "EACCES" || code === "EPERM") {
+    const macHint = process.platform === "darwin" ? " Si está en Documentos, revisa Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas." : "";
+    return new ModelConfigError(`Kioku no tiene acceso a ${where} (${code}). Revisa el acceso a esa carpeta y al archivo desde la cuenta que ejecuta Kioku.${macHint}`);
+  }
+  if (code === "ENOTDIR") return new ModelConfigError(`No se puede acceder a ${where}: verifica que la bóveda y .kioku sean carpetas.`);
+  return new ModelConfigError(`No se pudo leer ${where}. Comprueba que la bóveda esté disponible y vuelve a intentarlo.`);
+}
+
 /** Override de la interfaz: `null` si no existe; si existe y no es válido (o no es un fichero normal) falla cerrado. */
 export async function readModelOverride(homeDir: string): Promise<ModelOverride | null> {
   const file = path.join(homeDir, ".kioku", MODEL_OVERRIDE_FILE);
@@ -203,36 +229,29 @@ export async function readModelOverride(homeDir: string): Promise<ModelOverride 
     text = await fs.readFile(file, "utf8");
   } catch (e) {
     if (e instanceof ModelConfigError) throw e;
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return null;
-    if (code === "EACCES" || code === "EPERM") {
-      const macHint = process.platform === "darwin" ? " Si está en Documentos, revisa Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas." : "";
-      throw new ModelConfigError(`Kioku no tiene acceso a ${OVERRIDE_WHERE} (${code}). Revisa el acceso a esa carpeta y al archivo desde la cuenta que ejecuta Kioku.${macHint}`);
-    }
-    if (code === "ENOTDIR") throw new ModelConfigError(`No se puede acceder a ${OVERRIDE_WHERE}: verifica que la bóveda y .kioku sean carpetas.`);
-    throw new ModelConfigError(`No se pudo leer ${OVERRIDE_WHERE}. Comprueba que la bóveda esté disponible y vuelve a intentarlo.`);
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw describeConfigReadError(e, OVERRIDE_WHERE);
   }
   if (text.length > MAX_FILE) throw new ModelConfigError(`${MODEL_OVERRIDE_FILE} es demasiado grande`);
   return parseModelOverride(text);
 }
 
-async function readText(file: string): Promise<string | null> {
+async function readText(file: string, where = path.basename(file)): Promise<string | null> {
   try {
     const text = await fs.readFile(file, "utf8");
     if (text.length > MAX_FILE) throw new ModelConfigError(`${path.basename(file)} es demasiado grande`);
     return text;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
-    if (e instanceof ModelConfigError) throw e;
-    throw new ModelConfigError(`No puedo leer ${path.basename(file)}: revisa sus permisos`);
+    throw describeConfigReadError(e, where);
   }
 }
 
 /** Sección `model` de `.kioku/assistant.json`: texto (solo el modelo, como siempre) u objeto con los campos de Hermes. */
 async function readVault(homeDir: string): Promise<Raw> {
-  const text = await readText(path.join(homeDir, ".kioku", "assistant.json"));
-  if (text === null) return {};
   const where = ".kioku/assistant.json";
+  const text = await readText(path.join(homeDir, ".kioku", "assistant.json"), where);
+  if (text === null) return {};
   let json: unknown;
   try { json = JSON.parse(text); } catch { throw new ModelConfigError(`${where} no es JSON válido: corrígelo para usar el asistente`); }
   if (!json || typeof json !== "object" || Array.isArray(json)) throw new ModelConfigError(`${where} debe ser un objeto JSON`);
@@ -260,7 +279,7 @@ async function readVault(homeDir: string): Promise<Raw> {
 /** `~/.hermes/config.yaml`: se lee con un parser YAML real, solo la sección `model`. Valores sin validar aún. */
 async function readUserHermes(userHome: string): Promise<Raw> {
   const where = "~/.hermes/config.yaml";
-  const text = await readText(path.join(userHome, ".hermes", "config.yaml"));
+  const text = await readText(path.join(userHome, ".hermes", "config.yaml"), where);
   if (text === null) return {};
   let doc: unknown;
   try { doc = parseYaml(text); } catch { throw new ModelConfigError(`${where} no es YAML válido: corrígelo o fija el modelo en .kioku/assistant.json`); }

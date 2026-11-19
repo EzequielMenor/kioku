@@ -45,6 +45,24 @@ public struct KiokuPaths {
         return fm.fileExists(atPath: home.appendingPathComponent(".obsidian").path) && !fm.fileExists(atPath: internalDir.path)
     }
 
+    /// Comprueba por metadatos (`lstat`, sin leer ni disparar descargas) si un archivo está desalojado en iCloud Drive (`SF_DATALESS`).
+    public static func isDataless(_ url: URL) -> Bool {
+        #if canImport(Darwin)
+        var st = stat()
+        guard lstat(url.path, &st) == 0 else { return false }
+        let sfDataless: UInt32 = 0x40000000
+        return (st.st_flags & sfDataless) != 0
+        #else
+        return false
+        #endif
+    }
+
+    /// Verdadero si algún archivo clave de la bóveda está marcado como `dataless` por iCloud Drive.
+    public var hasCloudEvictedFiles: Bool {
+        let candidates = [home, internalDir, file("assistant-model.json"), file("assistant.json"), file("secret"), file("secret-companion")]
+        return candidates.contains(where: KiokuPaths.isDataless)
+    }
+
     // ───────── daemon en marcha ─────────
 
     public struct Runtime: Equatable { public let pid: Int32; public let port: Int }

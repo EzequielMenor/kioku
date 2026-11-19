@@ -9,7 +9,9 @@ PINNED_REF="main"
 REPO="${KIOKU_REPO:-EzequielMenor/kioku}"
 REF="${KIOKU_REF:-$PINNED_REF}"
 NODE_LINE="${KIOKU_NODE_LINE:-v24.x}"
-APPS="$HOME/Applications"
+APPS="${KIOKU_MAC_APPS_DIR:-$HOME/Applications}"
+APPS="${APPS%/}"
+[ -n "$APPS" ] || APPS="/"
 APP_DEST="$APPS/Kioku.app"
 WORKSPACE="$HOME/Library/Application Support/Kioku/Workspace"
 
@@ -102,9 +104,14 @@ case "$REPO" in *..*|*/*/*|*[!A-Za-z0-9._/-]*|/*|*/) fail "KIOKU_REPO no es vál
 case "$REF" in ""|*..*|*[!A-Za-z0-9._/-]*|-*) fail "KIOKU_REF no es válido." ;; esac
 case "$NODE_LINE" in v[0-9][0-9].x) [ "${NODE_LINE:1:2}" -ge 24 ] || fail "KIOKU_NODE_LINE debe ser v24.x o superior." ;; *) fail "KIOKU_NODE_LINE no es válido (ejemplo: v24.x)." ;; esac
 
-# Un enlace en el destino o en su carpeta podría apuntar fuera de ~/Applications: no se sigue.
+# Un enlace en el destino o en su carpeta podría apuntar fuera de la carpeta elegida: no se sigue.
+case "$APPS" in /*) ;; *) fail "KIOKU_MAC_APPS_DIR debe ser una ruta absoluta ($APPS)." ;; esac
+case "$APPS" in *..*|*.app) fail "KIOKU_MAC_APPS_DIR no es válido ($APPS)." ;; esac
 [ ! -L "$APPS" ] || fail "$APPS es un enlace simbólico; no instalo a través de enlaces."
 [ ! -L "$APP_DEST" ] || fail "$APP_DEST es un enlace simbólico; no lo modifico."
+if [ -d "$APPS" ] && [ ! -w "$APPS" ]; then
+  fail "no tengo permisos para escribir en $APPS. Actualiza arrastrando Kioku.app desde el DMG o instálala en ~/Applications."
+fi
 had_prior=0
 if [ -e "$APP_DEST" ]; then
   had_prior=1

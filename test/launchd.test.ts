@@ -97,6 +97,8 @@ test("launchd: --replace-legacy retira el antiguo guardando su plist y carga dae
     assert.ok(log.some((l) => /guardado/.test(l)));
     const st = launchdStatus(deps);
     assert.deepEqual([st.daemon.installed, st.daemon.loaded, st.app.installed, st.app.loaded, st.legacy.length], [true, true, true, true, 0]);
+    assert.equal(st.daemon.program, "/n");
+    assert.equal(st.app.program, path.join(home, "Applications", "Kioku.app", "Contents", "MacOS", "Kioku"));
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 

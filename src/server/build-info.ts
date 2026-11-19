@@ -50,20 +50,40 @@ export function extractCommitFromTarGz(tarGzPath: string): string | null {
   }
 }
 
-/** Resuelve el commit y rama actuales leyendo `.git/` sin lanzar subprocesos. */
+/** Resuelve el directorio `.git` real (incluyendo worktrees donde `.git` es un fichero `gitdir: ...`). */
+function resolveGitDirs(appRoot: string): { gitDir: string; commonDir: string } | null {
+  const dotGit = path.join(appRoot, ".git");
+  if (!existsSync(dotGit)) return null;
+  const pointer = safeText(dotGit)?.trim();
+  if (pointer && /^gitdir:\s*/i.test(pointer)) {
+    const raw = pointer.replace(/^gitdir:\s*/i, "").trim();
+    if (!raw) return null;
+    const gitDir = path.isAbsolute(raw) ? raw : path.resolve(appRoot, raw);
+    const commonRaw = safeText(path.join(gitDir, "commondir"))?.trim();
+    const commonDir = commonRaw ? (path.isAbsolute(commonRaw) ? commonRaw : path.resolve(gitDir, commonRaw)) : gitDir;
+    return { gitDir, commonDir };
+  }
+  return { gitDir: dotGit, commonDir: dotGit };
+}
+
+/** Resuelve el commit y rama actuales leyendo `.git/` (o worktree) sin lanzar subprocesos. */
 export function readGitHead(appRoot: string): { commit: string | null; ref: string | null } {
-  const gitDir = path.join(appRoot, ".git");
-  const head = safeText(path.join(gitDir, "HEAD"))?.trim();
+  const dirs = resolveGitDirs(appRoot);
+  if (!dirs) return { commit: null, ref: null };
+  const head = safeText(path.join(dirs.gitDir, "HEAD"))?.trim();
   if (!head) return { commit: null, ref: null };
   if (SHA_RE.test(head)) return { commit: head.toLowerCase(), ref: null };
   const refMatch = /^ref:\s+(.+)$/.exec(head);
   if (!refMatch) return { commit: null, ref: null };
   const fullRef = refMatch[1].trim();
   const shortRef = fullRef.startsWith("refs/heads/") ? fullRef.slice("refs/heads/".length) : fullRef;
-  const direct = safeText(path.join(gitDir, fullRef))?.trim();
-  if (direct && SHA_RE.test(direct)) return { commit: direct.toLowerCase(), ref: shortRef };
-  const packed = safeText(path.join(gitDir, "packed-refs"));
-  if (packed) {
+  for (const base of [dirs.gitDir, dirs.commonDir]) {
+    const direct = safeText(path.join(base, fullRef))?.trim();
+    if (direct && SHA_RE.test(direct)) return { commit: direct.toLowerCase(), ref: shortRef };
+  }
+  for (const base of [dirs.gitDir, dirs.commonDir]) {
+    const packed = safeText(path.join(base, "packed-refs"));
+    if (!packed) continue;
     for (const line of packed.split(/\r?\n/)) {
       if (!line || line.startsWith("#") || line.startsWith("^")) continue;
       const [sha, name] = line.trim().split(/\s+/);

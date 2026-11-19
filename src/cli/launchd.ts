@@ -3,7 +3,7 @@
 // antiguo de Kioku (p. ej. `com.ezequiel.kioku-server`) nunca se toca sin `--replace-legacy`, y entonces se guarda
 // su plist tal cual en `~/Library/Application Support/Kioku/legacy/` para poder volver atrás.
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readRuntime } from "./desktop.ts";
@@ -189,12 +189,26 @@ export function uninstallLaunchd(d: LaunchdDeps): string[] {
 }
 
 export interface LaunchdStatus {
-  daemon: { installed: boolean; loaded: boolean };
-  app: { installed: boolean; loaded: boolean };
+  daemon: { installed: boolean; loaded: boolean; program: string | null };
+  app: { installed: boolean; loaded: boolean; program: string | null };
   legacy: LegacyAgent[];
 }
 
+function readPlistProgram(file: string): string | null {
+  try {
+    const xml = readFileSync(file, "utf8");
+    const m = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]+)<\/string>/.exec(xml);
+    return m ? m[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"') : null;
+  } catch {
+    return null;
+  }
+}
+
 export function launchdStatus(d: LaunchdDeps): LaunchdStatus {
-  const one = (label: string) => ({ installed: existsSync(path.join(agentsDir(d.userHome), `${label}.plist`)), loaded: loaded(d, label) });
+  const one = (label: string) => {
+    const file = path.join(agentsDir(d.userHome), `${label}.plist`);
+    const installed = existsSync(file);
+    return { installed, loaded: loaded(d, label), program: installed ? readPlistProgram(file) : null };
+  };
   return { daemon: one(DAEMON_LABEL), app: one(APP_LABEL), legacy: legacyAgents(d) };
 }

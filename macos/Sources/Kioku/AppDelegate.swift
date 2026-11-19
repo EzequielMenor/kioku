@@ -59,9 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if e["kind"].string == "navigate" { self?.showWorkspace(route: e["route"].string) }
         }
 
-        if !paths.looksLikeObsidianVault { try? paths.ensureCompanionKey() }
+        if !paths.looksLikeObsidianVault && !paths.hasCloudEvictedFiles { _ = try? paths.ensureCompanionKey() }
         model.start()
         kio.update()
+        buildMainMenu()
         buildStatusItem()
         hotKey = HotKey { [weak self] in self?.togglePanel() }
         smoke = SmokeDriver(app: self)
@@ -71,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func firstLook() {
-        if paths.looksLikeObsidianVault || paths.runtime() == nil || !UserDefaults.standard.bool(forKey: "setupSeen") {
+        if paths.looksLikeObsidianVault || paths.hasCloudEvictedFiles || paths.runtime() == nil || !UserDefaults.standard.bool(forKey: "setupSeen") {
             showSetup()
             UserDefaults.standard.set(true, forKey: "setupSeen")
         } else if !fromLogin && ProcessInfo.processInfo.environment["KIOKU_MAC_SMOKE_DIR"] == nil {
@@ -190,10 +191,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.terminate(nil)
     }
 
-    // ───────── barra de menús ─────────
+    // ───────── menú de aplicación y barra de menús ─────────
+
+    private func buildMainMenu() {
+        let bar = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu(title: "Kioku")
+        add(appMenu, "Abrir Kioku", #selector(menuOpenKioku), "o")
+        add(appMenu, "Conexiones y sincronización…", #selector(menuConnections), "")
+        let talk = add(appMenu, "Hablar con Kio", #selector(menuTogglePanel), "k")
+        talk.keyEquivalentModifierMask = [.command, .option]
+        add(appMenu, "Estado y configuración…", #selector(menuSetup), ",")
+        appMenu.addItem(.separator())
+        add(appMenu, "Salir de Kioku", #selector(menuQuit), "q")
+        appItem.submenu = appMenu
+        bar.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edición")
+        editMenu.addItem(NSMenuItem(title: "Deshacer", action: Selector(("undo:")), keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: "Rehacer", action: Selector(("redo:")), keyEquivalent: "Z"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Cortar", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copiar", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Pegar", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Seleccionar todo", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editItem.submenu = editMenu
+        bar.addItem(editItem)
+
+        let winItem = NSMenuItem()
+        let winMenu = NSMenu(title: "Ventana")
+        winMenu.addItem(NSMenuItem(title: "Cerrar ventana", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        winMenu.addItem(NSMenuItem(title: "Minimizar", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
+        winItem.submenu = winMenu
+        bar.addItem(winItem)
+        NSApp.mainMenu = bar
+    }
 
     private func buildStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.autosaveName = "local.kioku.status"
+        item.isVisible = true
         item.button?.image = KioPainter.menuBarIcon()
         item.button?.toolTip = "Kioku"
         let menu = NSMenu()

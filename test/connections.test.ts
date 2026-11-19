@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  DEMO_NOTICE, HEALTH_PATH, HEALTH_TIMEOUT_MS, connectionGuide, describeHealth, probeHealth, safeOrigin,
+  DEMO_NOTICE, HEALTH_PATH, HEALTH_TIMEOUT_MS, connectionGuide, describeHealth, probeHealth, recoveryChecklist, safeOrigin,
 } from "../web/src/connections-model.ts";
 
 const src = (name: string) => readFileSync(new URL(`../web/src/${name}`, import.meta.url), "utf8");
@@ -141,4 +141,22 @@ test("ConnectionsView: la demo no sondea la red y el panel de cola solo aparece 
   assert.match(view, /if \(demo\)/);
   assert.match(view, /mobile && !demo && \(/);
   assert.match(view, /\{children\}/);
+});
+
+test("Conexiones y sincronización: acceso directo en la barra lateral, lista visual de Tailscale, sonda y recuperación sin terminal", () => {
+  const app = src("app.tsx");
+  const view = src("connections.tsx");
+  const panel = src("device-access.tsx");
+  assert.match(app, /href="#\/conexiones"[^>]*>.*Conexiones y sincronización/);
+  assert.match(view, /data-connection-recovery/);
+  assert.match(panel, /data-tailscale-checklist/);
+  assert.match(panel, /data-probe-private/);
+  for (const mobile of [false, true]) {
+    const rec = recoveryChecklist(mobile);
+    assert.match(rec.title, /corta la conexión/i);
+    assert.ok(rec.steps.length >= 3);
+    const joined = rec.steps.join("\n");
+    assert.match(joined, /Tailscale/);
+    assert.doesNotMatch(joined, /kioku doctor|kioku pair|sudo|terminal/i, "la recuperación visual no pide terminal");
+  }
 });

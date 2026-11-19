@@ -69,6 +69,7 @@ if [ "$OS" = "Darwin" ]; then
       || { echo "No se pudo descargar el instalador de macOS desde $REPO@$REF." >&2; exit 1; }
   fi
   mac_env=(KIOKU_REPO="$REPO" KIOKU_REF="$REF" KIOKU_NODE_LINE="$NODE_LINE")
+  [ -n "${KIOKU_MAC_APPS_DIR:-}" ] && mac_env+=(KIOKU_MAC_APPS_DIR="$KIOKU_MAC_APPS_DIR")
   [ "$NO_OPEN" = 1 ] && mac_env+=(KIOKU_INSTALL_NO_OPEN=1)
   [ "$YES" = 1 ] && mac_env+=(KIOKU_INSTALL_YES=1)
   if [ ! -t 0 ] && [ "$YES" != 1 ] && [ -r /dev/tty ]; then

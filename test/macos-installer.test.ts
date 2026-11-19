@@ -462,3 +462,17 @@ test("el instalador público instala la app fijada en un HOME desechable y la ap
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("install-macos.command respeta KIOKU_MAC_APPS_DIR para actualizar en su sitio sin duplicar en ~/Applications", () => {
+  const f = fixture();
+  try {
+    const customApps = path.join(f.root, "CustomApplications");
+    mkdirSync(customApps, { recursive: true });
+    const r = f.run({ env: { KIOKU_MAC_APPS_DIR: customApps, KIOKU_INSTALL_NO_OPEN: "1" } });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(existsSync(path.join(customApps, "Kioku.app", "Contents", "MacOS", "Kioku")));
+    assert.equal(existsSync(path.join(f.home, "Applications", "Kioku.app")), false);
+  } finally {
+    f.cleanup();
+  }
+});

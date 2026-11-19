@@ -10,6 +10,7 @@ import { HermesEngine } from "../assistant/engine.ts";
 import { FakeEngine } from "../assistant/fake-engine.ts";
 import { NativeEngine } from "../assistant/native-engine.ts";
 import { RouterEngine } from "../assistant/router-engine.ts";
+import { isCloudDatalessReadError } from "../assistant/model-config.ts";
 import os from "node:os";
 
 /** El asistente del daemon: Hermes y el motor nativo detrás de un enrutador que elige según la configuración vigente. */
@@ -157,7 +158,7 @@ async function main(): Promise<void> {
       const mobileExclude = async () => { const cfg = parseMobileConfig(await j.vault.readInternal("mobile.json")); return [...cfg, ...hiddenCalendarPaths(j, cfg)]; };
       const notifier = new Notifier(j, [desktopChannel(), pushChannel(j, push, { exclude: mobileExclude })]);
       notifier.start();
-      shutdownDaemon = async () => { updates.close(); notifier.stop(); try { unlinkSync(rtFile); } catch { /* ya no está */ } await srv.close(); j.close(); };
+      shutdownDaemon = async () => { updates.close(); notifier.stop(); try { if (readRuntime(home)?.pid === process.pid) unlinkSync(rtFile); } catch { /* ya no está */ } await srv.close(); j.close(); };
       const stop = async () => { await shutdownDaemon(); process.exit(0); };
       process.on("SIGINT", stop);
       process.on("SIGTERM", stop);
@@ -405,4 +406,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => die((e as Error).message));
+main().catch((e) => {
+  if (isCloudDatalessReadError(e)) {
+    die("No se pudieron leer archivos de la bóveda porque iCloud Drive los dejó solo en la nube (dataless). En Finder, haz clic derecho sobre la carpeta de tu bóveda y elige «Mantener descargado», o mueve tu bóveda a una carpeta local fuera de iCloud.");
+  }
+  die((e as Error).message);
+});

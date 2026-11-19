@@ -147,7 +147,20 @@ async function runInstallerFromRemote(req: UpdateRunRequest, fetcher: UpdateFetc
   try {
     const res = await fetcher(url, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) return { ok: false, error: `No se pudo descargar el instalador (HTTP ${res.status}).` };
-    writeFileSync(scriptPath, await res.text(), { mode: 0o700 });
+    const scriptText = await res.text();
+    const targetAppsDir = req.env.KIOKU_MAC_APPS_DIR;
+    const defaultUserApps = path.join(os.homedir(), "Applications");
+    if (
+      targetAppsDir &&
+      path.resolve(targetAppsDir) !== path.resolve(defaultUserApps) &&
+      !scriptText.includes("KIOKU_MAC_APPS_DIR")
+    ) {
+      return {
+        ok: false,
+        error: `El instalador remoto de ${repo}@${ref} todavía instala solo en ~/Applications y crearía una copia duplicada junto a ${targetAppsDir}/Kioku.app. Actualiza esta copia desde el DMG o publica primero el instalador actualizado.`,
+      };
+    }
+    writeFileSync(scriptPath, scriptText, { mode: 0o700 });
     return await new Promise((resolve) => {
       const child = spawn("/bin/bash", [scriptPath, ...req.args], {
         env: { ...process.env, ...req.env },
@@ -179,12 +192,20 @@ export async function performDefaultRestart(opts: {
   const { installed, appRoot, shutdown } = opts;
   if (installed.channel === "macos-app" || process.platform === "darwin") {
     const appPath = macAppBundleFromRoot(appRoot);
-    // Espera a que termine este daemon antes de abrir el nuevo paquete, así native-macos arranca el nuevo servidor.
+    // Espera a que termine este daemon y relanza el servicio de launchd (o abre el .app si no usa launchd).
     const helper = [
       `pid="${process.pid}"`,
       `for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done`,
+      `uid="$(id -u)"`,
+      `if /bin/launchctl print "gui/$uid/local.kioku.daemon" >/dev/null 2>&1; then`,
+      `  /bin/launchctl kickstart -k "gui/$uid/local.kioku.daemon" >/dev/null 2>&1 || true`,
+      `  if /bin/launchctl print "gui/$uid/local.kioku.app" >/dev/null 2>&1; then`,
+      `    /bin/launchctl kickstart -k "gui/$uid/local.kioku.app" >/dev/null 2>&1 || true`,
+      `  fi`,
+      `  exit 0`,
+      `fi`,
       `exec /usr/bin/open "$1"`,
-    ].join("; ");
+    ].join("\n");
     const child = spawn("/bin/bash", ["-c", helper, "_", appPath], { detached: true, stdio: "ignore" });
     child.unref();
     await shutdown?.().catch(() => {});
@@ -429,6 +450,9 @@ export class UpdateManager {
         };
         if (snap.installed.installDir) env.KIOKU_INSTALL_DIR = snap.installed.installDir;
         if (snap.installed.binDir) env.KIOKU_BIN_DIR = snap.installed.binDir;
+        if (snap.installed.channel === "macos-app") {
+          env.KIOKU_MAC_APPS_DIR = path.dirname(macAppBundleFromRoot(this.appRoot));
+        }
 
         const args = ["--yes", "--no-open"];
         if (snap.installed.channel === "linux-install") args.push("--no-service");

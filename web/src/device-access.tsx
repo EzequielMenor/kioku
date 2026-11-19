@@ -4,7 +4,9 @@ import { deviceRequest, enrollmentLink, enrollmentToken, localQrSvg } from "./de
 import "./device-access.css";
 
 interface Device { id: string; name: string; createdAt: string }
-interface Connection { connected: boolean; ready: boolean; canConfigure: boolean; localAdmin: boolean; publicOrigin: string | null; problem: string | null }
+interface ConnectionCheck { id: string; label: string; ok: boolean; detail: string }
+interface Connection { connected: boolean; ready: boolean; canConfigure: boolean; localAdmin: boolean; publicOrigin: string | null; problem: string | null; checks?: ConnectionCheck[] }
+interface ProbeResult { ok: boolean; origin: string | null; ms?: number; reason?: string; status?: number; detail: string }
 const message = (e: unknown) => e instanceof Error ? e.message : "No se pudo completar la operación";
 
 export function PrivateDevicesPanel() {
@@ -12,6 +14,7 @@ export function PrivateDevicesPanel() {
   const [legacy, setLegacy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [connection, setConnection] = useState<Connection | null>(null);
+  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [enrollment, setEnrollment] = useState<{ link: string; expiresAt: string } | null>(null);
@@ -23,7 +26,7 @@ export function PrivateDevicesPanel() {
       deviceRequest<Connection>("GET", "/api/connections/status"),
     ]);
     setDevices(inventory.devices); setLegacy(inventory.legacyPaired); setConnection(state); setLoaded(true);
-    if (!state.ready) setEnrollment(null);
+    if (!state.ready) { setEnrollment(null); setProbeResult(null); }
   };
   useEffect(() => { void refresh().catch((e) => setError(message(e))); }, []);
   const run = async (action: () => Promise<void>) => {
@@ -32,15 +35,19 @@ export function PrivateDevicesPanel() {
   };
   const configure = async () => {
     if (!await askConfirm({ title: "Activar acceso privado", body: "Kioku configurará Tailscale Serve para este servidor y guardará su nombre permitido. Solo será accesible dentro de tu red Tailscale: sin abrir el router ni usar Funnel. No se sobrescribirá otro servicio.", confirm: "Activar acceso privado" })) return;
-    await run(async () => { await deviceRequest("POST", "/api/connections/configure", { confirm: true }); await refresh(); });
+    await run(async () => { await deviceRequest("POST", "/api/connections/configure", { confirm: true }); setProbeResult(null); await refresh(); });
   };
+  const probePrivate = () => run(async () => {
+    const res = await deviceRequest<ProbeResult>("POST", "/api/connections/probe", {});
+    setProbeResult(res);
+  });
   const enroll = () => run(async () => {
     if (!connection?.publicOrigin) throw new Error("Primero comprueba el acceso privado con Tailscale");
     const result = await deviceRequest<{ token: string; expiresAt: string }>("POST", "/api/devices/enrollments", {});
     setEnrollment({ link: enrollmentLink(connection.publicOrigin, result.token), expiresAt: result.expiresAt }); setCopied(false);
   });
   const revoke = async (device: Device) => {
-    if (!await askConfirm({ title: "Desconectar " + device.name, body: "Se retirará solo su acceso al servidor. Los datos que ya descargó pueden seguir en el dispositivo; no es un borrado remoto.", confirm: "Desconectar dispositivo", danger: true })) return;
+    if (!await askConfirm({ title: "Desconectar " + device.name, body: "Se retirará solo su acceso al servidor sin afectar al resto de dispositivos. Los datos que ya descargó pueden seguir en el dispositivo; no es un borrado remoto.", confirm: "Desconectar dispositivo", danger: true })) return;
     await run(async () => { await deviceRequest("DELETE", "/api/devices/" + device.id, {}); await refresh(); });
   };
 
@@ -48,15 +55,31 @@ export function PrivateDevicesPanel() {
     <section class="card">
       <div class="eyebrow">1 · Acceso privado</div>
       <h2>{connection?.ready ? "Tailscale preparado" : "Conectar mediante Tailscale"}</h2>
-      <p>Instala Tailscale en este ordenador y en tus dispositivos e inicia sesión con la misma cuenta. Kioku te guía; no instala software ni inicia sesión por ti.</p>
+      <p>Instala Tailscale en este ordenador y en tus dispositivos e inicia sesión con la misma cuenta. Kioku solo usa tu red privada de Tailscale: nunca abre puertos públicos ni activa Funnel.</p>
       <p><a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Descargar Tailscale</a></p>
-      {connection?.problem && <p role="status">{connection.problem}</p>}
-      {connection?.ready && <p>Proxy privado detectado: <code>{connection.publicOrigin}</code>. Comprueba el enlace desde tu otro dispositivo.</p>}
+      {connection?.checks && connection.checks.length > 0 && (
+        <ul class="private-checklist" data-tailscale-checklist>
+          {connection.checks.map((item) => (
+            <li key={item.id} class={item.ok ? "check-ok" : "check-missing"}>
+              <span class="check-mark" aria-hidden="true">{item.ok ? "✓" : "✕"}</span>
+              <span><b>{item.label}</b><br /><small class="muted">{item.detail}</small></span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {connection?.problem && <p role="status" class="bad-text">{connection.problem}</p>}
+      {connection?.ready && <p>Dirección privada activa: <code>{connection.publicOrigin}</code>.</p>}
       {connection && !connection.localAdmin && <p>Para cambiar la conexión del servidor, abre Kioku en el propio ordenador.</p>}
       <div class="row">
         <button disabled={busy} onClick={() => void run(refresh)}>Comprobar Tailscale</button>
         {!connection?.ready && <button data-configure-private class="primary" disabled={busy || !connection?.localAdmin || !connection.canConfigure} onClick={() => void configure()}>Activar acceso privado</button>}
+        {connection?.ready && <button data-probe-private disabled={busy || !connection.localAdmin} onClick={() => void probePrivate()}>Comprobar si conecta</button>}
       </div>
+      {probeResult && (
+        <p role="status" class={probeResult.ok ? "private-probe-ok" : "bad-text"} data-probe-result>
+          {probeResult.ok ? "✓ " : "✕ "}{probeResult.detail}
+        </p>
+      )}
       <p class="muted small">El ordenador debe estar encendido y sin suspensión, con Kioku y Tailscale activos. Esto no garantiza conexión desde otro dispositivo ni sincronización en segundo plano.</p>
     </section>
     <section class="card">
@@ -66,6 +89,7 @@ export function PrivateDevicesPanel() {
       <div data-device-list>
         {!loaded ? <p>Cargando accesos…</p> : devices.length === 0 ? <p>Todavía no hay dispositivos con acceso individual.</p> : <ul>{devices.map((device) => <li key={device.id} class="private-device-row"><span><b>{device.name}</b><br /><small>Vinculado: {new Date(device.createdAt).toLocaleDateString()}</small></span><button disabled={busy} onClick={() => void revoke(device)}>Desconectar</button></li>)}</ul>}
       </div>
+      <p class="muted small">Cada dispositivo tiene su propio acceso: desconectar uno no afecta a los demás.</p>
       {legacy && <p class="muted small">También hay un acceso antiguo con clave compartida, que no identifica cada teléfono. Los nuevos enlaces de este panel sí crean accesos individuales. No se migra ni revoca el acceso antiguo automáticamente.</p>}
       <button data-enroll-device class="primary" disabled={busy || !connection?.ready} onClick={() => void enroll()}>Añadir dispositivo</button>
       {enrollment && <div class="private-enrollment">

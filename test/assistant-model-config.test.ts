@@ -331,6 +331,44 @@ test("override: al faltar acceso indica la ruta relativa y no muestra el error i
   } finally { e.done(); }
 });
 
+test("override y assistant.json: un archivo desalojado en iCloud (EDEADLK / -11) explica el paso de Finder y no culpa permisos ni cambia de proveedor", async (t) => {
+  const e = withOverride(overrideText({ provider: "ollama", default: "qwen3.5:9b" }), {
+    assistant: JSON.stringify({ model: { provider: "openrouter", default: "a/b" } }),
+  });
+  try {
+    for (const err of [
+      Object.assign(new Error("Unknown system error -11: Unknown system error -11, read"), { errno: -11, code: "Unknown system error -11" }),
+      Object.assign(new Error("EDEADLK"), { errno: -11, code: "EDEADLK" }),
+    ]) {
+      const stub = t.mock.method(fs, "readFile", () => Promise.reject(err));
+      try {
+        await assert.rejects(resolve(e), (got: Error) => {
+          assert.ok(got instanceof ModelConfigError);
+          assert.match(got.message, /iCloud Drive/);
+          assert.match(got.message, /Mantener descargado/);
+          assert.match(got.message, /\.kioku\/assistant-model\.json/);
+          assert.doesNotMatch(got.message, /permisos/i);
+          return true;
+        });
+      } finally { stub.mock.restore(); }
+    }
+  } finally { e.done(); }
+
+  const e2 = env({ assistant: JSON.stringify({ model: { provider: "openrouter", default: "a/b" } }) });
+  try {
+    const stub = t.mock.method(fs, "readFile", () => Promise.reject(Object.assign(new Error("Unknown system error -11"), { errno: -11, code: "Unknown system error -11" })));
+    try {
+      await assert.rejects(resolve(e2), (got: Error) => {
+        assert.ok(got instanceof ModelConfigError);
+        assert.match(got.message, /iCloud Drive/);
+        assert.match(got.message, /\.kioku\/assistant\.json/);
+        assert.doesNotMatch(got.message, /permisos/i);
+        return true;
+      });
+    } finally { stub.mock.restore(); }
+  } finally { e2.done(); }
+});
+
 test("override: serializar y volver a leer conserva exactamente la selección, con la marca y sin claves", () => {
   const text = serializeModelOverride({ provider: "custom", model: "m", baseUrl: "https://llm.example.com/v1", apiMode: "chat_completions", acknowledgedOrigin: "https://llm.example.com" });
   assert.deepEqual(JSON.parse(text), {
